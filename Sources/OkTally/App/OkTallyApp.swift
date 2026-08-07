@@ -12,7 +12,7 @@ struct OkTallyApp: App {
 
         let registry = PluginRegistry()
         let preferencesStore = PreferencesStore()
-        let storage = try! SQLiteStorage(path: appSupportDir + "/usage.sqlite")
+        let storage = Self.openStorage(at: appSupportDir + "/usage.sqlite")
         let alertEngine = AlertEngine()
         let notificationSender = UNNotificationSender()
         let alertDispatcher = AlertDispatcher(sender: notificationSender)
@@ -46,6 +46,17 @@ struct OkTallyApp: App {
         Settings {
             PreferencesView(preferencesStore: preferencesStore)
         }
+    }
+
+    private static func openStorage(at path: String) -> SQLiteStorage {
+        if let storage = try? SQLiteStorage(path: path) {
+            return storage
+        }
+        try? FileManager.default.removeItem(atPath: path)
+        if let storage = try? SQLiteStorage(path: path) {
+            return storage
+        }
+        return try! SQLiteStorage(path: ":memory:")
     }
 
     private static func color(for colorName: String) -> Color {
