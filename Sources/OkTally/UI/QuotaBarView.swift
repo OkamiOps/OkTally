@@ -16,7 +16,9 @@ struct QuotaBarView: View {
             }
             if let percent = window.shape.usedPercent {
                 ProgressView(value: min(percent, 100), total: 100)
+                    .opacity(window.shape.isEstimated ? 0.55 : 1.0)
             }
         }
+        .help(window.shape.isEstimated ? "Estimativa local, não confirmada pelo provedor" : "")
     }
 }

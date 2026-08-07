@@ -5,6 +5,10 @@ import SwiftUI
 struct OkTallyApp: App {
     @StateObject private var appModel: AppModel
     private let preferencesStore = PreferencesStore()
+    private let tokenStore: TokenStoring
+    private let browserFlow: BrowserOAuthFlow
+    private let deviceCodeFlow: DeviceCodeFlow
+    private let claudeProvider: ClaudeUsageProvider
 
     init() {
         let appSupportDir = NSHomeDirectory() + "/Library/Application Support/OkTally"
@@ -26,10 +30,30 @@ struct OkTallyApp: App {
 
         let tokenStore = KeychainTokenStore()
         let oauthManager = OAuthManager(store: tokenStore)
+        let browserFlow = BrowserOAuthFlow(manager: oauthManager)
+        let deviceCodeFlow = DeviceCodeFlow(tokenStore: tokenStore)
+        self.tokenStore = tokenStore
+        self.browserFlow = browserFlow
+        self.deviceCodeFlow = deviceCodeFlow
+
         let claudeProvider = ClaudeUsageProvider(oauthManager: oauthManager, tokenStore: tokenStore)
         claudeProvider.importLegacyCredentialsIfAvailable()
+        self.claudeProvider = claudeProvider
+
         registry.register(claudeProvider)
+        registry.register(CodexUsageProvider(oauthManager: oauthManager, tokenStore: tokenStore))
         registry.register(OpenRouterUsageProvider(apiKeyProvider: { preferencesStore.openRouterAPIKey }))
+        registry.register(MiniMaxUsageProvider(
+            apiKeyProvider: { preferencesStore.minimaxAPIKey },
+            region: { preferencesStore.minimaxRegionRaw == "china" ? .china : .global }
+        ))
+        registry.register(CursorUsageProvider())
+        registry.register(OpenCodeUsageProvider(apiKeyProvider: { preferencesStore.openCodeAPIKey }))
+        registry.register(MiMoUsageProvider(
+            allowanceProvider: { preferencesStore.mimoMonthlyAllowanceCredits },
+            usedCreditsProvider: { preferencesStore.mimoUsedCredits }
+        ))
+        registry.register(SuperGrokUsageProvider(oauthManager: oauthManager, tokenStore: tokenStore))
 
         let model = AppModel(registry: registry, scheduler: scheduler)
         _appModel = StateObject(wrappedValue: model)
@@ -48,7 +72,13 @@ struct OkTallyApp: App {
         .menuBarExtraStyle(.window)
 
         Settings {
-            PreferencesView(preferencesStore: preferencesStore)
+            PreferencesView(
+                preferencesStore: preferencesStore,
+                tokenStore: tokenStore,
+                browserFlow: browserFlow,
+                deviceCodeFlow: deviceCodeFlow,
+                onImportClaudeLegacy: { claudeProvider.importLegacyCredentialsIfAvailable() }
+            )
         }
     }
 

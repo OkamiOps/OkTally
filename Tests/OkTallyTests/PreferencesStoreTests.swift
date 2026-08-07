@@ -64,4 +64,31 @@ final class PreferencesStoreTests: XCTestCase {
 
         XCTAssertEqual(store.mimoUsedCredits, 123.5)
     }
+
+    func test_minimaxAPIKey_roundTrips() {
+        let store = PreferencesStore(store: FakeKeyValueStore())
+        XCTAssertNil(store.minimaxAPIKey)
+
+        store.minimaxAPIKey = "mm-abc123"
+
+        XCTAssertEqual(store.minimaxAPIKey, "mm-abc123")
+    }
+
+    func test_minimaxRegion_defaultsToGlobal() {
+        let store = PreferencesStore(store: FakeKeyValueStore())
+        XCTAssertEqual(store.minimaxRegionRaw, "global")
+
+        store.minimaxRegionRaw = "china"
+
+        XCTAssertEqual(store.minimaxRegionRaw, "china")
+    }
+
+    func test_openCodeAPIKey_roundTrips() {
+        let store = PreferencesStore(store: FakeKeyValueStore())
+        XCTAssertNil(store.openCodeAPIKey)
+
+        store.openCodeAPIKey = "oc-abc123"
+
+        XCTAssertEqual(store.openCodeAPIKey, "oc-abc123")
+    }
 }

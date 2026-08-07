@@ -21,6 +21,9 @@ final class PreferencesStore {
         static let mimoAPIKey = "mimoAPIKey"
         static let mimoMonthlyAllowanceCredits = "mimoMonthlyAllowanceCredits"
         static let mimoUsedCredits = "mimoUsedCredits"
+        static let minimaxAPIKey = "minimaxAPIKey"
+        static let minimaxRegionRaw = "minimaxRegionRaw"
+        static let openCodeAPIKey = "openCodeAPIKey"
         static func refreshInterval(_ providerId: String) -> String { "refreshInterval.\(providerId)" }
     }
 
@@ -51,6 +54,22 @@ final class PreferencesStore {
     var mimoUsedCredits: Double {
         get { store.double(forKey: Keys.mimoUsedCredits) }
         set { store.set(newValue, forKey: Keys.mimoUsedCredits) }
+    }
+
+    var minimaxAPIKey: String? {
+        get { store.string(forKey: Keys.minimaxAPIKey) }
+        set { store.set(newValue, forKey: Keys.minimaxAPIKey) }
+    }
+
+    /// Stores `"global"`/`"china"`; defaults to `"global"` when unset.
+    var minimaxRegionRaw: String? {
+        get { store.string(forKey: Keys.minimaxRegionRaw) ?? "global" }
+        set { store.set(newValue, forKey: Keys.minimaxRegionRaw) }
+    }
+
+    var openCodeAPIKey: String? {
+        get { store.string(forKey: Keys.openCodeAPIKey) }
+        set { store.set(newValue, forKey: Keys.openCodeAPIKey) }
     }
 
     func refreshInterval(for providerId: String, default defaultValue: TimeInterval) -> TimeInterval {
