@@ -9,4 +9,5 @@ struct AlertEvent: Equatable {
     let currentPercent: Double?
     let currentRemaining: Decimal?
     let resetAt: Date?
+    let isEstimated: Bool
 }

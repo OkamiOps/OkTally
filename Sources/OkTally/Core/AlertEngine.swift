@@ -49,7 +49,8 @@ struct AlertEngine {
                 threshold: threshold,
                 currentPercent: currentPercent,
                 currentRemaining: nil,
-                resetAt: window.shape.resetAt
+                resetAt: window.shape.resetAt,
+                isEstimated: window.shape.isEstimated
             )
         case .lowBalance(let limit):
             guard case .creditBalance(let remaining, _) = window.shape else { return nil }
@@ -64,14 +65,15 @@ struct AlertEngine {
                 threshold: threshold,
                 currentPercent: nil,
                 currentRemaining: remaining,
-                resetAt: nil
+                resetAt: nil,
+                isEstimated: window.shape.isEstimated
             )
         }
     }
 
     static func defaultThresholds(for shape: QuotaShape) -> [AlertThreshold] {
         switch shape {
-        case .rollingWindow, .periodicCounter:
+        case .rollingWindow, .periodicCounter, .estimated:
             return AlertThreshold.defaultPercentageThresholds
         case .creditBalance:
             return [AlertThreshold.defaultLowBalanceThreshold]

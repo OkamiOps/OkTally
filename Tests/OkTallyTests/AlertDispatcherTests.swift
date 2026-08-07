@@ -14,8 +14,8 @@ final class AlertDispatcherTests: XCTestCase {
         let sender = FakeNotificationSender()
         let dispatcher = AlertDispatcher(sender: sender)
         let events = [
-            AlertEvent(providerId: "claude", providerDisplayName: "Claude Code", windowLabel: "5h", threshold: .percentage(0.7), currentPercent: 71, currentRemaining: nil, resetAt: nil),
-            AlertEvent(providerId: "claude", providerDisplayName: "Claude Code", windowLabel: "weekly", threshold: .percentage(0.9), currentPercent: 91, currentRemaining: nil, resetAt: nil)
+            AlertEvent(providerId: "claude", providerDisplayName: "Claude Code", windowLabel: "5h", threshold: .percentage(0.7), currentPercent: 71, currentRemaining: nil, resetAt: nil, isEstimated: false),
+            AlertEvent(providerId: "claude", providerDisplayName: "Claude Code", windowLabel: "weekly", threshold: .percentage(0.9), currentPercent: 91, currentRemaining: nil, resetAt: nil, isEstimated: false)
         ]
         await dispatcher.dispatch(events)
         XCTAssertEqual(sender.sentMessages.count, 2)

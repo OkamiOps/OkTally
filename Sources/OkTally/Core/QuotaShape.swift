@@ -1,11 +1,17 @@
 // Sources/OkTally/Core/QuotaShape.swift
 import Foundation
 
+enum EstimationBasis: String, Codable, Equatable {
+    case localTokenCount
+    case reactiveRateLimit
+}
+
 enum QuotaShape: Equatable {
     case rollingWindow(used: Double, limit: Double, windowStart: Date, resetAt: Date)
     case periodicCounter(used: Double, limit: Double, resetAt: Date)
     case creditBalance(remaining: Decimal, currency: String)
     case meteredOnly(costAccrued: Decimal)
+    case estimated(used: Double, limit: Double?, basis: EstimationBasis, resetAt: Date?)
 
     var usedPercent: Double? {
         switch self {
@@ -14,6 +20,9 @@ enum QuotaShape: Equatable {
             return min(used / limit, 1.0) * 100
         case .periodicCounter(let used, let limit, _):
             guard limit > 0 else { return nil }
+            return min(used / limit, 1.0) * 100
+        case .estimated(let used, let limit, _, _):
+            guard let limit, limit > 0 else { return nil }
             return min(used / limit, 1.0) * 100
         case .creditBalance, .meteredOnly:
             return nil
@@ -24,18 +33,24 @@ enum QuotaShape: Equatable {
         switch self {
         case .rollingWindow(_, _, _, let resetAt): return resetAt
         case .periodicCounter(_, _, let resetAt): return resetAt
+        case .estimated(_, _, _, let resetAt): return resetAt
         case .creditBalance, .meteredOnly: return nil
         }
+    }
+
+    var isEstimated: Bool {
+        if case .estimated = self { return true }
+        return false
     }
 }
 
 extension QuotaShape: Codable {
     private enum Kind: String, Codable {
-        case rollingWindow, periodicCounter, creditBalance, meteredOnly
+        case rollingWindow, periodicCounter, creditBalance, meteredOnly, estimated
     }
 
     private enum CodingKeys: String, CodingKey {
-        case kind, used, limit, windowStart, resetAt, remaining, currency, costAccrued
+        case kind, used, limit, windowStart, resetAt, remaining, currency, costAccrued, basis
     }
 
     init(from decoder: Decoder) throws {
@@ -62,6 +77,13 @@ extension QuotaShape: Codable {
             )
         case .meteredOnly:
             self = .meteredOnly(costAccrued: try container.decode(Decimal.self, forKey: .costAccrued))
+        case .estimated:
+            self = .estimated(
+                used: try container.decode(Double.self, forKey: .used),
+                limit: try container.decodeIfPresent(Double.self, forKey: .limit),
+                basis: try container.decode(EstimationBasis.self, forKey: .basis),
+                resetAt: try container.decodeIfPresent(Date.self, forKey: .resetAt)
+            )
         }
     }
 
@@ -86,6 +108,12 @@ extension QuotaShape: Codable {
         case .meteredOnly(let costAccrued):
             try container.encode(Kind.meteredOnly, forKey: .kind)
             try container.encode(costAccrued, forKey: .costAccrued)
+        case .estimated(let used, let limit, let basis, let resetAt):
+            try container.encode(Kind.estimated, forKey: .kind)
+            try container.encode(used, forKey: .used)
+            try container.encodeIfPresent(limit, forKey: .limit)
+            try container.encode(basis, forKey: .basis)
+            try container.encodeIfPresent(resetAt, forKey: .resetAt)
         }
     }
 }

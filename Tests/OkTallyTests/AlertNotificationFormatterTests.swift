@@ -11,7 +11,8 @@ final class AlertNotificationFormatterTests: XCTestCase {
             threshold: .percentage(0.9),
             currentPercent: 92,
             currentRemaining: nil,
-            resetAt: nil
+            resetAt: nil,
+            isEstimated: false
         )
         let (title, body) = AlertNotificationFormatter.format(event)
         XCTAssertEqual(title, "Claude Code — 5h")
@@ -26,7 +27,8 @@ final class AlertNotificationFormatterTests: XCTestCase {
             threshold: .lowBalance(5),
             currentPercent: nil,
             currentRemaining: 3.25,
-            resetAt: nil
+            resetAt: nil,
+            isEstimated: false
         )
         let (title, body) = AlertNotificationFormatter.format(event)
         XCTAssertEqual(title, "OpenRouter — balance")

@@ -15,6 +15,9 @@ enum AlertNotificationFormatter {
         } else {
             body = ""
         }
+        if event.isEstimated {
+            body = "Estimado: " + body
+        }
         return (title, body)
     }
 
