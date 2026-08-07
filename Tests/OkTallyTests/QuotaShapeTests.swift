@@ -45,4 +45,19 @@ final class QuotaShapeTests: XCTestCase {
         let decoded = try JSONDecoder().decode(QuotaShape.self, from: data)
         XCTAssertEqual(decoded, original)
     }
+
+    func test_periodicCounter_codableRoundTrip() throws {
+        let reset = Date(timeIntervalSince1970: 1_003_600)
+        let original = QuotaShape.periodicCounter(used: 15, limit: 30, resetAt: reset)
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(QuotaShape.self, from: data)
+        XCTAssertEqual(decoded, original)
+    }
+
+    func test_meteredOnly_codableRoundTrip() throws {
+        let original = QuotaShape.meteredOnly(costAccrued: 4.5)
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(QuotaShape.self, from: data)
+        XCTAssertEqual(decoded, original)
+    }
 }
