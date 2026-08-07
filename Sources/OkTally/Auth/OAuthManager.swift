@@ -16,6 +16,7 @@ enum OAuthError: Error, LocalizedError {
     case tokenExchangeFailed(Int?)
     case noRefreshToken
     case refreshFailed(Int?)
+    case loginTimeout
 
     var errorDescription: String? {
         switch self {
@@ -25,6 +26,8 @@ enum OAuthError: Error, LocalizedError {
             return "Sessão expirada e sem refresh token — entre novamente."
         case .refreshFailed(let code):
             return "Falha ao renovar a sessão (código \(code.map(String.init) ?? "desconhecido")) — entre novamente."
+        case .loginTimeout:
+            return "Login expirou — tente novamente."
         }
     }
 }

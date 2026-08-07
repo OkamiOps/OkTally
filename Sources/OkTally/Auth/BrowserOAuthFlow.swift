@@ -3,7 +3,12 @@ import AppKit
 
 final class BrowserOAuthFlow {
     private let manager: OAuthManaging
-    init(manager: OAuthManaging) { self.manager = manager }
+    private let loginTimeoutNanoseconds: UInt64
+
+    init(manager: OAuthManaging, loginTimeoutNanoseconds: UInt64 = 300 * 1_000_000_000) {
+        self.manager = manager
+        self.loginTimeoutNanoseconds = loginTimeoutNanoseconds
+    }
 
     func login(config: OAuthConfig) async throws -> OAuthToken {
         let verifier = PKCE.makeVerifier()
@@ -25,12 +30,22 @@ final class BrowserOAuthFlow {
             .init(name: "state", value: state)
         ]
 
+        let resumeGuard = SingleResume()
+
         let code: String = try await withCheckedThrowingContinuation { continuation in
+            let timeoutTask = Task {
+                try? await Task.sleep(nanoseconds: loginTimeoutNanoseconds)
+                resumeGuard.fire { continuation.resume(throwing: OAuthError.loginTimeout) }
+            }
+
             server.onCallback = { path in
-                if let code = PKCE.parseCode(fromCallbackPath: path, expectedState: state) {
-                    continuation.resume(returning: code)
-                } else {
-                    continuation.resume(throwing: OAuthError.tokenExchangeFailed(nil))
+                resumeGuard.fire {
+                    timeoutTask.cancel()
+                    if let code = PKCE.parseCode(fromCallbackPath: path, expectedState: state) {
+                        continuation.resume(returning: code)
+                    } else {
+                        continuation.resume(throwing: OAuthError.tokenExchangeFailed(nil))
+                    }
                 }
             }
             NSWorkspace.shared.open(comps.url!)

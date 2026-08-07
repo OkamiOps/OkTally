@@ -32,4 +32,11 @@ final class PKCETests: XCTestCase {
     func test_parseCode_nilWhenNoCode() {
         XCTAssertNil(PKCE.parseCode(fromCallbackPath: "/callback?state=xyz", expectedState: "xyz"))
     }
+
+    func test_challenge_matchesRFC7636AppendixBVector() {
+        // https://datatracker.ietf.org/doc/html/rfc7636#appendix-B
+        let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+        let expected = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+        XCTAssertEqual(PKCE.challenge(for: verifier), expected)
+    }
 }
