@@ -22,7 +22,7 @@ final class OpenRouterUsageProvider: UsageProvider {
     func fetchSnapshot() async throws -> ProviderSnapshot {
         guard let apiKey = apiKeyProvider() else { throw OpenRouterError.missingAPIKey }
         let response = try await creditsClient.fetchCredits(apiKey: apiKey)
-        let remaining = Decimal(response.data.totalCredits - response.data.totalUsage)
+        let remaining = response.data.totalCredits - response.data.totalUsage
         let window = QuotaWindow(label: "balance", shape: .creditBalance(remaining: remaining, currency: "USD"))
         return ProviderSnapshot(providerId: id, fetchedAt: Date(), quotas: [window], usageDetail: nil)
     }

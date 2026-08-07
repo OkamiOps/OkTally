@@ -58,7 +58,26 @@ final class OpenRouterUsageProviderTests: XCTestCase {
         let client = OpenRouterAPIClient(session: session)
         let response = try await client.fetchCredits(apiKey: "key123")
 
-        XCTAssertEqual(response.data.totalCredits, 50.0)
-        XCTAssertEqual(response.data.totalUsage, 12.5)
+        XCTAssertEqual(response.data.totalCredits, Decimal(50))
+        XCTAssertEqual(response.data.totalUsage, Decimal(12.5))
+    }
+
+    func test_fetchSnapshot_precisionSurvivesRealisticDecimalValues() async throws {
+        // Decode through JSONDecoder (like the real API path) rather than constructing
+        // DataField with Swift float literals: Decimal's ExpressibleByFloatLiteral
+        // conformance itself round-trips through Double, which would reintroduce the
+        // exact residue this test is meant to catch before the code under test even runs.
+        let json = #"{ "data": { "total_credits": 123.456789, "total_usage": 45.123456 } }"#.data(using: .utf8)!
+        let response = try JSONDecoder().decode(OpenRouterCreditsResponse.self, from: json)
+        let fetcher = FakeOpenRouterCreditsFetching()
+        fetcher.responseToReturn = response
+        let provider = OpenRouterUsageProvider(apiKeyProvider: { "key123" }, creditsClient: fetcher)
+
+        let snapshot = try await provider.fetchSnapshot()
+
+        guard case .creditBalance(let remaining, _) = snapshot.quotas[0].shape else {
+            return XCTFail("expected creditBalance shape")
+        }
+        XCTAssertEqual(remaining, Decimal(string: "78.333333")!)
     }
 }

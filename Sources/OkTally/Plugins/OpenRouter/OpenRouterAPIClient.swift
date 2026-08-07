@@ -3,8 +3,8 @@ import Foundation
 
 struct OpenRouterCreditsResponse: Codable, Equatable {
     struct DataField: Codable, Equatable {
-        let totalCredits: Double
-        let totalUsage: Double
+        let totalCredits: Decimal
+        let totalUsage: Decimal
         enum CodingKeys: String, CodingKey {
             case totalCredits = "total_credits"
             case totalUsage = "total_usage"
