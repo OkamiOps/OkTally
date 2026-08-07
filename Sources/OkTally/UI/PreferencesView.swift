@@ -13,6 +13,7 @@ struct PreferencesView: View {
     @State private var minimaxAPIKey: String = ""
     @State private var minimaxRegionIsChina = false
     @State private var openCodeAPIKey: String = ""
+    @State private var mimoAPIKey: String = ""
     @State private var mimoAllowance: String = ""
     @State private var mimoUsed: String = ""
     @State private var claudeLoggedIn = false
@@ -99,9 +100,11 @@ struct PreferencesView: View {
             }
 
             Section("MiMo (estimativa manual)") {
+                SecureField("API Key (tp-…)", text: $mimoAPIKey)
                 TextField("Franquia mensal (Credits)", text: $mimoAllowance)
                 TextField("Credits usados", text: $mimoUsed)
                 Button("Salvar") {
+                    preferencesStore.mimoAPIKey = mimoAPIKey
                     preferencesStore.mimoMonthlyAllowanceCredits = Double(mimoAllowance)
                     preferencesStore.mimoUsedCredits = Double(mimoUsed) ?? 0
                 }
@@ -118,6 +121,7 @@ struct PreferencesView: View {
             minimaxAPIKey = preferencesStore.minimaxAPIKey ?? ""
             minimaxRegionIsChina = preferencesStore.minimaxRegionRaw == "china"
             openCodeAPIKey = preferencesStore.openCodeAPIKey ?? ""
+            mimoAPIKey = preferencesStore.mimoAPIKey ?? ""
             mimoAllowance = preferencesStore.mimoMonthlyAllowanceCredits.map { String($0) } ?? ""
             mimoUsed = String(preferencesStore.mimoUsedCredits)
             claudeLoggedIn = tokenStore.load(providerId: "claude") != nil

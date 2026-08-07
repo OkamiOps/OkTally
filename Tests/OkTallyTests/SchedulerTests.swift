@@ -9,13 +9,14 @@ final class FakeUsageProvider: UsageProvider {
     let refreshInterval: TimeInterval = 60
     var snapshotToReturn: ProviderSnapshot?
     var errorToThrow: Error?
+    var isAuthenticatedResult = true
 
     init(id: String, displayName: String) {
         self.id = id
         self.displayName = displayName
     }
 
-    func isAuthenticated() async -> Bool { true }
+    func isAuthenticated() async -> Bool { isAuthenticatedResult }
 
     func fetchSnapshot() async throws -> ProviderSnapshot {
         if let errorToThrow { throw errorToThrow }

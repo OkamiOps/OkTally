@@ -123,13 +123,30 @@ final class CursorUsageProviderTests: XCTestCase {
 
         XCTAssertEqual(snapshot.providerId, "cursor")
         XCTAssertEqual(fetcher.receivedAccessToken, "session-token")
-        XCTAssertEqual(snapshot.quotas.count, 1)
-        guard case .creditBalance(let remaining, let currency) = snapshot.quotas[0].shape else {
+        XCTAssertEqual(snapshot.quotas.count, 2)
+        guard case .creditBalance(let remaining, let currency) = snapshot.quotas.first(where: { $0.label == "balance" })?.shape else {
             return XCTFail("expected creditBalance shape")
         }
         // limit (2000c) - totalSpend (25423c) = -23423c = -$234.23
         XCTAssertEqual(remaining, Decimal(string: "-234.23")!)
         XCTAssertEqual(currency, "USD")
+    }
+
+    func test_fetchSnapshot_emitsPercentWindow_fromTotalPercentUsedAndBillingCycleEnd() async throws {
+        let reader = FakeCursorTokenReading()
+        reader.tokenToReturn = "session-token"
+        let fetcher = FakeCursorUsageFetching()
+        fetcher.responseToReturn = makeResponse(totalPercentUsed: 73.68985507246377)
+        let provider = CursorUsageProvider(tokenReader: reader, client: fetcher)
+
+        let snapshot = try await provider.fetchSnapshot()
+
+        guard case .periodicCounter(let used, let limit, let resetAt) = snapshot.quotas.first(where: { $0.label == "percent" })?.shape else {
+            return XCTFail("expected periodicCounter shape")
+        }
+        XCTAssertEqual(used, 73.68985507246377)
+        XCTAssertEqual(limit, 100)
+        XCTAssertEqual(resetAt, Date(timeIntervalSince1970: 1786429152))
     }
 
     func test_apiClient_decodesFixture() async throws {

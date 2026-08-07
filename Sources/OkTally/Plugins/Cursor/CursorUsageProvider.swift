@@ -29,8 +29,26 @@ final class CursorUsageProvider: UsageProvider {
         // (usage above the included plan allotment).
         let remainingCents = response.planUsage.limit - response.planUsage.totalSpend
         let remaining = Decimal(remainingCents) / 100
+        let balanceWindow = QuotaWindow(label: "balance", shape: .creditBalance(remaining: remaining, currency: "USD"))
 
-        let window = QuotaWindow(label: "balance", shape: .creditBalance(remaining: remaining, currency: "USD"))
-        return ProviderSnapshot(providerId: id, fetchedAt: Date(), quotas: [window], usageDetail: nil)
+        var windows = [balanceWindow]
+        // The API also hands back a ready-made percent-of-plan figure directly
+        // (`totalPercentUsed`) — surface it as its own window so Cursor participates in
+        // the menu-bar icon aggregation and percentage-based alerts like every other
+        // percent-based provider. `creditBalance` alone never contributes a percent.
+        if let resetAt = Self.parseEpochMillis(response.billingCycleEnd) {
+            let percentWindow = QuotaWindow(
+                label: "percent",
+                shape: .periodicCounter(used: response.planUsage.totalPercentUsed, limit: 100, resetAt: resetAt)
+            )
+            windows.append(percentWindow)
+        }
+
+        return ProviderSnapshot(providerId: id, fetchedAt: Date(), quotas: windows, usageDetail: nil)
+    }
+
+    private static func parseEpochMillis(_ value: String) -> Date? {
+        guard let millis = Double(value) else { return nil }
+        return Date(timeIntervalSince1970: millis / 1000)
     }
 }

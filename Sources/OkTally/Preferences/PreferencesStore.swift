@@ -15,30 +15,70 @@ extension UserDefaults: KeyValueStore {
 
 final class PreferencesStore {
     private let store: KeyValueStore
+    private let secretStore: SecretStoring
 
     private enum Keys {
+        // Legacy UserDefaults locations for the 4 API keys below. No longer written to —
+        // kept only as migration sources (see `migratedSecret`) so an owner upgrading
+        // from an older build doesn't lose a key they already entered.
         static let openRouterAPIKey = "openRouterAPIKey"
         static let mimoAPIKey = "mimoAPIKey"
+        static let minimaxAPIKey = "minimaxAPIKey"
+        static let openCodeAPIKey = "openCodeAPIKey"
+
         static let mimoMonthlyAllowanceCredits = "mimoMonthlyAllowanceCredits"
         static let mimoUsedCredits = "mimoUsedCredits"
-        static let minimaxAPIKey = "minimaxAPIKey"
         static let minimaxRegionRaw = "minimaxRegionRaw"
-        static let openCodeAPIKey = "openCodeAPIKey"
         static func refreshInterval(_ providerId: String) -> String { "refreshInterval.\(providerId)" }
     }
 
-    init(store: KeyValueStore = UserDefaults.standard) {
+    /// Keychain namespace per provider (`com.oktally.app.apikey.<id>` via
+    /// `KeychainSecretStore`) — distinct from `UsageProvider.id` only coincidentally
+    /// matching it; kept as its own table in case they ever diverge.
+    private enum SecretProviderId {
+        static let openRouter = "openrouter"
+        static let mimo = "mimo"
+        static let minimax = "minimax"
+        static let openCode = "opencode"
+    }
+
+    init(store: KeyValueStore = UserDefaults.standard, secretStore: SecretStoring = KeychainSecretStore()) {
         self.store = store
+        self.secretStore = secretStore
+    }
+
+    /// API keys are secrets and belong in the Keychain, not `UserDefaults` (see
+    /// `SecretStoring`'s doc comment). This reads from the Keychain first; if nothing is
+    /// there yet but an older build left a plaintext value in `UserDefaults`, it's moved
+    /// into the Keychain and wiped from `UserDefaults` on the spot — a silent one-time
+    /// migration, invisible to the caller.
+    private func migratedSecret(providerId: String, legacyKey: String) -> String? {
+        if let current = secretStore.load(providerId: providerId) { return current }
+        guard let legacy = store.string(forKey: legacyKey), !legacy.isEmpty else { return nil }
+        try? secretStore.save(legacy, providerId: providerId)
+        store.set(nil, forKey: legacyKey)
+        return legacy
+    }
+
+    private func setSecret(_ value: String?, providerId: String, legacyKey: String) {
+        // Always scrub the legacy plaintext location, even on write, so a stale copy
+        // never lingers in UserDefaults once the Keychain becomes the source of truth.
+        store.set(nil, forKey: legacyKey)
+        if let value, !value.isEmpty {
+            try? secretStore.save(value, providerId: providerId)
+        } else {
+            try? secretStore.delete(providerId: providerId)
+        }
     }
 
     var openRouterAPIKey: String? {
-        get { store.string(forKey: Keys.openRouterAPIKey) }
-        set { store.set(newValue, forKey: Keys.openRouterAPIKey) }
+        get { migratedSecret(providerId: SecretProviderId.openRouter, legacyKey: Keys.openRouterAPIKey) }
+        set { setSecret(newValue, providerId: SecretProviderId.openRouter, legacyKey: Keys.openRouterAPIKey) }
     }
 
     var mimoAPIKey: String? {
-        get { store.string(forKey: Keys.mimoAPIKey) }
-        set { store.set(newValue, forKey: Keys.mimoAPIKey) }
+        get { migratedSecret(providerId: SecretProviderId.mimo, legacyKey: Keys.mimoAPIKey) }
+        set { setSecret(newValue, providerId: SecretProviderId.mimo, legacyKey: Keys.mimoAPIKey) }
     }
 
     /// The user-entered monthly Token Plan allowance (in Credits). `nil` means the
@@ -57,19 +97,20 @@ final class PreferencesStore {
     }
 
     var minimaxAPIKey: String? {
-        get { store.string(forKey: Keys.minimaxAPIKey) }
-        set { store.set(newValue, forKey: Keys.minimaxAPIKey) }
+        get { migratedSecret(providerId: SecretProviderId.minimax, legacyKey: Keys.minimaxAPIKey) }
+        set { setSecret(newValue, providerId: SecretProviderId.minimax, legacyKey: Keys.minimaxAPIKey) }
     }
 
-    /// Stores `"global"`/`"china"`; defaults to `"global"` when unset.
+    /// Stores `"global"`/`"china"`; defaults to `"global"` when unset. Not a secret, stays
+    /// in UserDefaults.
     var minimaxRegionRaw: String? {
         get { store.string(forKey: Keys.minimaxRegionRaw) ?? "global" }
         set { store.set(newValue, forKey: Keys.minimaxRegionRaw) }
     }
 
     var openCodeAPIKey: String? {
-        get { store.string(forKey: Keys.openCodeAPIKey) }
-        set { store.set(newValue, forKey: Keys.openCodeAPIKey) }
+        get { migratedSecret(providerId: SecretProviderId.openCode, legacyKey: Keys.openCodeAPIKey) }
+        set { setSecret(newValue, providerId: SecretProviderId.openCode, legacyKey: Keys.openCodeAPIKey) }
     }
 
     func refreshInterval(for providerId: String, default defaultValue: TimeInterval) -> TimeInterval {

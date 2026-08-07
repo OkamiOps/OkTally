@@ -9,6 +9,14 @@ import Foundation
 /// device-code flow): a `_tag` discriminator plus a `metadata` payload. When such an error
 /// is observed it is the authoritative "you are at the limit" signal and should override
 /// the local estimate for the matching window until `resetAt`.
+///
+/// STATUS: this parser is implemented and unit-tested, but currently DORMANT/UNREACHABLE
+/// in the shipped app. OkTally never intermediates OpenCode's own network traffic — it
+/// only reads `opencode.db` locally (see `OpenCodeUsageProvider`) — so it never observes a
+/// live HTTP 429 response to hand to `parse(...)`. Wiring this up for real would require a
+/// proxy/observer sitting between the OpenCode CLI and its inference API (out of scope for
+/// Plan 2). The surface is kept because it's cheap to keep and would let a future
+/// proxy/observer design plug straight in without re-deriving the error shape.
 enum OpenCodeRateLimitParser {
     private struct ErrorBody: Decodable {
         struct Metadata: Decodable {

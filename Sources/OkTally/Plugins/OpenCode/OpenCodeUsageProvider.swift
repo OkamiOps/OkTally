@@ -56,6 +56,12 @@ final class OpenCodeUsageProvider: UsageProvider {
     /// Called externally when the HTTP layer observes and parses a 429 response via
     /// `OpenCodeRateLimitParser`. Overrides the matching budget window (by `limitName` ==
     /// window label) until `resetAt` passes.
+    ///
+    /// STATUS: DORMANT — nothing in `Sources/` currently calls this. OkTally doesn't sit
+    /// on OpenCode's network path (it only reads the local `opencode.db`), so there is no
+    /// live 429 to observe and hand in here today. Left in place, tested, and documented
+    /// (see `OpenCodeRateLimitParser`) so a future proxy/observer can wire it up without
+    /// redesigning this override mechanism.
     func recordRateLimit(limitName: String, resetAt: Date?) {
         recordedRateLimit = (limitName, resetAt)
     }

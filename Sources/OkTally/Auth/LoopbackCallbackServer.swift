@@ -5,13 +5,64 @@ final class LoopbackCallbackServer {
     private var listener: NWListener?
     var onCallback: ((_ path: String) -> Void)?
 
-    func start() throws -> Int {
+    // Deliberately NOT `.main`: this server's callbacks (state updates, new connections)
+    // must keep firing regardless of what the calling thread is doing — including
+    // blocking on `readySignal.wait(...)` below, or (in tests / non-UI call paths)
+    // running on whatever thread happens to also be pumping `DispatchQueue.main`. A
+    // dedicated queue makes bind-success/bind-failure detection deterministic instead of
+    // depending on the main queue being drained by something else.
+    private let queue = DispatchQueue(label: "com.oktally.app.oauth.loopback")
+
+    /// Starts the loopback listener. When `port` is given, binds to exactly that port
+    /// (required by OAuth providers that reject any `redirect_uri` other than their
+    /// pre-registered one); when `nil`, asks the OS for an ephemeral port (used by tests
+    /// and providers without a confirmed fixed redirect port).
+    func start(port: Int? = nil) throws -> Int {
         let params = NWParameters.tcp
-        params.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: .any)
+        let nwPort: NWEndpoint.Port
+        if let port {
+            guard let fixed = NWEndpoint.Port(rawValue: UInt16(port)) else {
+                throw OAuthError.portInUse(port)
+            }
+            nwPort = fixed
+        } else {
+            nwPort = .any
+        }
+        params.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: nwPort)
         let listener = try NWListener(using: params)
         self.listener = listener
+
+        // Block until the listener reaches `.ready` (bound) or `.failed` (e.g. the fixed
+        // port is already taken) instead of busy-polling on a timer: a busy-wait risks
+        // either giving up too early (false "port in use") or wasting up to its full
+        // budget on the success path. The state updates arrive on `.main`, so this must
+        // NOT be called from the actual main thread or it would deadlock — true for both
+        // call sites today (`BrowserOAuthFlow.login` runs off an async `Task`, and the
+        // unit tests run on a worker thread, not the process's main thread).
+        let readySignal = DispatchSemaphore(value: 0)
+        let signalLock = NSLock()
+        var signaled = false
+        var bindError: Error?
+        let signalOnce: (Error?) -> Void = { error in
+            signalLock.lock()
+            defer { signalLock.unlock() }
+            guard !signaled else { return }
+            signaled = true
+            bindError = error
+            readySignal.signal()
+        }
+        listener.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                signalOnce(nil)
+            case .failed(let error):
+                signalOnce(error)
+            default:
+                break
+            }
+        }
         listener.newConnectionHandler = { [weak self] connection in
-            connection.start(queue: .main)
+            connection.start(queue: self?.queue ?? .main)
             connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { data, _, _, _ in
                 var path: String?
                 if let data, let request = String(data: data, encoding: .utf8),
@@ -34,13 +85,18 @@ final class LoopbackCallbackServer {
                 }
             }
         }
-        listener.start(queue: .main)
-        // Busy-wait briefly for the OS to assign a port.
-        for _ in 0..<100 {
-            if let port = listener.port?.rawValue, port != 0 { return Int(port) }
-            Thread.sleep(forTimeInterval: 0.01)
+        listener.start(queue: queue)
+
+        guard readySignal.wait(timeout: .now() + 5) == .success else {
+            throw port.map(OAuthError.portInUse) ?? OAuthError.tokenExchangeFailed(nil)
         }
-        throw OAuthError.tokenExchangeFailed(nil)
+        if bindError != nil {
+            throw port.map(OAuthError.portInUse) ?? OAuthError.tokenExchangeFailed(nil)
+        }
+        guard let boundPort = listener.port?.rawValue, boundPort != 0 else {
+            throw OAuthError.tokenExchangeFailed(nil)
+        }
+        return Int(boundPort)
     }
 
     func stop() {

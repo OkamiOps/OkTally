@@ -15,7 +15,7 @@ final class BrowserOAuthFlow {
         let challenge = PKCE.challenge(for: verifier)
         let state = PKCE.makeVerifier()
         let server = LoopbackCallbackServer()
-        let port = try server.start()
+        let port = try server.start(port: config.redirectPort)
         defer { server.stop() }
 
         let redirect = "http://127.0.0.1:\(port)/callback"

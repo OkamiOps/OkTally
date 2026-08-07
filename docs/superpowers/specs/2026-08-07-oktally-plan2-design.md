@@ -78,8 +78,9 @@ enum EstimationBasis: String, Codable {
 - MiMo implementation: owner enters plan allowance (Credits) in Preferences; usage is
   accumulated from OkTally-observed traffic where possible and manual adjustment.
 - OpenCode implementation: reads `opencode.db` (SQLite, read-only) summing per-message
-  cost within the current window; the reactive 429 parser (see 3.6) overrides the estimate
-  with authoritative "limit hit, resets at X" whenever one is observed.
+  cost within the current window. A reactive 429 parser exists and can override the
+  estimate with authoritative "limit hit, resets at X" state, but as shipped in this plan
+  nothing feeds it a live 429 — see 3.6 for why it's currently dormant.
 
 ## 3. Per-Plugin Specs
 
@@ -140,10 +141,15 @@ enum EstimationBasis: String, Codable {
 
 - Auth: `OPENCODE_API_KEY` (Preferences field). The device-code OAuth flow exists but its
   bearer surface has no billing endpoints, so it is not used in this plan.
-- Quota: `QuotaShape.estimated` with `basis: .localTokenCount` from `opencode.db`; when a
-  429 with `GoUsageLimitError`/`FreeUsageLimitError` JSON (`metadata.limitName`,
-  `retry-after`) is observed, the card switches to an authoritative "limite atingido,
-  reseta às X" state (`basis: .reactiveRateLimit`) until the reset passes.
+- Quota: `QuotaShape.estimated` with `basis: .localTokenCount` from `opencode.db`.
+- `OpenCodeRateLimitParser` can parse a 429's `GoUsageLimitError`/`FreeUsageLimitError`
+  JSON (`metadata.limitName`, `retry-after`) into an authoritative "limite atingido, reseta
+  às X" override (`basis: .reactiveRateLimit`), and `OpenCodeUsageProvider.recordRateLimit`
+  can apply it — but as implemented in this plan, **nothing calls `recordRateLimit`**.
+  OkTally never intermediates OpenCode's own network traffic (it only reads `opencode.db`
+  locally), so it has no way to observe a live 429 today. This path is dormant/unreachable
+  until a proxy or observer sitting on OpenCode's traffic is built (out of scope here) —
+  don't read its presence as "the reactive state works today."
 - Watch upstream issues #10448/#16017; promote to measured when an API ships.
 
 ### 3.7 Claude retrofit (measured — existing plugin, auth swap)

@@ -10,7 +10,8 @@ struct PopoverView: View {
                 ProviderCardView(
                     provider: provider,
                     snapshot: appModel.snapshotsByProvider[provider.id],
-                    errorMessage: appModel.errorsByProvider[provider.id]
+                    errorMessage: appModel.errorsByProvider[provider.id],
+                    errorKind: appModel.errorKindByProvider[provider.id]
                 )
                 Divider()
             }

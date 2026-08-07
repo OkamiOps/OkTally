@@ -26,6 +26,27 @@ final class AppModelTests: XCTestCase {
         XCTAssertNotNil(model.errorsByProvider["claude"])
     }
 
+    /// IMPORTANT 5 regression: a provider that simply hasn't been configured yet (the
+    /// common first-launch state for all 8 providers) must classify as `.notConfigured`,
+    /// not the generic `.error` bucket the card renders in red.
+    func test_refreshNow_unconfiguredProvider_classifiesAsNotConfigured() async {
+        let unconfigured = FakeUsageProvider(id: "openrouter", displayName: "OpenRouter")
+        unconfigured.isAuthenticatedResult = false
+        let registry = PluginRegistry()
+        registry.register(unconfigured)
+        let scheduler = Scheduler(
+            registry: registry,
+            storage: FakeStorage(),
+            alertEngine: AlertEngine(),
+            alertDispatcher: AlertDispatcher(sender: FakeNotificationSender())
+        )
+        let model = AppModel(registry: registry, scheduler: scheduler)
+
+        await model.refreshNow()
+
+        XCTAssertEqual(model.errorKindByProvider["openrouter"], .notConfigured)
+    }
+
     func test_menuBarState_reflectsWorstSnapshot() async {
         let provider = FakeUsageProvider(id: "claude", displayName: "Claude Code")
         provider.snapshotToReturn = ProviderSnapshot(

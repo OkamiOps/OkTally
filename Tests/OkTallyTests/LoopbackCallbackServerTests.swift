@@ -52,6 +52,39 @@ final class LoopbackCallbackServerTests: XCTestCase {
         lock.unlock()
     }
 
+    /// CRITICAL 2 regression: a fixed `redirectPort` must be honored exactly — OAuth
+    /// providers with a pre-registered `redirect_uri` reject any other port.
+    func test_start_withFixedPort_bindsToExactlyThatPort() throws {
+        // High, unlikely-to-collide port to keep the test hermetic.
+        let fixedPort = 48732
+        let server = LoopbackCallbackServer()
+        let boundPort = try server.start(port: fixedPort)
+        defer { server.stop() }
+
+        XCTAssertEqual(boundPort, fixedPort)
+    }
+
+    /// CRITICAL 2 regression: when the fixed port is already taken by another process
+    /// (e.g. the owner already has a login flow in progress, or a stale listener), the
+    /// error must be a clear, typed `OAuthError.portInUse`, not a generic failure.
+    func test_start_withFixedPortAlreadyBound_throwsPortInUse() throws {
+        let fixedPort = 48733
+        let holder = LoopbackCallbackServer()
+        _ = try holder.start(port: fixedPort)
+        defer { holder.stop() }
+
+        let contender = LoopbackCallbackServer()
+        do {
+            _ = try contender.start(port: fixedPort)
+            contender.stop()
+            XCTFail("expected OAuthError.portInUse")
+        } catch OAuthError.portInUse(let port) {
+            XCTAssertEqual(port, fixedPort)
+        } catch {
+            XCTFail("wrong error: \(error)")
+        }
+    }
+
     func test_listener_onlyAcceptsLoopbackConnections() throws {
         // The listener must bind to 127.0.0.1 only (RFC 8252), not 0.0.0.0/::.
         // We assert this indirectly: a connection to the loopback address succeeds.
