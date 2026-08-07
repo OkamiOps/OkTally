@@ -37,4 +37,31 @@ final class PreferencesStoreTests: XCTestCase {
         store.setRefreshInterval(120, for: "claude")
         XCTAssertEqual(store.refreshInterval(for: "openrouter", default: 600), 600)
     }
+
+    func test_mimoAPIKey_roundTrips() {
+        let store = PreferencesStore(store: FakeKeyValueStore())
+        XCTAssertNil(store.mimoAPIKey)
+
+        store.mimoAPIKey = "tp-abc123"
+
+        XCTAssertEqual(store.mimoAPIKey, "tp-abc123")
+    }
+
+    func test_mimoAllowance_roundTrips() {
+        let store = PreferencesStore(store: FakeKeyValueStore())
+        XCTAssertNil(store.mimoMonthlyAllowanceCredits)
+
+        store.mimoMonthlyAllowanceCredits = 500
+
+        XCTAssertEqual(store.mimoMonthlyAllowanceCredits, 500)
+    }
+
+    func test_mimoUsedCredits_defaultsToZero() {
+        let store = PreferencesStore(store: FakeKeyValueStore())
+        XCTAssertEqual(store.mimoUsedCredits, 0)
+
+        store.mimoUsedCredits = 123.5
+
+        XCTAssertEqual(store.mimoUsedCredits, 123.5)
+    }
 }
