@@ -7,8 +7,10 @@ import GRDB
 /// depend on third-party app internals" rule, made necessary because OpenCode ships no
 /// public balance/usage API (confirmed by reading `sst/opencode` source and probing eight
 /// live `console.opencode.ai` routes — see `docs/superpowers/research/plan2-opencode.md`).
-/// Degrades gracefully to `nil` whenever the file, table, or column layout isn't what we
-/// expect — never a crash or raw error.
+/// Degrades gracefully to `nil` whenever the database can't be read as expected — file
+/// missing, `session` table missing, or the database is locked, corrupted, or otherwise
+/// unreadable (e.g. `SQLITE_BUSY` because OpenCode's own CLI is writing to it at the same
+/// moment). All of those collapse to `nil`; this function never throws or crashes.
 ///
 /// Schema pinned by inspecting the real local DB on 2026-08-07 (`sqlite3 ... ".schema"`,
 /// structure only — no message content read). The research report's v1/v2 passes assumed
@@ -34,7 +36,7 @@ import GRDB
 /// inside the window — sessions still being worked on roll into whichever window is
 /// currently open, which matches how a human would eyeball "what have I spent recently."
 protocol OpenCodeLocalEstimating {
-    func spentInCurrentWindow(windowHours: Int, now: Date) throws -> Decimal?
+    func spentInCurrentWindow(windowHours: Int, now: Date) -> Decimal?
 }
 
 final class OpenCodeLocalEstimator: OpenCodeLocalEstimating {
@@ -44,16 +46,16 @@ final class OpenCodeLocalEstimator: OpenCodeLocalEstimating {
         self.dbPath = dbPath
     }
 
-    func spentInCurrentWindow(windowHours: Int, now: Date) throws -> Decimal? {
+    func spentInCurrentWindow(windowHours: Int, now: Date) -> Decimal? {
         guard FileManager.default.fileExists(atPath: dbPath) else { return nil }
 
         var config = Configuration()
         config.readonly = true
-        let dbQueue = try DatabaseQueue(path: dbPath, configuration: config)
+        guard let dbQueue = try? DatabaseQueue(path: dbPath, configuration: config) else { return nil }
 
         let windowStartMs = Int64((now.addingTimeInterval(-Double(windowHours) * 3600)).timeIntervalSince1970 * 1000)
 
-        return try dbQueue.read { db -> Decimal? in
+        let result: Decimal?? = try? dbQueue.read { db -> Decimal? in
             guard try db.tableExists("session") else { return nil }
             let total = try Double.fetchOne(
                 db,
@@ -62,5 +64,9 @@ final class OpenCodeLocalEstimator: OpenCodeLocalEstimating {
             ) ?? 0
             return Decimal(total)
         }
+        // `result` is nil if the read itself failed (locked/corrupt/unreadable database);
+        // `result` is `.some(nil)` if the read succeeded but found no `session` table.
+        // Both collapse to `nil` here — only a successful read with a value is returned.
+        return result.flatMap { $0 }
     }
 }

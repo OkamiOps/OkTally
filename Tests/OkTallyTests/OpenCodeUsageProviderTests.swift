@@ -41,21 +41,21 @@ final class OpenCodeLocalEstimatorTests: XCTestCase {
         try insert("out-of-window", 100.0, nowMs - 10 * hour)
 
         let estimator = OpenCodeLocalEstimator(dbPath: path)
-        let spent = try estimator.spentInCurrentWindow(windowHours: 5, now: now)
+        let spent = estimator.spentInCurrentWindow(windowHours: 5, now: now)
 
         XCTAssertEqual(spent, Decimal(3.75))
     }
 
-    func test_spentInCurrentWindow_nilWhenFileMissing() throws {
+    func test_spentInCurrentWindow_nilWhenFileMissing() {
         let estimator = OpenCodeLocalEstimator(dbPath: "/nonexistent/opencode.db")
-        XCTAssertNil(try estimator.spentInCurrentWindow(windowHours: 5, now: Date()))
+        XCTAssertNil(estimator.spentInCurrentWindow(windowHours: 5, now: Date()))
     }
 
     func test_spentInCurrentWindow_nilWhenTableMissing() throws {
         let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".db").path
         _ = try DatabaseQueue(path: path) // valid SQLite file, no `session` table
         let estimator = OpenCodeLocalEstimator(dbPath: path)
-        XCTAssertNil(try estimator.spentInCurrentWindow(windowHours: 5, now: Date()))
+        XCTAssertNil(estimator.spentInCurrentWindow(windowHours: 5, now: Date()))
     }
 
     func test_spentInCurrentWindow_zeroWhenNoRowsInWindow() throws {
@@ -64,9 +64,21 @@ final class OpenCodeLocalEstimatorTests: XCTestCase {
         try insert("long-ago", 5.0, Int64(now.timeIntervalSince1970 * 1000) - 30 * 24 * 3600 * 1000)
 
         let estimator = OpenCodeLocalEstimator(dbPath: path)
-        let spent = try estimator.spentInCurrentWindow(windowHours: 5, now: now)
+        let spent = estimator.spentInCurrentWindow(windowHours: 5, now: now)
 
         XCTAssertEqual(spent, Decimal(0))
+    }
+
+    /// Covers the gap flagged in review: a file that exists at `dbPath` but is not a valid
+    /// SQLite database (e.g. truncated, corrupted, or — the real-world trigger — momentarily
+    /// locked by OpenCode's own CLI process). This must degrade to `nil`, never throw.
+    func test_spentInCurrentWindow_nilWhenFileIsNotAValidDatabase() throws {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".db").path
+        try "isto não é um banco".write(toFile: path, atomically: true, encoding: .utf8)
+
+        let estimator = OpenCodeLocalEstimator(dbPath: path)
+
+        XCTAssertNil(estimator.spentInCurrentWindow(windowHours: 5, now: Date()))
     }
 }
 
@@ -116,10 +128,8 @@ final class OpenCodeRateLimitParserTests: XCTestCase {
 
 final class FakeOpenCodeLocalEstimating: OpenCodeLocalEstimating {
     var spentByWindowHours: [Int: Decimal] = [:]
-    var throwError: Error?
 
-    func spentInCurrentWindow(windowHours: Int, now: Date) throws -> Decimal? {
-        if let throwError { throw throwError }
+    func spentInCurrentWindow(windowHours: Int, now: Date) -> Decimal? {
         return spentByWindowHours[windowHours]
     }
 }

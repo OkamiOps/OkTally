@@ -67,7 +67,7 @@ final class OpenCodeUsageProvider: UsageProvider {
         var windows: [QuotaWindow] = []
 
         for window in goWindowBudgets {
-            guard let spent = try estimator.spentInCurrentWindow(windowHours: window.hours, now: now) else {
+            guard let spent = estimator.spentInCurrentWindow(windowHours: window.hours, now: now) else {
                 throw OpenCodeError.notDetected
             }
 
