@@ -4,6 +4,8 @@ import GRDB
 
 private struct SnapshotRecord: Codable, FetchableRecord, MutablePersistableRecord {
     static let databaseTableName = "snapshots"
+    static let databaseDateEncodingStrategy: DatabaseDateEncodingStrategy = .timeIntervalSinceReferenceDate
+    static let databaseDateDecodingStrategy: DatabaseDateDecodingStrategy = .timeIntervalSinceReferenceDate
     var id: Int64?
     var providerId: String
     var fetchedAt: Date
@@ -24,7 +26,7 @@ final class SQLiteStorage: StorageManaging {
             try db.create(table: "snapshots", ifNotExists: true) { t in
                 t.autoIncrementedPrimaryKey("id")
                 t.column("providerId", .text).notNull().indexed()
-                t.column("fetchedAt", .datetime).notNull()
+                t.column("fetchedAt", .double).notNull().indexed()
                 t.column("quotasJSON", .blob).notNull()
                 t.column("usageDetailJSON", .blob)
             }
@@ -57,9 +59,15 @@ final class SQLiteStorage: StorageManaging {
     }
 
     func snapshots(providerId: String, since: Date) throws -> [ProviderSnapshot] {
-        try dbQueue.read { db in
+        // `since` is compared directly against the numeric `fetchedAt` column, so it must be
+        // encoded with the same strategy as SnapshotRecord.databaseDateEncodingStrategy
+        // (timeIntervalSinceReferenceDate). Date's own DatabaseValueConvertible conformance is
+        // NOT strategy-aware (it always uses the deferredToDate string format), so passing `since`
+        // directly here would compare a numeric column against a string value.
+        let sinceValue = since.timeIntervalSinceReferenceDate
+        return try dbQueue.read { db in
             let records = try SnapshotRecord
-                .filter(Column("providerId") == providerId && Column("fetchedAt") >= since)
+                .filter(Column("providerId") == providerId && Column("fetchedAt") >= sinceValue)
                 .order(Column("fetchedAt").asc)
                 .fetchAll(db)
             return try records.map { try Self.decode($0) }

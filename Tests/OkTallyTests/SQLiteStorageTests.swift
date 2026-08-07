@@ -44,6 +44,16 @@ final class SQLiteStorageTests: XCTestCase {
         XCTAssertEqual(result, [t100, t200])
     }
 
+    func test_save_preservesFullPrecisionFetchedAt() throws {
+        let storage = try SQLiteStorage(path: ":memory:")
+        let preciseDate = Date(timeIntervalSinceReferenceDate: 12345.123456789)
+        let snapshot = ProviderSnapshot(providerId: "claude", fetchedAt: preciseDate, quotas: [], usageDetail: nil)
+        try storage.save(snapshot)
+        let latest = try storage.latestSnapshot(providerId: "claude")
+        XCTAssertEqual(latest?.fetchedAt, preciseDate)
+        XCTAssertEqual(latest, snapshot)
+    }
+
     func test_save_withUsageDetail_roundTrips() throws {
         let storage = try SQLiteStorage(path: ":memory:")
         let snapshot = ProviderSnapshot(
