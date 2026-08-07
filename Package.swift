@@ -16,7 +16,10 @@ let package = Package(
         ),
         .testTarget(
             name: "OkTallyTests",
-            dependencies: ["OkTally"],
+            dependencies: [
+                "OkTally",
+                .product(name: "GRDB", package: "GRDB.swift")
+            ],
             resources: [.copy("Fixtures")]
         )
     ]
