@@ -40,7 +40,14 @@ final class KeychainSecretStore: SecretStoring {
             kSecAttrService as String: service(providerId),
             kSecAttrAccount as String: "oktally"
         ]
-        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        // Also set on update, not just on add — see `KeychainTokenStore.save`'s matching
+        // comment: `SecItemUpdate` only applies attributes explicitly passed to it, so
+        // items from older builds would otherwise keep the pre-upgrade accessibility.
+        let updateAttributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+        ]
+        let updateStatus = SecItemUpdate(query as CFDictionary, updateAttributes as CFDictionary)
         if updateStatus == errSecSuccess { return }
         guard updateStatus == errSecItemNotFound else {
             throw SecretStoreError.keychainWriteFailed(updateStatus)

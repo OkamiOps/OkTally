@@ -85,6 +85,37 @@ final class LoopbackCallbackServerTests: XCTestCase {
         }
     }
 
+    /// N3 regression: a `start()` that throws must clear `self.listener` internally, not
+    /// only via `stop()` — otherwise the same `LoopbackCallbackServer` instance is left
+    /// holding a dead listener reference and can never bind again. This exercises the
+    /// `bindError` path directly; the late-`.ready`-after-timeout leak described in the
+    /// review (the more dangerous case, where the listener actually *did* bind the OS
+    /// port after the 5s wait gave up) isn't practical to reproduce deterministically here
+    /// — it would need control over `NWListener`'s internal state-transition timing, which
+    /// isn't exposed for injection. The fix (clearing `self.listener` before every throw in
+    /// `start`) covers that path identically to the one tested below.
+    func test_start_afterFailedFixedPortBind_serverCanStillBindADifferentPort() throws {
+        let fixedPort = 48734
+        let holder = LoopbackCallbackServer()
+        _ = try holder.start(port: fixedPort)
+        defer { holder.stop() }
+
+        let contender = LoopbackCallbackServer()
+        do {
+            _ = try contender.start(port: fixedPort)
+            XCTFail("expected OAuthError.portInUse")
+        } catch OAuthError.portInUse {
+            // expected
+        }
+
+        // The same instance must be reusable afterwards — proves the failed attempt
+        // didn't leave a stale `self.listener` blocking future binds.
+        let otherPort = 48735
+        let boundPort = try contender.start(port: otherPort)
+        defer { contender.stop() }
+        XCTAssertEqual(boundPort, otherPort)
+    }
+
     func test_listener_onlyAcceptsLoopbackConnections() throws {
         // The listener must bind to 127.0.0.1 only (RFC 8252), not 0.0.0.0/::.
         // We assert this indirectly: a connection to the loopback address succeeds.

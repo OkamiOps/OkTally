@@ -36,7 +36,14 @@ final class KeychainTokenStore: TokenStoring {
             kSecAttrService as String: service(providerId),
             kSecAttrAccount as String: "oktally"
         ]
-        let updateAttributes: [String: Any] = [kSecValueData as String: data]
+        // Also set on update, not just on add: items written by older builds (which used
+        // a delete-then-add without this attribute) land here via `SecItemUpdate` and,
+        // without this line, would keep the pre-upgrade default accessibility forever —
+        // `SecItemUpdate` only touches attributes explicitly passed to it.
+        let updateAttributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+        ]
         let updateStatus = SecItemUpdate(query as CFDictionary, updateAttributes as CFDictionary)
         if updateStatus == errSecSuccess { return }
         guard updateStatus == errSecItemNotFound else {

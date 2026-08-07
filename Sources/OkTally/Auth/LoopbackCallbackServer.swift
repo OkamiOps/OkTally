@@ -87,13 +87,25 @@ final class LoopbackCallbackServer {
         }
         listener.start(queue: queue)
 
+        // Every error path below must cancel the listener and clear `self.listener`
+        // before throwing. Otherwise a late `.ready` (arriving after the 5s timeout, or
+        // after a `.failed` we already gave up on) leaves the listener alive holding the
+        // port — on a fixed port like 1455 that self-blocks the very next login attempt,
+        // with no fix short of restarting the app, since `BrowserOAuthFlow.login`'s
+        // `defer { server.stop() }` is only registered after `start` returns.
         guard readySignal.wait(timeout: .now() + 5) == .success else {
+            self.listener?.cancel()
+            self.listener = nil
             throw port.map(OAuthError.portInUse) ?? OAuthError.tokenExchangeFailed(nil)
         }
         if bindError != nil {
+            self.listener?.cancel()
+            self.listener = nil
             throw port.map(OAuthError.portInUse) ?? OAuthError.tokenExchangeFailed(nil)
         }
         guard let boundPort = listener.port?.rawValue, boundPort != 0 else {
+            self.listener?.cancel()
+            self.listener = nil
             throw OAuthError.tokenExchangeFailed(nil)
         }
         return Int(boundPort)

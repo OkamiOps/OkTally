@@ -55,30 +55,49 @@ final class PreferencesStore {
     private func migratedSecret(providerId: String, legacyKey: String) -> String? {
         if let current = secretStore.load(providerId: providerId) { return current }
         guard let legacy = store.string(forKey: legacyKey), !legacy.isEmpty else { return nil }
-        try? secretStore.save(legacy, providerId: providerId)
-        store.set(nil, forKey: legacyKey)
+        // Only scrub the legacy UserDefaults copy once the Keychain write actually
+        // succeeds. If `save` throws (Keychain locked, denied ACL, unsigned-build
+        // access-group mismatch, etc.), keep `legacy` in UserDefaults so the value
+        // isn't lost — the caller still gets it back this call, and migration will be
+        // retried on the next read.
+        do {
+            try secretStore.save(legacy, providerId: providerId)
+            store.set(nil, forKey: legacyKey)
+        } catch {
+            return legacy
+        }
         return legacy
     }
 
-    private func setSecret(_ value: String?, providerId: String, legacyKey: String) {
-        // Always scrub the legacy plaintext location, even on write, so a stale copy
-        // never lingers in UserDefaults once the Keychain becomes the source of truth.
-        store.set(nil, forKey: legacyKey)
+    private func setSecret(_ value: String?, providerId: String, legacyKey: String) throws {
         if let value, !value.isEmpty {
-            try? secretStore.save(value, providerId: providerId)
+            // Write to the Keychain first; only scrub the legacy plaintext location once
+            // the write has actually succeeded, so a failed save never destroys the only
+            // remaining copy of the key.
+            try secretStore.save(value, providerId: providerId)
         } else {
-            try? secretStore.delete(providerId: providerId)
+            try secretStore.delete(providerId: providerId)
         }
+        store.set(nil, forKey: legacyKey)
     }
 
     var openRouterAPIKey: String? {
-        get { migratedSecret(providerId: SecretProviderId.openRouter, legacyKey: Keys.openRouterAPIKey) }
-        set { setSecret(newValue, providerId: SecretProviderId.openRouter, legacyKey: Keys.openRouterAPIKey) }
+        migratedSecret(providerId: SecretProviderId.openRouter, legacyKey: Keys.openRouterAPIKey)
+    }
+
+    /// Throwing setter (rather than a computed-property `set`) so a failed Keychain
+    /// write can be surfaced to the caller instead of being silently swallowed — see
+    /// `setSecret`.
+    func setOpenRouterAPIKey(_ value: String?) throws {
+        try setSecret(value, providerId: SecretProviderId.openRouter, legacyKey: Keys.openRouterAPIKey)
     }
 
     var mimoAPIKey: String? {
-        get { migratedSecret(providerId: SecretProviderId.mimo, legacyKey: Keys.mimoAPIKey) }
-        set { setSecret(newValue, providerId: SecretProviderId.mimo, legacyKey: Keys.mimoAPIKey) }
+        migratedSecret(providerId: SecretProviderId.mimo, legacyKey: Keys.mimoAPIKey)
+    }
+
+    func setMimoAPIKey(_ value: String?) throws {
+        try setSecret(value, providerId: SecretProviderId.mimo, legacyKey: Keys.mimoAPIKey)
     }
 
     /// The user-entered monthly Token Plan allowance (in Credits). `nil` means the
@@ -97,8 +116,11 @@ final class PreferencesStore {
     }
 
     var minimaxAPIKey: String? {
-        get { migratedSecret(providerId: SecretProviderId.minimax, legacyKey: Keys.minimaxAPIKey) }
-        set { setSecret(newValue, providerId: SecretProviderId.minimax, legacyKey: Keys.minimaxAPIKey) }
+        migratedSecret(providerId: SecretProviderId.minimax, legacyKey: Keys.minimaxAPIKey)
+    }
+
+    func setMinimaxAPIKey(_ value: String?) throws {
+        try setSecret(value, providerId: SecretProviderId.minimax, legacyKey: Keys.minimaxAPIKey)
     }
 
     /// Stores `"global"`/`"china"`; defaults to `"global"` when unset. Not a secret, stays
@@ -109,8 +131,11 @@ final class PreferencesStore {
     }
 
     var openCodeAPIKey: String? {
-        get { migratedSecret(providerId: SecretProviderId.openCode, legacyKey: Keys.openCodeAPIKey) }
-        set { setSecret(newValue, providerId: SecretProviderId.openCode, legacyKey: Keys.openCodeAPIKey) }
+        migratedSecret(providerId: SecretProviderId.openCode, legacyKey: Keys.openCodeAPIKey)
+    }
+
+    func setOpenCodeAPIKey(_ value: String?) throws {
+        try setSecret(value, providerId: SecretProviderId.openCode, legacyKey: Keys.openCodeAPIKey)
     }
 
     func refreshInterval(for providerId: String, default defaultValue: TimeInterval) -> TimeInterval {

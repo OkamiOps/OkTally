@@ -11,12 +11,19 @@ final class FakeKeyValueStore: KeyValueStore {
     func set(_ value: Double, forKey key: String) { doubles[key] = value }
 }
 
+private struct FakeSecretStoreError: Error {}
+
 final class FakeSecretStore: SecretStoring {
     private var secrets: [String: String] = [:]
     private(set) var saveCallCount = 0
 
+    /// When set, `save` throws instead of writing — simulates a locked/denied Keychain
+    /// so migration and setter failure paths can be exercised.
+    var failSave = false
+
     func save(_ secret: String, providerId: String) throws {
         saveCallCount += 1
+        if failSave { throw FakeSecretStoreError() }
         secrets[providerId] = secret
     }
     func load(providerId: String) -> String? { secrets[providerId] }
@@ -28,11 +35,11 @@ final class PreferencesStoreTests: XCTestCase {
         PreferencesStore(store: kv, secretStore: secrets)
     }
 
-    func test_openRouterAPIKey_roundTrips() {
+    func test_openRouterAPIKey_roundTrips() throws {
         let store = makeStore()
         XCTAssertNil(store.openRouterAPIKey)
 
-        store.openRouterAPIKey = "sk-or-123"
+        try store.setOpenRouterAPIKey("sk-or-123")
 
         XCTAssertEqual(store.openRouterAPIKey, "sk-or-123")
     }
@@ -54,11 +61,11 @@ final class PreferencesStoreTests: XCTestCase {
         XCTAssertEqual(store.refreshInterval(for: "openrouter", default: 600), 600)
     }
 
-    func test_mimoAPIKey_roundTrips() {
+    func test_mimoAPIKey_roundTrips() throws {
         let store = makeStore()
         XCTAssertNil(store.mimoAPIKey)
 
-        store.mimoAPIKey = "tp-abc123"
+        try store.setMimoAPIKey("tp-abc123")
 
         XCTAssertEqual(store.mimoAPIKey, "tp-abc123")
     }
@@ -81,11 +88,11 @@ final class PreferencesStoreTests: XCTestCase {
         XCTAssertEqual(store.mimoUsedCredits, 123.5)
     }
 
-    func test_minimaxAPIKey_roundTrips() {
+    func test_minimaxAPIKey_roundTrips() throws {
         let store = makeStore()
         XCTAssertNil(store.minimaxAPIKey)
 
-        store.minimaxAPIKey = "mm-abc123"
+        try store.setMinimaxAPIKey("mm-abc123")
 
         XCTAssertEqual(store.minimaxAPIKey, "mm-abc123")
     }
@@ -99,25 +106,25 @@ final class PreferencesStoreTests: XCTestCase {
         XCTAssertEqual(store.minimaxRegionRaw, "china")
     }
 
-    func test_openCodeAPIKey_roundTrips() {
+    func test_openCodeAPIKey_roundTrips() throws {
         let store = makeStore()
         XCTAssertNil(store.openCodeAPIKey)
 
-        store.openCodeAPIKey = "oc-abc123"
+        try store.setOpenCodeAPIKey("oc-abc123")
 
         XCTAssertEqual(store.openCodeAPIKey, "oc-abc123")
     }
 
     // MARK: IMPORTANT 8 regression — API keys must live in the Keychain, not UserDefaults.
 
-    func test_apiKeys_areNotWrittenToUserDefaults() {
+    func test_apiKeys_areNotWrittenToUserDefaults() throws {
         let kv = FakeKeyValueStore()
         let store = makeStore(kv: kv)
 
-        store.openRouterAPIKey = "sk-or-1"
-        store.mimoAPIKey = "tp-1"
-        store.minimaxAPIKey = "mm-1"
-        store.openCodeAPIKey = "oc-1"
+        try store.setOpenRouterAPIKey("sk-or-1")
+        try store.setMimoAPIKey("tp-1")
+        try store.setMinimaxAPIKey("mm-1")
+        try store.setOpenCodeAPIKey("oc-1")
 
         XCTAssertNil(kv.string(forKey: "openRouterAPIKey"))
         XCTAssertNil(kv.string(forKey: "mimoAPIKey"))
@@ -125,11 +132,11 @@ final class PreferencesStoreTests: XCTestCase {
         XCTAssertNil(kv.string(forKey: "openCodeAPIKey"))
     }
 
-    func test_apiKeys_persistInSecretStore() {
+    func test_apiKeys_persistInSecretStore() throws {
         let secrets = FakeSecretStore()
         let store = makeStore(secrets: secrets)
 
-        store.openRouterAPIKey = "sk-or-1"
+        try store.setOpenRouterAPIKey("sk-or-1")
 
         XCTAssertEqual(secrets.load(providerId: "openrouter"), "sk-or-1")
     }
@@ -150,14 +157,51 @@ final class PreferencesStoreTests: XCTestCase {
         XCTAssertNil(kv.string(forKey: "openRouterAPIKey"), "legacy plaintext must be wiped after migration")
     }
 
-    func test_settingAPIKeyToNil_deletesFromSecretStore() {
+    func test_settingAPIKeyToNil_deletesFromSecretStore() throws {
         let secrets = FakeSecretStore()
         let store = makeStore(secrets: secrets)
-        store.mimoAPIKey = "tp-1"
+        try store.setMimoAPIKey("tp-1")
 
-        store.mimoAPIKey = nil
+        try store.setMimoAPIKey(nil)
 
         XCTAssertNil(store.mimoAPIKey)
         XCTAssertNil(secrets.load(providerId: "mimo"))
+    }
+
+    // MARK: N1/N2 regressions — a failed Keychain write must never destroy the only
+    // remaining copy of the key.
+
+    /// Migration: if the Keychain save fails, the legacy UserDefaults value must stay
+    /// put (not be wiped) so the key isn't lost, even though the value returned to the
+    /// caller for this call is still correct (masks the failure for the current session).
+    func test_migration_whenSecretStoreSaveFails_keepsLegacyValueInUserDefaults() {
+        let kv = FakeKeyValueStore()
+        kv.set("sk-or-legacy", forKey: "openRouterAPIKey")
+        let secrets = FakeSecretStore()
+        secrets.failSave = true
+        let store = makeStore(kv: kv, secrets: secrets)
+
+        let migrated = store.openRouterAPIKey
+
+        XCTAssertEqual(migrated, "sk-or-legacy", "value must still be returned even though migration failed")
+        XCTAssertEqual(kv.string(forKey: "openRouterAPIKey"), "sk-or-legacy", "legacy value must NOT be wiped when the Keychain write fails")
+        XCTAssertNil(secrets.load(providerId: "openrouter"))
+    }
+
+    /// setSecret: if the Keychain save fails, the previously-stored legacy value (if
+    /// any) must be preserved — the failed write must not scrub UserDefaults.
+    func test_setSecret_whenSaveFails_preservesLegacyValueAndThrows() {
+        let kv = FakeKeyValueStore()
+        kv.set("sk-or-legacy", forKey: "openRouterAPIKey")
+        let secrets = FakeSecretStore()
+        secrets.failSave = true
+        let store = makeStore(kv: kv, secrets: secrets)
+
+        XCTAssertThrowsError(try store.setOpenRouterAPIKey("sk-or-new")) { error in
+            XCTAssertTrue(error is FakeSecretStoreError)
+        }
+
+        XCTAssertEqual(kv.string(forKey: "openRouterAPIKey"), "sk-or-legacy", "legacy value must survive a failed save")
+        XCTAssertNil(secrets.load(providerId: "openrouter"))
     }
 }

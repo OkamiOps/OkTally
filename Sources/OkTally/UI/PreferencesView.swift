@@ -82,21 +82,21 @@ struct PreferencesView: View {
 
             Section("OpenRouter") {
                 SecureField("API Key", text: $openRouterAPIKey)
-                Button("Salvar") { preferencesStore.openRouterAPIKey = openRouterAPIKey }
+                Button("Salvar") { saveSecret("OpenRouter") { try preferencesStore.setOpenRouterAPIKey(openRouterAPIKey) } }
             }
 
             Section("MiniMax") {
                 SecureField("API Key", text: $minimaxAPIKey)
                 Toggle("Região China (minimaxi.com)", isOn: $minimaxRegionIsChina)
                 Button("Salvar") {
-                    preferencesStore.minimaxAPIKey = minimaxAPIKey
+                    saveSecret("MiniMax") { try preferencesStore.setMinimaxAPIKey(minimaxAPIKey) }
                     preferencesStore.minimaxRegionRaw = minimaxRegionIsChina ? "china" : "global"
                 }
             }
 
             Section("OpenCode") {
                 SecureField("API Key", text: $openCodeAPIKey)
-                Button("Salvar") { preferencesStore.openCodeAPIKey = openCodeAPIKey }
+                Button("Salvar") { saveSecret("OpenCode") { try preferencesStore.setOpenCodeAPIKey(openCodeAPIKey) } }
             }
 
             Section("MiMo (estimativa manual)") {
@@ -104,7 +104,7 @@ struct PreferencesView: View {
                 TextField("Franquia mensal (Credits)", text: $mimoAllowance)
                 TextField("Credits usados", text: $mimoUsed)
                 Button("Salvar") {
-                    preferencesStore.mimoAPIKey = mimoAPIKey
+                    saveSecret("MiMo") { try preferencesStore.setMimoAPIKey(mimoAPIKey) }
                     preferencesStore.mimoMonthlyAllowanceCredits = Double(mimoAllowance)
                     preferencesStore.mimoUsedCredits = Double(mimoUsed) ?? 0
                 }
@@ -167,6 +167,18 @@ struct PreferencesView: View {
                     statusMessage = error.localizedDescription
                 }
             }
+        }
+    }
+
+    /// Saves an API key via a throwing `PreferencesStore` setter and surfaces a failure
+    /// (e.g. a locked or ACL-denied Keychain) in `statusMessage` instead of losing it
+    /// silently — see `PreferencesStore.setSecret`.
+    private func saveSecret(_ label: String, _ save: () throws -> Void) {
+        do {
+            try save()
+            statusMessage = "\(label): chave salva."
+        } catch {
+            statusMessage = "\(label): falha ao salvar chave — \(error.localizedDescription)"
         }
     }
 
