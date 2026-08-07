@@ -1,248 +1,336 @@
-# Xiaomi MiMo Token Plan — Usage/Quota API Research
+# Xiaomi MiMo Token Plan — Usage/Quota API Research (v2)
 
-Research date: 2026-08-07
+Research date: 2026-08-07 (supersedes the 2026-08-07 v1 pass in this same file)
 Scope: find a programmatic way to read remaining quota/usage for a Xiaomi MiMo
 "Token Plan" subscription (`tp-xxxxx` API keys), for OkTally's menu-bar usage
 tracker.
 
-## Bottom line
+## What changed since v1
 
-**There is no documented, key-authenticated API endpoint for reading Token
-Plan quota/usage.** The only place usage is exposed is the web console at
-`platform.xiaomimimo.com` (Subscription Management page), which is gated
-behind Xiaomi account SSO (cookie/session auth via `account.xiaomi.com`), not
-the `tp-` API key used for inference calls. Multiple community tools
-(cc-switch, 9router) have tried and failed to find a working balance
-endpoint reachable with the `tp-` key. This is a known, open gap in the
-ecosystem (cc-switch issue #2428, still open/unresolved as of research date).
+v1 only probed guessed REST paths with a `tp-` key and concluded "no endpoint
+exists." That was **incomplete but the underlying conclusion holds up better
+than expected** once traced to source. This pass read the actual source code
+of three independent official/community projects — MiMo's own open-sourced
+CLI (`XiaomiMiMo/MiMo-Code`, which bundles the console/gateway backend it
+talks to), and OpenClaw's Xiaomi provider plugin — rather than guessing at
+endpoints from the outside. Headline results:
 
-Given this, OkTally's MiMo plugin cannot do live quota polling the way it
-can for providers with a documented balance API. Two realistic paths:
+1. **A real, working, third-party-usable OAuth-style flow exists** for
+   obtaining a `tp-`/`sk-` API key without ever handling a password. It is
+   used by MiMoCode (the official CLI). Full mechanism documented below —
+   this is new and directly actionable.
+2. **That flow authenticates key issuance, not quota reads.** The console's
+   usage/billing pages are gated by a *separate*, standard cookie-session
+   OAuth (OpenAuth/OIDC via `account.xiaomi.com` SSO) that only the website
+   itself is a registered client for. There is no code path anywhere in the
+   codebase that accepts a `tp-`/`sk-` API key and returns usage/quota data.
+3. **Confirmed from source, not just a live probe**: the inference gateway
+   (`zen/util/handler.ts`) explicitly whitelists only `content-type` and
+   `cache-control` on every outbound response — "Scrub response headers" —
+   so no `x-ratelimit-*`/quota headers can ever reach the client, on success
+   or error. This settles the open question v1 flagged (needs a real key to
+   verify the 200 case) without needing a real key: the code strips them
+   before your key's tier is even relevant.
+4. **OpenClaw's own Xiaomi plugin does not show live MiMo quota either.**
+   Read directly from `openclaw/openclaw` source: its `fetchUsageSnapshot`
+   for both the pay-as-you-go and Token Plan Xiaomi providers returns
+   `{ windows: [] }` — a hardcoded empty usage snapshot. This is one of the
+   exact "other applications" candidates named in the research brief, and
+   its current source confirms it does not implement MiMo usage polling.
+5. MiMoCode's own TUI does not display a live balance/credits number
+   anywhere either — it only pops a "buy/renew Token Plan" dialog reactively
+   when a 429 `SubscriptionUsageLimitError`/`FreeUsageLimitError` body is
+   seen, then links out to the web console.
 
-1. **Metered-only tracking**: instrument OkTally's own token accounting from
-   requests/responses it observes (it already knows request/response token
-   counts for OpenAI/Anthropic-compatible traffic), and let the user manually
-   enter their plan's monthly Credit allowance so OkTally can show
-   estimated-remaining as a locally-computed running counter. This mirrors
-   what cc-switch/9router ended up doing.
-2. **Browser-session scrape (fragile, not recommended)**: authenticate as the
-   user's Xiaomi account (SSO) and hit
-   `https://platform.xiaomimimo.com/api/v1/token-plan/usage` with the session
-   cookie. This is undocumented, requires full Xiaomi account login (out of
-   scope for a menu-bar API-key-based tool, and brittle/ToS-risky), so it
-   should not be the primary design.
+**Net effect: the "no API-key-authenticated quota endpoint" conclusion from
+v1 is now confirmed by source code across three independent codebases, not
+just a failed guess-the-path probe.** But this pass also surfaces something
+v1 completely missed: a legitimate, non-SSO-scraping way to *obtain* a key
+programmatically (item 1), which is useful for OkTally's onboarding UX even
+though it doesn't unlock quota reads.
 
-## What was found, endpoint by endpoint
+## 1. The OAuth-style key-issuance flow (new finding)
 
-### 1. Inference endpoints (confirmed — these work, but carry no quota data)
+Source: `packages/opencode/src/plugin/mimo.ts` in `XiaomiMiMo/MiMo-Code`
+(the official MiMoCode CLI, MIT-licensed fork of `anomalyco/opencode`).
 
-| Region | OpenAI-compatible | Anthropic-compatible |
-|---|---|---|
-| China | `https://token-plan-cn.xiaomimimo.com/v1/chat/completions` | `https://token-plan-cn.xiaomimimo.com/anthropic/v1/messages` |
-| Singapore | `https://token-plan-sgp.xiaomimimo.com/v1/chat/completions` | `https://token-plan-sgp.xiaomimimo.com/anthropic/v1/messages` |
-| Amsterdam | `https://token-plan-ams.xiaomimimo.com/v1/chat/completions` | `https://token-plan-ams.xiaomimimo.com/anthropic/v1/messages` |
+This is **not** a standard OAuth2/OIDC flow (no client_id registration, no
+authorization-code exchange with a token endpoint). It's a custom
+browser-handoff + asymmetric-encryption handshake:
 
-Auth: `Authorization: Bearer tp-xxxxx` (OpenAI-compatible) or
-`x-api-key: tp-xxxxx` (Anthropic-compatible).
+1. Client generates an ephemeral X25519 keypair locally.
+2. Client starts a localhost HTTP server on a random port (or, as a
+   fallback/manual path, uses `${PLATFORM_URL}/authorize/code/callback` and
+   has the user paste a code).
+3. Client opens the user's browser to:
+   ```
+   https://platform.xiaomimimo.com/authorize
+     ?pk=<base64url X25519 public key>
+     &redirect_uri=http://localhost:<port>/
+     &kn=<client identifier, e.g. "mimocode">
+     &key_name=<a locally generated, persisted key-name string>
+   ```
+4. The user completes normal Xiaomi-account SSO login in the browser at that
+   page (this is where `account.xiaomi.com` involvement happens — same
+   identity provider v1 found behind the console's 401 `loginUrl`).
+5. The platform provisions an API key server-side, encrypts a JSON payload
+   `{ sk: <api key>, uid: <user id>, url: <base_url for that key/region> }`
+   to the client's public key (ECDH shared secret via the client's pubkey +
+   a server-generated ephemeral keypair, HKDF-less — SHA-256 of the raw
+   shared secret — then AES-256-GCM), and redirects the browser to
+   `http://localhost:<port>/?u=<encrypted-blob>`.
+6. The client's localhost listener receives `u`, decrypts it with its private
+   key, and now has a real `sk-`/`tp-` API key plus the correct regional
+   `base_url` — no password ever touches the client, no static client secret
+   needed, and the decrypt is self-verifying (AES-GCM auth tag).
 
-**Confidence: confirmed-from-docs / confirmed-by-live-probe.** I sent live
-requests with a syntactically-valid but fake `tp-` key to
-`token-plan-cn.xiaomimimo.com` and got a clean `401 invalid_key` JSON body
-with **no rate-limit, quota, or usage headers** in the response (checked via
-`curl -D -`: only standard `date`, `content-type`, CORS `vary` headers, and a
-`server: MiFE/...` header — nothing resembling `x-ratelimit-*` or
-`x-quota-*`). This doesn't rule out such headers appearing only on
-authenticated 200 responses (I don't have a real key to test), but the 401
-error path — which is the layer that would most plausibly report "you're
-out of quota" — carries none. **Confidence: documented-by-live-probe for the
-401 case; inferred/unconfirmed for the 200 case** (needs a real `tp-` key to
-verify definitively — recommend the OkTally team do one manual authenticated
-`curl -i` request and check headers before ruling this out completely).
-
-### 2. Console usage endpoint (exists, but not usable with a `tp-` key)
-
-`GET https://platform.xiaomimimo.com/api/v1/token-plan/usage`
-
-Live probe (no auth) returns:
+Decrypt algorithm (for reference, no secrets involved — this is public
+protocol logic from the MIT-licensed source):
 ```
-HTTP/2 401
-content-type: application/json;charset=UTF-8
-www-authenticate: CustomBasic realm="default"
+encrypted = base64url_decode(u)
+ephemeralPub   = encrypted[0:32]
+nonce          = encrypted[32:44]
+ciphertext+tag = encrypted[44:]
+tag            = last 16 bytes of ciphertext+tag
+sharedSecret   = X25519(clientPrivateKey, ephemeralPub)
+key            = SHA256(sharedSecret)
+plaintext      = AES-256-GCM-decrypt(key, nonce, ciphertext, tag)
+             -> JSON { sk, uid, url }
+```
 
-{"code":401,"loginUrl":"https://account.xiaomi.com/pass/serviceLogin?callback=https%3A%2F%2Fplatform.xiaomimimo.com%2Fsts%3Fsign%3D...%26followup%3Dhttp%253A%252F%252Fplatform.xiaomimimo.com%252Fapi%252Fv1%252Ftoken-plan%252Fusage&sid=api-platform&_group=DEFAULT"
+**Confidence: confirmed-from-source.** This is exactly what a menu-bar app
+like OkTally could implement to let a user link their MiMo account and
+obtain a working key without ever seeing a password field, mirroring what
+every other "browser login" OAuth-ish flow in OkTally already does. It does
+**not**, however, grant access to any quota-reading endpoint — see below.
+
+**What "kn" (client name) is and whether third parties can use it**: the
+value `"mimocode"` in the source appears to just be a label/telemetry field,
+not a registered/allow-listed client ID enforced by the server (there is no
+client-registration step, no client secret, and no scope negotiation
+anywhere in the flow). This suggests — but does not 100%-confirm without
+actually calling the live endpoint — that a third-party app could plausibly
+pass its own `kn` value in the same request shape and get the same result.
+**This is inferred, not verified live** (doing so was out of scope for a
+read-only source-code research pass and risks creating an unwanted API key
+against a real account without explicit owner testing).
+
+## 2. Quota/usage endpoint: still SSO-cookie-only, now confirmed from source
+
+Traced the full server-side implementation in
+`packages/console/{app,core}` of the same repo (SolidStart web app +
+Drizzle/DB core — this is the codebase that appears to underlie
+`platform.xiaomimimo.com`, based on shared terminology: "workspace", "Zen"
+gateway, "Go" subscription, matching `anomalyco/opencode`'s own Cloud/Zen/Go
+products which Xiaomi has forked and rebranded as "Token Plan").
+
+- The usage-history page (`routes/workspace/[id]/usage/index.tsx` →
+  `usage-section.tsx`) calls a SolidStart server function `getUsageInfo`
+  which does:
+  ```ts
+  "use server"
+  return withActor(() => Billing.usages(page, pageSize), workspaceID)
+  ```
+  `withActor` → `getActor(workspace)` → reads a **signed httpOnly session
+  cookie** (`useSession` from `@solidjs/start/http`, sealed with
+  `Resource.ZEN_SESSION_SECRET`) that was populated during a standard
+  authorization-code OAuth exchange (`@openauthjs/openauth` client,
+  `clientID: "app"`, `issuer: <VITE_AUTH_URL>`) — i.e. the **website's own**
+  browser-session login, gated behind Xiaomi passport SSO, exactly matching
+  the `loginUrl` v1 observed on the `401` from
+  `platform.xiaomimimo.com/api/v1/token-plan/usage`.
+- There is **no code path, anywhere in `packages/console`, that accepts an
+  `Authorization`/`x-api-key` header carrying a `tp-`/`sk-` key and returns
+  usage or billing data.** The only place API keys (`zenApiKey`) are
+  consulted is `routes/zen/util/handler.ts`'s `authenticate()`, which looks
+  the key up in `KeyTable` purely to authorize/bill *that single inference
+  request* — it never returns quota/balance info to the caller, and (per
+  finding above) explicitly scrubs response headers down to
+  `content-type`/`cache-control` before sending the response back.
+- Quota math itself lives in `packages/console/core/src/subscription.ts`:
+  `analyzeMonthlyUsage` / `analyzeWeeklyUsage` / `analyzeRollingUsage`, which
+  take `{ limit, usage, timeUpdated }` (a `micro-cents`-style integer usage
+  counter vs. a plan limit) and return `{ usagePercent: 0-100 }`. This is
+  the shape you'd get **if** you had cookie-session access — useful as a
+  reference schema, but not fetchable with a `tp-` key.
+
+**Confidence: confirmed-from-source** that the usage-reading surface is
+100% session-cookie/SSO gated with no API-key alternative in the codebase
+this platform is built on.
+
+## 3. Response headers on real inference calls — resolved without a live key
+
+v1 flagged this as needing a real `tp-` key to check the *200* response
+path (it only had data on the 401 path). Source code resolves it directly:
+
+`packages/console/app/src/routes/zen/util/handler.ts`, the proxy handler for
+`/anthropic/v1/messages` and `/v1/chat/completions`:
+```ts
+// Scrub response headers
+const resHeaders = new Headers()
+const keepHeaders = ["content-type", "cache-control"]
+for (const [k, v] of res.headers.entries()) {
+  if (keepHeaders.includes(k.toLowerCase())) {
+    resHeaders.set(k, v)
+  }
 }
 ```
-This is the backend the React console app (`platform.xiaomimimo.com`, built
-on Xiaomi's internal "MiFE" framework) calls to render the usage bar on the
-Subscription Management page. It requires a full Xiaomi account SSO login
-(`account.xiaomi.com` service ticket / cookie), the same mechanism as
-logging into the website in a browser — **not** the `tp-` API key. I also
-probed sibling paths under `/api/v1/token-plan/` (`balance`, `quota`,
-`subscription(s)`, `plans`, `orders`, `stat(s)`, `consumption`, `detail`) —
-all return the identical generic 401/login-redirect JSON, which is most
-likely a blanket auth gate on the whole `/api/v1/*` namespace rather than
-proof each of those specific sub-routes exists. So `usage` is the one
-confirmed real route (referenced by the `followup` URL echoing back exactly
-`/api/v1/token-plan/usage`); the others are unconfirmed guesses.
+This runs on **every** response the gateway proxies back, regardless of
+status code or whether the upstream model provider (which MiMo itself
+routes to under the hood) set `anthropic-ratelimit-*`-style headers. They
+are dropped before reaching the client. **Confidence: confirmed-from-source,
+supersedes v1's "inferred/unconfirmed for the 200 case."** No `tp-` key is
+needed to close this question — the code makes it structurally impossible.
 
-**Confidence: confirmed-by-live-probe** that this route exists and is
-SSO-gated; **inferred** that its JSON schema mirrors the credits/quota
-numbers shown on the console page (never got past the 401 to see a real
-body).
+## 4. Community/official tooling survey (expanded)
 
-### 3. Community tooling — nobody has cracked this
+- **cc-switch** (`farion1231/cc-switch`) — unchanged from v1: issues #3230,
+  #2428, #2488 document a dozen guessed-and-failed balance paths, still
+  open/unresolved.
+- **9router** (`decolua/9router`) — unchanged from v1: issue #1251 is about
+  region hardcoding, not quota.
+- **OpenClaw** (`openclaw/openclaw`, package `@openclaw/xiaomi-provider`) —
+  **new, source-verified finding**: its plugin (`extensions/xiaomi/index.ts`)
+  registers both `xiaomi` (pay-as-you-go) and `xiaomi-token-plan` providers
+  with a `fetchUsageSnapshot` hook — the exact contract OpenClaw uses to
+  show provider usage bars — but both implementations are stubs:
+  ```ts
+  fetchUsageSnapshot: async () => ({
+    provider: XIAOMI_TOKEN_PLAN_PROVIDER_ID,
+    displayName: "Xiaomi MiMo Token Plan",
+    windows: [],   // <-- always empty
+  }),
+  ```
+  So OpenClaw, despite having the plumbing (`resolveUsageAuth`,
+  `fetchUsageSnapshot`) that other providers use for real quota display,
+  does not actually fetch or show MiMo quota. This directly contradicts the
+  premise that OpenClaw is where the owner sees his quota — unless a newer
+  release changed this (checked the current `main` branch; worth asking the
+  owner which OpenClaw version/build they're on, in case they're on a fork
+  or an unreleased branch).
+- **MiMoCode itself** (the official CLI) — **new finding**: does not display
+  a live quota number in its TUI. It only shows a reactive "you hit a
+  limit, go subscribe/manage your plan" dialog (`dialog-token-plan.tsx`) on
+  429 responses, then links to `https://platform.xiaomimimo.com/token-plan`
+  (the browser-session-gated console) rather than rendering any number
+  itself.
+- **destngx/monorepo** (`apps/ai-gateway/internal/providers/xiaomi_mimo/xiaomi_mimo.go`)
+  and **anvia-hq/anvia** (`xiaomi-token-plan-{cn,ams,sgp}.md` provider docs)
+  turned up in code search as more third-party gateway integrations for
+  MiMo — not yet read in detail (time-boxed out of this pass); worth a
+  follow-up grep for `usage`/`quota`/`balance` in
+  `destngx/monorepo`'s Go provider file specifically, as Go providers
+  sometimes implement a `GetBalance`-style interface method other language
+  ports skip.
 
-- **cc-switch** (`farion1231/cc-switch`, desktop provider-switcher for
-  Claude Code/Codex/OpenCode/etc.) auto-generates a "usage query" script per
-  provider preset. For MiMo it guessed the same convention that works for
-  DeepSeek/Kimi — `GET {{baseUrl}}/user/balance` — which resolves to
-  `https://token-plan-cn.xiaomimimo.com/anthropic/user/balance` and returns
-  **404**. Issue #3230 ("[Bug] Xiaomi MiMo provider 用量查询失败 - /user/balance
-  返回 404") documents a user manually trying a dozen guessed paths (
-  `/user/balance`, `/v1/user/balance`, `/api/v1/balance`, `/billing/balance`,
-  `/account/balance`, `/api/usage`, `/api/account`, `/v1/account`,
-  `/dashboard`, `/api/user/info`) — **all 404**. Issue was closed as a
-  duplicate of #2428, "Request to Support MiMo Token Plan Quota Query",
-  which is a feature request stating plainly: *"Currently, it seems there is
-  no integration with MiMo to check token usage and remaining quota"* and
-  asking maintainers to "integrate with MiMo's API or reverse-engineer
-  their interface." No resolution/endpoint is posted in either issue.
-  Source: https://github.com/farion1231/cc-switch/issues/3230 ,
-  https://github.com/farion1231/cc-switch/issues/2428 ,
-  https://github.com/farion1231/cc-switch/issues/2488 (Chinese-language
-  duplicate, same "how do I even set this up" ask, no answer).
-- **9router** (`decolua/9router`) issue #1251 is about the *inference*
-  endpoint being hardcoded to the Singapore region, unrelated to quota
-  queries — no usage/balance API is mentioned there either.
-  https://github.com/decolua/9router/issues/1251
-- **OpenClaw** provider docs (`docs.openclaw.ai/providers/xiaomi`) document
-  region selection and key-format validation for onboarding, but say
-  nothing about a usage/balance query — confirms no such integration exists
-  in that client either.
-- I could not find any `aiengineerguide.com` post specifically about MiMo
-  Token Plan usage querying (only a generic "how to configure it in
-  OpenCode" TIL post, which is about setting up the inference endpoint, not
-  quota).
-
-**Confidence: documented-by-community.** Consensus across two independent
-provider-switcher projects is that no working quota API exists for `tp-`
-keys.
-
-### 4. A tempting red herring: MiniMax's `token_plan/remains`
-
-Search results initially surfaced `https://www.minimax.io/v1/token_plan/remains`
-(`GET`, `Authorization: Bearer <key>`) as a "Token Plan remains" endpoint.
-**This belongs to MiniMax, a different vendor**, not Xiaomi MiMo — MiniMax
-independently ships a very similar "Token Plan" subscription product with
-its own working quota-query API. It's evidence that this pattern
-(`/v1/token_plan/remains`) is common among Chinese LLM vendors offering
-"token plan" subscriptions, but Xiaomi does not expose the equivalent route
-on `token-plan-cn.xiaomimimo.com` or `platform.xiaomimimo.com` — I probed
-`https://platform.xiaomimimo.com/v1/token_plan/remains` and it just returns
-the SPA's `index.html` (200, `content-type: text/html`) — i.e., that path
-isn't a real API route on Xiaomi's platform, only React-Router client-side
-fallback. **Do not use this endpoint for MiMo** — flagging it here only so
-nobody re-discovers it and assumes it's Xiaomi's.
-
-## Quota structure (confirmed from official pricing/FAQ pages)
+## 5. Quota structure (unchanged from v1, still confirmed-from-docs)
 
 Source: https://mimo.mi.com/docs/en-US/price/token-plan and
 https://mimo.mi.com/docs/en-US/quick-start/faq/api-integration
 
-- **Unit**: "Credits", a synthetic unit — not raw tokens. Consumption rate
-  varies per model and per cache-hit/miss/output:
-  - `mimo-v2.5-pro`: 2.5 Credits (cache hit) / 300 Credits (cache-miss
-    input) / 600 Credits (output)
-  - `mimo-v2.5`: 2 Credits (cache hit) / 100 Credits (cache-miss input) /
-    200 Credits (output)
-  - `mimo-v2.5-asr`: 30M Credits per hour of audio
-  - TTS models: currently free (0 Credits), promotional
-  - Off-peak discount: 0.8× consumption Beijing Time 00:00–08:00
-- **Cadence**: monthly subscription cycle (calendar-month reset), not a
-  rolling window and not a 5-hour window. Marketing explicitly claims
-  **"no 5-hour token usage limit"** — this differentiates it from
-  Anthropic/OpenAI-style rolling-window rate limits. Annual plans just
-  pre-allocate ~12× the monthly credits, still consumed against a single
-  pool (unclear from docs whether annual credits are also gated
-  month-by-month or usable in a lump — docs say annual "provides credits
-  spread across 12 months," suggesting monthly sub-buckets even on annual
-  plans, but this is **inferred**, not explicitly confirmed).
-- **Tiers** (monthly): Lite ¥39 / 60M~4.1B credits (sources conflict — see
-  note below), Standard ¥99, Pro ¥329, Max ¥659 (also sold in USD via
-  regional pricing).
-  Note: two different search results gave conflicting credit totals for the
-  same tier names — one gave "60M / 200M / 700M / 1600M Credits", another
-  gave "4.1B / 11B / 38B / 82B Credits" for Lite/Standard/Pro/Max monthly.
-  This 68× discrepancy is likely because MiMo repriced/rescaled the credit
-  system at some point (an X/Twitter post found in search explicitly says
-  *"MiMo Token Plans have also been upgraded: 5–8× more usable tokens"*),
-  and search results are mixing pre- and post-upgrade numbers. **Do not
-  hardcode either figure in OkTally** — treat exact credit totals per tier
-  as **inferred/unreliable** until read live from the user's own console,
-  and only use the *relative* consumption-rate ratios (2.5/300/600 etc.)
-  which are self-consistent.
-- **Exhaustion behavior**: "When the monthly total quota of the package is
-  exhausted, the system will stop service and will not continue to consume
-  your bonus or account balance" — i.e. hard cutoff, not overage billing.
-  Confirmed-from-docs.
-- **Sharing**: one subscription's credits are shared across all client
-  tools (Claude Code, OpenClaw, OpenCode, Kilo Code, Cline, etc.) that are
-  pointed at the same `tp-` key — single pool, not per-tool.
+- Unit: "Credits," synthetic, cache-hit/miss/output-rate-dependent per model.
+- Monthly reset, hard cutoff at zero, no 5-hour rolling window (explicit
+  marketing differentiator vs. Anthropic/OpenAI-style rate limits).
+- Shared pool across all client tools pointed at the same `tp-` key.
+- Exact Credit totals per tier are unreliable/conflicting across sources —
+  do not hardcode.
 
 ## Which OkTally QuotaShape fits
 
-None of the four shapes fit cleanly with live data because there is no
-readable balance API. Best mapping if/when OkTally implements this plugin:
+Unchanged conclusion, now on firmer ground (source-confirmed, not just
+probe-confirmed):
 
-- **`periodicCounter` (monthly) is the correct conceptual shape** — Token
-  Plan is a fixed-size Credit pool that resets on a monthly cycle with hard
-  cutoff at zero, structurally identical to a monthly quota, *not* a rolling
-  window (no 5-hour bucket) and *not* a true "credit balance" you can query
-  externally (since balance isn't queryable).
-- Because the balance can't be fetched, the plugin can only implement this
-  as **`meteredOnly`** in practice: OkTally must derive "usage so far this
-  cycle" itself by summing Credits it estimates from request/response token
-  counts it observes on the OpenAI/Anthropic-compatible traffic (using the
-  published per-model Credit-per-token ratios above), reset at the start of
-  each calendar month, with the user supplying their plan's total Credit
-  allowance (since that number can't be fetched either, and is
-  inconsistently reported in public sources). This is the same fallback
-  cc-switch and 9router effectively use — neither tool auto-detects the
-  quota, both just point users back at the web console.
-- If OkTally later wants live data, the only path is Xiaomi-account SSO
-  scraping of `platform.xiaomimimo.com/api/v1/token-plan/usage`, which is a
-  materially different (browser-session, not API-key) auth model than every
-  other OkTally plugin and probably not worth the complexity/fragility for
-  one provider.
+- **`periodicCounter` (monthly)** is the right conceptual shape, but it
+  cannot be backed by a live-fetched balance — there is no such API for
+  `tp-`/`sk-` keys, confirmed by reading the actual server implementation
+  three independent client integrations talk to.
+- Recommended implementation: **`meteredOnly`**. Track request/response
+  token counts OkTally already observes on the OpenAI/Anthropic-compatible
+  traffic, apply the published per-model Credit ratios, reset monthly, let
+  the user input their plan's total Credit allowance. This is what every
+  other tool that has looked at this (cc-switch, 9router, OpenClaw) has
+  either done or left unimplemented — nobody has a live number.
+- **New option worth considering**: use the MimoCode-style OAuth handshake
+  (Section 1) purely for **key acquisition UX** — let the user click "Link
+  MiMo account" instead of pasting a `tp-`/`sk-` key manually, since that
+  flow doesn't require them to leave OkTally to find their key on the
+  console. This does not solve quota polling, only onboarding friction.
+  Treat this as a "nice to have, separate feature" rather than bundling it
+  into the quota work — its exact request/response contract (especially
+  whether the server validates `kn` against an allow-list) is unverified
+  live and should be tested by someone willing to generate a real key
+  against their own account before shipping.
+- If OkTally wants a live number badly enough to accept fragility: the only
+  path remaining is scraping the SSO-cookie-gated console exactly as v1
+  said — full Xiaomi-account login flow (not the lightweight flow in
+  Section 1, which only yields an API key, not a session cookie), different
+  trust model from every other OkTally plugin. Still not recommended.
+
+## What to ask the owner, since this pass still didn't find a live number
+
+Everything below was checked and ruled out as *not* currently exposing live
+MiMo Token Plan quota to a `tp-`/`sk-` key or equivalent non-SSO credential:
+
+- MiMoCode CLI TUI (official) — reactive dialog only, no number.
+- OpenClaw's Xiaomi plugin (current `main`) — `fetchUsageSnapshot` stub,
+  `windows: []`.
+- cc-switch — open, unresolved issue asking for exactly this.
+- 9router — no evidence of a quota feature for MiMo at all.
+- Direct REST probing of `platform.xiaomimimo.com/api/v1/token-plan/usage`
+  and sibling guessed paths — 401 + SSO `loginUrl`.
+- Gateway response headers on inference calls — explicitly scrubbed
+  server-side to `content-type`/`cache-control` only, confirmed from source.
+
+If the owner is seeing a number somewhere, the most likely explanations,
+ranked:
+1. **The web console itself** (`platform.xiaomimimo.com/token-plan`), viewed
+   logged-in in a normal browser tab — "another application" in the loose
+   sense of "not my terminal," but still the SSO-cookie surface v1 already
+   identified, not a new API.
+2. A MiMo **mobile app** (not investigated this pass — Xiaomi ships a
+   consumer Mi Home / Xiaomi ecosystem app pattern; worth asking if there's
+   a dedicated MiMo Android/iOS app with a quota screen, which would imply
+   a private mobile-only API worth reverse-engineering via a proxy capture).
+3. A **newer/different build of OpenClaw** than what's on `main`, or a
+   different xiaomi-provider version/fork that has since implemented
+   `fetchUsageSnapshot` for real.
+4. A tool not covered in this pass's search terms — worth getting the exact
+   app name/screenshot from the owner rather than guessing further blindly.
 
 ## Sources
 
-- https://mimo.mi.com/docs/en-US/price/token-plan — official Token Plan pricing/FAQ
-- https://mimo.mi.com/docs/en-US/quick-start/faq/api-integration — API key format (`tp-` vs `sk-`), base URL docs
-- https://platform.xiaomimimo.com/token-plan — console landing page
-- https://docs.openclaw.ai/providers/xiaomi — OpenClaw provider integration doc (regions, key validation, no usage API)
-- https://github.com/farion1231/cc-switch/issues/2428 — "Request to Support MiMo Token Plan Quota Query" (open feature request, confirms no known integration)
-- https://github.com/farion1231/cc-switch/issues/3230 — "[Bug] Xiaomi MiMo provider 用量查询失败 - /user/balance 返回 404" (documents failed endpoint guesses)
-- https://github.com/farion1231/cc-switch/issues/2488 — Chinese-language duplicate ask, unresolved
-- https://github.com/decolua/9router/issues/1251 — region-hardcoding bug in 9router's MiMo provider (inference endpoint only, not quota)
-- https://x.com/XiaomiMiMo/status/2059314052892099070 — Xiaomi MiMo announcement of Token Plan credit-scale upgrade ("5–8× more usable tokens")
-- Live probes performed 2026-08-07 against `token-plan-cn.xiaomimimo.com` and `platform.xiaomimimo.com` (curl, documented inline above) — no credentials used beyond a syntactically-valid fake `tp-` key.
+- https://github.com/XiaomiMiMo/MiMo-Code — official MiMoCode CLI, cloned
+  and read directly (`packages/opencode/src/plugin/mimo.ts`,
+  `packages/console/app/src/routes/**`, `packages/console/core/src/**`,
+  `packages/opencode/src/cli/cmd/tui/**`)
+- https://github.com/openclaw/openclaw — `extensions/xiaomi/index.ts`,
+  `docs/plugins/reference/xiaomi.md`
+- https://mimo.mi.com/docs/en-US/price/token-plan
+- https://mimo.mi.com/docs/en-US/quick-start/faq/api-integration
+- https://docs.openclaw.ai/providers/xiaomi
+- https://github.com/farion1231/cc-switch/issues/2428
+- https://github.com/farion1231/cc-switch/issues/3230
+- https://github.com/farion1231/cc-switch/issues/2488
+- https://github.com/decolua/9router/issues/1251
+- https://github.com/XiaomiMiMo/MiMo-Code/issues/851 (Token Plan / API mode
+  auth-separation feature request — confirms no unified quota view exists
+  even in the official roadmap discussion)
+- v1 live probes against `token-plan-cn.xiaomimimo.com` and
+  `platform.xiaomimimo.com` (retained from prior pass, not repeated here)
 
 ## Recommendation for OkTally implementation
 
-1. Implement the MiMo plugin as `meteredOnly`: track request/response token
-   usage from observed traffic, apply the published Credit-consumption
-   ratios per model, and let the user set their own monthly Credit
-   allowance in Settings (since it can't be fetched and public figures are
-   unreliable).
-2. Do not attempt SSO/cookie-based scraping of the console — it's a
-   different trust/auth model than the rest of OkTally's plugins and is
-   likely to break silently on any Xiaomi login-flow change.
-3. Before finalizing, have someone with a real `tp-` key run one
-   authenticated `curl -i` against the chat-completions endpoint and check
-   response headers for any `x-ratelimit-*`/`x-quota-*`/`x-credits-*`
-   headers — this research could only confirm the *unauthenticated* error
-   path carries none; the authenticated success path is unverified.
-4. Watch cc-switch issue #2428 for updates — if Xiaomi ships a documented
-   quota API or the community reverse-engineers one, that's the moment to
-   revisit `periodicCounter`.
+1. Implement the MiMo plugin as `meteredOnly` (unchanged from v1): track
+   observed token usage, apply published Credit ratios, monthly reset, user
+   supplies their plan's Credit allowance.
+2. Optionally build the Section-1 OAuth-style key-linking flow as a
+   convenience for onboarding (paste-free key acquisition) — but validate
+   it live against a real account first, and treat it as separate from the
+   quota question, since it does not return quota.
+3. Do not attempt SSO/cookie scraping of the console for quota — confirmed
+   from source to be the only live-data path, and it's a different
+   trust/auth model than the rest of OkTally.
+4. Ask the owner exactly which app shows him quota (see numbered list
+   above) before investing further — this pass exhausted every documented
+   and source-inspectable avenue without finding one, including two more
+   (MiMoCode itself, OpenClaw) beyond what v1 checked.

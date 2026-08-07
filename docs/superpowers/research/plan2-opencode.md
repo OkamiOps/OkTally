@@ -1,141 +1,139 @@
-# OpenCode Zen / OpenCode Go — Usage & Balance API Research
+# OpenCode Zen / OpenCode Go — Usage & Balance API Research (v2)
 
 Date: 2026-08-07
-Scope: find a programmatic way (for OkTally's OpenCode usage plugin) to read (a) OpenCode Zen pay-as-you-go credit balance and (b) OpenCode Go subscription usage, using the user's `OPENCODE_API_KEY`.
+Scope: find a programmatic way (for OkTally's OpenCode usage plugin) to read (a) OpenCode Zen pay-as-you-go credit balance and (b) OpenCode Go subscription usage.
 
-## TL;DR
+**This supersedes `plan2-opencode.md` v1.** That pass looked only at bearer-token REST routes reachable with `OPENCODE_API_KEY` and concluded "no public API exists." That was incomplete: it missed a real, live OAuth2 device-code flow that OpenCode ships. This pass found and live-tested that flow. **Bottom line, updated: the OAuth flow is real and does grant a bearer token good for a small `/api/*` surface (`orgs`, `user`, `config`) on `console.opencode.ai` — but that surface still does not include a balance/usage endpoint, confirmed both by reading the account-service source and by direct probing of the live API.** The web dashboard's billing data is on a *separate*, cookie-only authentication path that the OAuth token cannot reach. See §6 for exactly what was tried and what remains unconfirmed.
 
-**There is no documented or discoverable public REST endpoint that returns Zen credit balance or Go subscription usage, authenticated with just `OPENCODE_API_KEY`.** The dashboard that shows this data (`console.opencode.ai` / `opencode.ai/workspace/:id/billing` and `.../usage`) is a SolidStart web app whose data comes from server-side functions gated by a browser session (cookie), not from a callable JSON API. The only two realistic options for OkTally are:
+## 1. The OAuth flow (new finding — the previous pass missed this entirely)
 
-1. **Local estimation** — read OpenCode's local SQLite DB (`~/.local/share/opencode/opencode.db`) and sum the cost/token fields embedded in message JSON, the same way `opencode stats` does. This gives a **client-side-only, non-authoritative** running total (misses usage from other machines/the desktop app pointed at a different DB, and misses the server's canonical balance/limit state).
-2. **Reactive detection via 429 error bodies** — when a request to the Zen/Go endpoint is rate-limited, the JSON error body and `retry-after` header carry structured metadata (workspace id, limit name, reset time) that can be parsed to infer "how close to the limit" reactively, but only after a limit is actually hit.
+**Confidence: confirmed-from-source AND confirmed-live** (read `packages/opencode/src/account/account.ts` in `sst/opencode`, then independently exercised the real endpoints with `curl` against production `console.opencode.ai`, no credentials used).
 
-There is no confirmed way to proactively query "remaining Zen credits" or "Go plan usage-to-date" as a number, short of scraping the authenticated web dashboard (out of scope / fragile / against the spirit of a public API).
+OpenCode has a genuine RFC 8628 OAuth2 **device-authorization** flow, completely separate from the `OPENCODE_API_KEY` used for Zen/Go inference. It authenticates an **OpenCode Console account** (GitHub/Google login), not the Zen/Go billing key.
 
-## 1. Official docs (opencode.ai/docs/zen, /docs/go)
+- Client source: `packages/opencode/src/account/account.ts` (the `Account` service) and `packages/opencode/src/cli/cmd/account.ts` (the CLI command wiring, hidden: `opencode console login` / `logout` / `switch` / `orgs` / `open`). Also wired as an "OpenCode Console account" OAuth **integration method** in `packages/core/src/plugin/provider/opencode.ts` (alongside the separate "API key (service account)" method that's the `OPENCODE_API_KEY` path).
+- `client_id = "opencode-cli"`, default server = `https://console.opencode.ai`.
+- **Endpoints (all confirmed live against production, 2026-08-07):**
 
-**Confidence: confirmed-from-source (fetched docs pages directly, 2026-08-07)**
+  1. `POST https://console.opencode.ai/auth/device/code`
+     Body: `{"client_id":"opencode-cli"}`
+     Live response (real, just tested):
+     ```json
+     {"device_code":"...","user_code":"FGBX-JLKG","verification_uri":"/device","verification_uri_complete":"/device?user_code=FGBX-JLKG&client_id=opencode-cli","expires_in":900,"interval":5}
+     ```
+  2. `POST https://console.opencode.ai/auth/device/token`
+     Body (poll): `{"grant_type":"urn:ietf:params:oauth:grant-type:device_code","device_code":"...","client_id":"opencode-cli"}`
+     Live response while unauthorized (real, just tested, HTTP 400):
+     ```json
+     {"_tag":"DeviceTokenError","error":"authorization_pending","error_description":"The authorization request is still pending"}
+     ```
+     Other possible `error` values per source: `slow_down`, `expired_token`, `access_denied`.
+     On success: `{"access_token":"...","refresh_token":"...","token_type":"Bearer","expires_in":<seconds>}`.
+  3. `POST https://console.opencode.ai/auth/device/token`
+     Body (refresh): `{"grant_type":"refresh_token","refresh_token":"...","client_id":"opencode-cli"}` → same success shape, rotates both tokens.
+- **Token storage:** NOT `~/.local/share/opencode/auth.json`. Stored in the local SQLite DB (`~/.local/share/opencode/opencode.db`), tables `AccountTable` / `AccountStateTable` (schema in `@opencode-ai/core/account/sql`, repo layer in `packages/opencode/src/account/repo.ts`). Confirmed on this machine: `auth.json`'s `"opencode"` entry is only `{type: "api", key: "<67 chars>"}` — a **static API key**, no `refresh`/`access`/`expires` fields (unlike e.g. the `"openai"` entry, which genuinely is `{type: "oauth", refresh, access, expires, accountId}` for ChatGPT-Plus login). So this OAuth account system and the `OPENCODE_API_KEY` are two independent credentials that happen to share the same "OpenCode" branding — the OAuth login is **not** how `OPENCODE_API_KEY` itself is minted; it authenticates a Console account instead.
+- **What the OAuth access token can call (bearer, `Authorization: Bearer <access_token>`), confirmed live by source + probing:**
+  - `GET https://console.opencode.ai/api/orgs` → `Org[]` (`{id, name}`). Live-probed with a bogus token: `401 {"_tag":"Unauthorized"}` — proves the route is real and enforces the token.
+  - `GET https://console.opencode.ai/api/user` → `{id, email}`. Same live 401 confirms it's real.
+  - `GET https://console.opencode.ai/api/config` (header `x-org-id: <org id>`) → `{"config": Record<string, Json>}`. Same live 401 confirms it's real. **Read the schema this actually returns** (`packages/core/src/v1/config/config.ts`, `ConfigV1.Info`): it's the standard `opencode.jsonc` config schema (shell, logLevel, server, plugin list, provider/model catalog overrides, etc.) used for managed/remote-config and to populate the provider model catalog (`packages/core/src/plugin/provider/opencode.ts`, `fetchProviders`). **There is no balance/credit/usage field anywhere in that schema.**
 
-- `opencode.ai/docs/zen`:
-  - Endpoints, by model family (all under `https://opencode.ai/zen/v1`):
-    - OpenAI-compatible: `POST https://opencode.ai/zen/v1/responses` and `POST https://opencode.ai/zen/v1/chat/completions`
-    - Anthropic-compatible: `POST https://opencode.ai/zen/v1/messages`
-    - Google: `https://opencode.ai/zen/v1/models/[model-id]`
-    - Models metadata: `GET https://opencode.ai/zen/v1/models`
-  - Auth: "sign in to OpenCode Zen, add your billing details, and copy your API key" — this is the same key stored as `OPENCODE_API_KEY`. Exact header name is not documented on the page (see §2 below — it's Bearer-style, handled by the OpenAI-compatible SDK adapter).
-  - No documented endpoint for checking remaining credit balance. The page only mentions "you are charged per request" and an "auto-reload" feature (top up balance when it drops below a threshold).
+## 2. Does the OAuth token unlock a billing/usage endpoint anywhere on `console.opencode.ai`? No — probed directly.
 
-- `opencode.ai/docs/go`:
-  - "Track your current usage in the **console**" (`https://opencode.ai/auth` → web dashboard). This is explicitly the documented way to check usage — a **web UI**, not an API.
-  - Auth flow: sign in to OpenCode Zen → subscribe to Go → copy API key → `/connect` in the TUI. Same `OPENCODE_API_KEY` covers both catalogs, confirming the user's premise.
-  - Endpoints (same shape as Zen, different base path): `https://opencode.ai/zen/go/v1/chat/completions`, `.../responses`, `.../messages`, `.../models`.
-  - **Usage limits are tiered, dollar-denominated, rolling windows**: "5 hour limit — $12 of usage", "Weekly limit — $30 of usage", "Monthly limit — $60 of usage" (exact figures may change with plan tier; these were what the docs showed at fetch time).
-  - Overflow: if the user has a Zen balance and enables **"Use balance"** in the console, Go automatically falls back to spending Zen credits once a Go tier limit is hit.
-  - No documented API for reading current usage-vs-limit programmatically.
+**Confidence: confirmed-live** (direct HTTP probes, 2026-08-07, no credentials used — just checking whether routes exist at all via 401-vs-404 behavior).
 
-## 2. Open-source repo (github.com/sst/opencode)
+The `/api/*` prefix is a real router (confirmed: known routes 401 "Unauthorized"; unknown routes return a distinct 404 "Not found" in plain text) — so probing is meaningful, not just guessing against a always-200 catch-all:
 
-**Confidence: confirmed-from-source** (shallow-cloned `sst/opencode` at `/private/tmp/.../scratchpad/opencode-src` and read the actual TypeScript source, plus `strings`-dumped the locally installed compiled CLI binary at `~/.nvm/.../opencode-darwin-arm64/bin/opencode`, v1.17.15).
+| Path | Result |
+|---|---|
+| `/api/orgs`, `/api/user`, `/api/config` | 401 `{"_tag":"Unauthorized"}` — **real routes** |
+| `/api/usage` | 404 `Not found` |
+| `/api/billing` | 404 |
+| `/api/credits` | 404 |
+| `/api/balance` | 404 |
+| `/api/account` | 404 |
+| `/api/workspace` | 404 |
+| `/api/orgs/{id}/usage` | 404 |
 
-### 2.1 Provider wiring (confirms the shared-key premise)
+Conclusion: even with a fully-completed OAuth login (which this session cannot do — it requires a human to open the `verification_uri_complete` URL and approve), **there is no bearer-token-reachable billing/usage endpoint on `console.opencode.ai/api/*`.** The `/api/config` route (the one endpoint that sounded promising) is confirmed by source to be model/provider catalog config, not billing.
 
-Found directly in the compiled CLI's embedded provider registry:
+## 3. Why the web dashboard still can't be reached even with the OAuth token — the SolidStart server-function boundary
 
+**Confidence: confirmed-from-source.**
+
+Re-examined `packages/console/app/src/context/auth.ts` and `auth.withActor.ts` (previous pass had only looked at `billing.ts` and stopped). The billing/usage dashboard's data (`queryBillingInfo` etc., `packages/console/app/src/routes/workspace/[id]/billing/*`, `.../usage/*`) is gated through `withActor()` → `getActor()` → `useAuthSession()`:
+
+```ts
+export function useAuthSession() {
+  return useSession<AuthSession>({
+    password: Resource.ZEN_SESSION_SECRET.value,
+    name: "auth",
+    cookie: { secure: false, httpOnly: true },
+  })
+}
 ```
-{ env: ["OPENCODE_API_KEY"], npm: "@ai-sdk/openai-compatible",
-  api: "https://opencode.ai/zen/v1", name: "OpenCode Zen", doc: "https://opencode.ai/docs/zen" }
 
-{ env: ["OPENCODE_API_KEY"], npm: "@ai-sdk/openai-compatible",
-  api: "https://opencode.ai/zen/go/v1", name: "OpenCode Go", doc: "https://opencode.ai/docs/zen" }
-```
+This is an **encrypted, httpOnly browser session cookie** issued by a *different* auth stack — `packages/console/function/src/auth.ts`, a standard `@openauthjs/openauth` `issuer()` (GitHub/Google OAuth login for the *web app*, running as its own Cloudflare Worker at a separate `VITE_AUTH_URL` issuer origin) — landing in this cookie via `packages/console/app/src/routes/auth/{authorize,callback,logout,status}.ts`. This is architecturally **unrelated** to the CLI's `console.opencode.ai/auth/device/*` flow from §1, despite both ultimately being "log in with GitHub/Google to an OpenCode account." Two separate OAuth issuers, two separate token/session formats, no interop found in source: the device-flow `access_token` is a bearer JWT/opaque token checked by a small Hono-ish `/api/*` router; the web session is an openauth-js encrypted cookie checked by SolidStart's `getRequestEvent().locals`. **Nothing in the repo exchanges one for the other.** So the billing server functions genuinely cannot be called with the OAuth bearer token — only with a real browser session cookie, i.e., only by driving/scraping the actual logged-in browser session, not by a clean API call.
 
-Both are plain OpenAI-compatible chat/completions providers, both read `OPENCODE_API_KEY` from `~/.local/share/opencode/auth.json` (confirmed locally — see §4), keyed as `"opencode": { "type": "api", "key": "<redacted>" }` — a single credential entry covers both Zen and Go, matching the user's statement.
+## 4. The OpenCode team itself hasn't shipped a balance/usage API — confirmed via open GitHub issues
 
-### 2.2 Server source — the actual backend implementation lives in `packages/console/`
+**Confidence: confirmed-live** (fetched the actual issue pages, not just search snippets).
 
-This is the real find: the repo contains the **server-side implementation** of the Zen/Go gateway and the billing dashboard (it's a monorepo — `sst/opencode` hosts both the CLI/TUI and the `opencode.ai` console web app + API).
+- **[Feature Request: Add Zen balance API endpoint #10448](https://github.com/anomalyco/opencode/issues/10448)** — opened 2026-01-24, **still open**, assigned to a maintainer (`fwang`), no response yet. Proposes exactly `GET https://opencode.ai/zen/v1/balance` with a `{balance, currency, auto_reload}` shape — i.e., this doesn't exist yet; it's a wishlist item from another user hitting the same wall.
+- **[FEATURE]: Add Go plan usage/balance API endpoint (rolling/weekly/monthly windows) #16017** — same story for Go, also unresolved.
 
-- Route handlers for the model-proxying API: `packages/console/app/src/routes/zen/v1/{chat/completions,messages,models,responses}.ts` and the mirrored `zen/go/v1/...` — these are the inference endpoints only (no usage/balance route exists among them; I listed every file under `packages/console/app/src/routes/` and there is no `zen/v1/usage`, `zen/v1/credits`, or `zen/v1/balance`).
-- Billing data model: `packages/console/core/src/schema/billing.sql.ts` — `BillingTable` has columns `balance` (bigint, stored in **micro-cents**; e.g. `packages/console/core/script/lookup-user.ts` formats it as `` `$${(row.balance / 100000000).toFixed(2)}` ``), `monthlyLimit`, `monthlyUsage`, `reload`/`reloadTrigger`/`reloadAmount` (auto-reload config), and a `subscription` JSON blob with `{status, seats, plan, useBalance}` for Go/Black plans.
-- Billing business logic: `packages/console/core/src/billing.ts` (`Billing` namespace) — `Billing.get()`, `Billing.usages()`, `Billing.reload()`, `Billing.generateCheckoutUrl()`, `Billing.generateSessionUrl()` (Stripe billing portal), etc.
-- **How the web dashboard actually fetches this data**: `packages/console/app/src/routes/workspace/[id]/billing/billing-section.tsx` calls `queryBillingInfo(params.id)`, a SolidStart `query()` — a **server function** (`"use server"`) wrapped in `withActor(...)`, i.e. it requires an authenticated **browser session** (cookie-based actor context), not a bearer-token/API-key REST call. There is no equivalent route under `packages/console/app/src/routes/api/` that exposes billing/usage — the only files under `routes/api/` are `enterprise.ts` and two support actions (`delete-account.ts`, `create-referral.ts`), unrelated to usage/credits.
-- Usage page (`packages/console/app/src/routes/workspace/[id]/usage/usage-section.tsx`, `graph-section.tsx`) — same pattern, session-authenticated server queries, no public API.
+This directly confirms (from the OpenCode team's own issue tracker, not inference) that no such endpoint ships today.
 
-**Conclusion: the balance/usage data has no bearer-token-accessible REST API in the open-source repo.** It is intentionally dashboard-only (session auth), consistent with the docs only pointing to "the console."
+## 5. Community integrations re-checked — still no remote quota read
 
-### 2.3 Rate-limit / usage-exceeded signal (the one place usage data leaks into the API surface)
+**Confidence: confirmed-live** (fetched actual docs/repo, not just search summaries).
 
-`packages/opencode/src/session/retry.ts` (client-side error handling in the CLI/TUI) parses two structured error types that the Zen/Go proxy returns on **429 responses**:
+- **OpenClaw's `opencode-go` provider** (`docs.openclaw.ai/providers/opencode-go`): documents `OPENCODE_API_KEY` auth and model routing only. No usage/quota endpoint mentioned. OpenClaw's own quota-tracking feature (`openclaw status --usage`, its list of "usage-window providers": Claude, ClawRouter, Copilot, DeepSeek, MiniMax, OpenAI, Xiaomi, z.ai) **explicitly does not include OpenCode Go** — i.e., OpenClaw itself cannot show OpenCode quota either. This directly contradicts "he can see his quota in other applications" if the app in question is OpenClaw.
+- **`gaboe/opencode-usage`** (a CLI literally named for this purpose): reads `~/.local/share/opencode/opencode.db` locally only, same technique as `opencode stats` from the v1 report. No remote API call.
+- Did not find any tool that displays a live, server-authoritative OpenCode Zen/Go balance. If the owner is seeing quota in some other app, the most likely explanations, in order of probability: (a) they're looking at `console.opencode.ai`'s web dashboard itself (browser session, not an API); (b) they're looking at OpenCode's own **desktop app** (`ai.opencode.desktop`), which very likely embeds the same web dashboard via webview/browser session rather than a public API — its local data files are opaque `.dat` blobs, not independently inspectable without live access; (c) they're conflating a *different* provider's quota display (e.g. Anthropic/OpenAI native usage, which several tools do support) with "OpenCode."
 
-- `FreeUsageLimitError` — free tier exhausted. Message: `"Free usage exceeded, subscribe to Go"`, links to `https://opencode.ai/go`.
-- `GoUsageLimitError` — a Go plan tier limit was hit. The error body is JSON with `metadata: { workspace, limitName }` (e.g. `limitName` = "5 hour" / "Weekly" / "Monthly"), and the HTTP `retry-after` header gives seconds until reset. The client formats a message like: `"5 hour usage limit reached. It will reset in 5 hours 23 minutes. To continue using this model now, enable usage from your available balance — https://opencode.ai/workspace/{workspaceID}/go"`.
+## 6. What was tried (for the owner to redirect us if we're still missing the app)
 
-This confirms the **mechanism** linking Go and Zen (Go tiers are rolling windows; on exhaustion, spend can fall back to Zen's balance if "Use balance" is enabled) — but it's only observable reactively, after a 429, not as a queryable "current usage" number. No `x-ratelimit-remaining`-style header was found on successful (2xx) responses in `packages/console/app/src/routes/zen/util/handler.ts` (I grepped every header-setting call in that file and its siblings — only `retry-after` is set, and only on the error path).
+- Read `packages/opencode/src/account/account.ts`, `repo.ts`, `schema.ts`, `cli/cmd/account.ts`, `packages/core/src/plugin/provider/opencode.ts` — the full OAuth device-code client implementation.
+- Live-tested `POST /auth/device/code` and `POST /auth/device/token` against production `console.opencode.ai` (no credentials, just protocol-shape verification) — both real and match source exactly.
+- Live-probed `/api/orgs`, `/api/user`, `/api/config`, and eight guessed billing-shaped paths (`/api/usage`, `/api/billing`, `/api/credits`, `/api/balance`, `/api/account`, `/api/workspace`, `/api/orgs/:id/usage`) — only the three known-good ones exist.
+- Read `ConfigV1.Info` schema fully — confirmed `/api/config`'s payload is provider/model catalog config, not billing.
+- Read `packages/console/app/src/context/auth.ts` / `auth.withActor.ts` / `packages/console/function/src/auth.ts` — confirmed the web dashboard's billing server functions use a completely separate cookie-session auth stack that the device-flow OAuth token cannot satisfy.
+- Fetched the two open OpenCode GitHub issues asking for exactly this feature (#10448, #16017) — confirms upstream hasn't shipped it.
+- Fetched OpenClaw's `opencode-go` provider docs and its own quota-provider list — confirms OpenClaw can't show OpenCode quota either.
+- Fetched `gaboe/opencode-usage` — confirms it's local-DB-only, same technique already known from v1.
+- Did **not** attempt: completing the actual device-code login (requires a human to open a browser and approve — out of scope for a non-interactive research pass, and would require the owner's explicit action); inspecting the OpenCode desktop app's live network traffic (would need the owner to run it while we watch, or the owner to grant browser/computer-use access to their already-logged-in `console.opencode.ai` session so we can inspect real (not fake-token) API responses and dashboard network calls first-hand).
 
-### 2.4 opencode-sdk / other packages
+**If the owner can point to the specific "other application" that shows OpenCode quota** (name, or a screenshot), that would let us target the exact integration rather than re-guessing. Similarly, if the owner is willing to run `opencode console login` themselves and then let us inspect (not use) the resulting session — e.g. share what `GET /api/orgs` returns once authenticated, or open their already-logged-in `console.opencode.ai` dashboard in a browser we can read network requests from — that's the one investigative step this pass couldn't complete non-interactively and would settle definitively whether *any* authenticated surface (even the cookie-only dashboard) exposes a machine-readable balance number we could scrape as a fallback.
 
-The monorepo's `packages/sdks/` directory (TypeScript/other language SDKs, if present) mirrors the CLI's local HTTP server API (session/message CRUD for the TUI/IDE integrations) — it does not add any Zen/Go billing surface beyond what's above. Did not find a separate `sst/opencode-sdk` repo; the SDK lives inside the monorepo.
+## 7. Unchanged from v1 (still valid)
 
-## 3. Community integrations
+- Zen/Go inference endpoints (`https://opencode.ai/zen/v1/*`, `https://opencode.ai/zen/go/v1/*`), authenticated with `OPENCODE_API_KEY` as a Bearer token via the OpenAI-compatible adapter — confirmed, no balance data on success responses.
+- On HTTP 429, structured error bodies (`FreeUsageLimitError`, `GoUsageLimitError` with `metadata: {workspace, limitName}` and a `retry-after` header) are the one place usage state leaks into the inference API surface — reactive only, not a queryable gauge. Source: `packages/opencode/src/session/retry.ts`.
+- Local estimate via `~/.local/share/opencode/opencode.db` (`session`/`message`/`part` tables, `data` JSON blob with cost/token accounting) — same as `opencode stats`, client-side only, not authoritative.
 
-**Confidence: inferred / not found** — I did not find any community tool (OpenClaw's `opencode-go` provider docs, "Hermes Agent" guides, etc.) that fetches Zen/Go balance or usage programmatically. Every third-party integration found treats OpenCode Zen/Go purely as an **inference provider** (base URL + API key, OpenAI-compatible), the same shape documented in §1/§2.1 — none of them surface a usage/balance API because none exists. Treat this as a negative result, not an exhaustive survey.
+## 8. Recommendation for OkTally
 
-## 4. Local machine (installed OpenCode CLI + config)
+No live remote balance/usage read exists today, via any auth mechanism — API key, or the newly-found OAuth device flow. Given the upstream feature requests are open but unassigned-to-shipping, OkTally's plugin should:
 
-**Confidence: confirmed-from-source** (inspected directly on this machine; no secret values were printed — see redaction method below).
-
-- Binary: `opencode` v1.17.15, installed via npm/nvm at `~/.nvm/versions/node/v24.17.0/bin/opencode` (a compiled Bun executable under `.../lib/node_modules/opencode-ai/node_modules/opencode-darwin-arm64/bin/opencode`).
-- Config dir: `~/.config/opencode/` — `opencode.jsonc` (user's provider/model config, no secrets), `package.json`.
-- Data dir: `~/.local/share/opencode/`:
-  - `auth.json` (mode `600`, i.e. already permission-restricted) — a flat JSON object keyed by provider id. Structure (values redacted by type/length only, never printed):
-    ```json
-    {
-      "opencode": { "type": "<string>", "key": "<string>" },
-      "openai":   { "type": "<string>", "refresh": "<string>", "access": "<string>", "expires": "<int>", "accountId": "<string>" },
-      "...other providers...": { }
-    }
-    ```
-    The `"opencode"` entry (`type` = 3-char string, almost certainly `"api"`; `key` = 67-char string) is the single `OPENCODE_API_KEY`-equivalent credential shared by both Zen and Go, confirming the user's premise. **This is the credential OkTally would read to authenticate outbound calls**, but per §2.2 there's no balance/usage endpoint to call it against.
-  - `opencode.db` (SQLite, ~80MB on this machine) — local session/message history. Relevant tables: `session`, `message` (columns: `id`, `session_id`, `time_created`, `time_updated`, `data` — `data` is a JSON blob per message containing token/cost accounting), `part` (same shape, message parts). This is exactly what the bundled `opencode stats` CLI command reads (verified: `opencode stats --days 1` prints a "COST & TOKENS" table with Total Cost, Input/Output/Cache Read/Cache Write token counts, sourced from this DB). **This is the one locally-available, non-network way to approximate usage** — but it is a client-side ledger of what this machine sent, not the server's authoritative balance or Go-tier usage-to-date, and it won't reflect usage from OpenCode's desktop app if it writes to a different DB, or from any other device using the same API key.
-  - `opencode.db-wal` / `-shm` — SQLite WAL files, no independent info.
-  - `repos/`, `storage/` — unrelated local caches.
-- Desktop app (`ai.opencode.desktop`, found at `~/Library/Application Support/ai.opencode.desktop/`) — present but its data files are opaque binary blobs (`.dat`); not inspected further (out of scope, and likely just mirrors the same web dashboard via an embedded webview).
-- CLI surface relevant to usage: `opencode stats` (local DB only, per above), `opencode providers`/`opencode auth list` (lists configured providers/credentials, not balance), `opencode db` (raw SQL access to the local DB — could be scripted by OkTally instead of reimplementing the stats parsing, e.g. `opencode db "select ..." --format json`).
-
-## 5. Endpoint summary table
-
-| Purpose | URL | Method | Auth | Status |
-|---|---|---|---|---|
-| Zen chat completions | `https://opencode.ai/zen/v1/chat/completions` (+ `/responses`, `/messages`) | POST | `OPENCODE_API_KEY` (Bearer, OpenAI-compatible adapter) | confirmed-from-source |
-| Zen model list | `https://opencode.ai/zen/v1/models` | GET | `OPENCODE_API_KEY` | confirmed-from-source |
-| Go chat completions | `https://opencode.ai/zen/go/v1/chat/completions` (+ `/responses`, `/messages`) | POST | `OPENCODE_API_KEY` | confirmed-from-source |
-| Go model list | `https://opencode.ai/zen/go/v1/models` | GET | `OPENCODE_API_KEY` | confirmed-from-source |
-| Zen balance / Go usage | *(none found)* — dashboard only, session-cookie auth, at `https://opencode.ai/workspace/{id}/billing` and `.../usage` | — | browser session, not API key | confirmed-absent (no route in `packages/console/app/src/routes/`) |
-| Rate-limit signal | Any of the above, on HTTP 429 | — | — | error body `{error:{type: "FreeUsageLimitError"|"GoUsageLimitError", metadata:{workspace, limitName}}}`, header `retry-after` (seconds) | confirmed-from-source |
-
-## 6. Mapping to OkTally `QuotaShape`
-
-Given there is no authoritative remote read, OkTally's options per catalog:
-
-- **Zen (pay-as-you-go credits)** → conceptually a `creditBalance` shape (a dollar balance that decrements per request, with auto-reload). **But it cannot be populated from a live API call** — there's no `GET .../credits` endpoint. Two fallbacks:
-  - Best-effort: derive a **local, running total spent** from `opencode.db` (sum `data.cost` across `message` rows in the relevant time range) and present it as "$X spent" rather than "$Y remaining" — since OkTally can't know the account's actual top-up balance without dashboard access. This is inherently an estimate, not a balance.
-  - Reactive: surface a warning/blocked state only once a `FreeUsageLimitError`/insufficient-balance 429 is observed from a real request.
-
-- **Go ($10/mo subscription, tiered rolling limits)** → conceptually fits `rollingWindow`/`periodicCounter` (three concurrent windows: 5h/$12, weekly/$30, monthly/$60 — see caveat in §1 that exact numbers may vary by plan). **Also cannot be populated proactively** — no usage-to-date endpoint. Fallbacks:
-  - Local estimate from `opencode.db`, filtered to Go-catalog model IDs/requests, bucketed into the three rolling windows client-side — same estimate caveat as above (only reflects usage made through this local install).
-  - Reactive: parse `GoUsageLimitError` 429s to know *which* window (`limitName`) was hit and *when it resets* (`retry-after`), which is real, confirmed, structured data — useful for an "at limit until HH:MM" indicator, just not a live gauge.
-
-**Bottom line for the plugin design**: OkTally cannot implement a true "remaining credits" or "usage-to-date" gauge against OpenCode's servers today with only `OPENCODE_API_KEY` — there is no such API. The practical plugin should (a) read `~/.local/share/opencode/opencode.db` for a local spend/token estimate (via `opencode db "<query>" --format json` or direct SQLite read), clearly labeled as a local estimate, and (b) listen for/parse 429 error metadata during real usage to surface authoritative "limit hit, resets at X" state for Go. Anything closer to a true live balance would require either scraping the authenticated console (fragile, likely against ToS) or OpenCode shipping a new public API (worth flagging upstream as a feature request — `packages/console/app/src/routes/api/` is exactly where such a route would go, based on repo conventions).
+1. **Primary:** local estimate from `opencode.db` (as v1 recommended), clearly labeled "local estimate, this machine only."
+2. **Reactive:** parse `FreeUsageLimitError`/`GoUsageLimitError` 429 metadata during real usage for an authoritative "at limit until HH:MM" signal.
+3. **Optional, higher-effort:** implement the OAuth device-code flow from §1 (it's straightforward, and legitimate — it's OpenCode's own public login mechanism) purely to identify *which* OpenCode account/org is active (email, org name via `/api/user` and `/api/orgs`) for display purposes in OkTally, while being explicit in the UI that it cannot fetch a live balance through this token — only identity.
+4. **Track upstream:** subscribe to sst/opencode issues #10448 and #16017 — if either ships, it directly unblocks a true live balance/usage gauge with no further reverse-engineering needed.
 
 ## Sources
 
-- https://opencode.ai/docs/zen (fetched 2026-08-07)
-- https://opencode.ai/docs/go (fetched 2026-08-07)
-- https://github.com/sst/opencode (shallow clone, HEAD as of 2026-08-07), specifically:
-  - `packages/console/app/src/routes/zen/**`
-  - `packages/console/app/src/routes/workspace/[id]/billing/**`, `.../usage/**`
-  - `packages/console/core/src/billing.ts`, `packages/console/core/src/schema/billing.sql.ts`
-  - `packages/opencode/src/session/retry.ts`, `packages/opencode/test/session/retry.test.ts`
-  - `packages/ui/src/i18n/en.ts` (dialog copy confirming Go tiers / balance fallback)
-- Locally installed `opencode` CLI v1.17.15 (`~/.nvm/versions/node/v24.17.0/bin/opencode`), provider registry strings extracted via `strings` on the compiled binary.
-- Local files inspected (structure only, no secret values captured): `~/.config/opencode/opencode.jsonc`, `~/.local/share/opencode/auth.json`, `~/.local/share/opencode/opencode.db` schema, `opencode stats` command output.
+- https://github.com/sst/opencode (aka `anomalyco/opencode` upstream), specifically:
+  - `packages/opencode/src/account/account.ts`, `repo.ts`, `schema.ts`, `url.ts`
+  - `packages/opencode/src/cli/cmd/account.ts`
+  - `packages/core/src/plugin/provider/opencode.ts`
+  - `packages/core/src/v1/config/config.ts`
+  - `packages/console/app/src/context/auth.ts`, `auth.withActor.ts`
+  - `packages/console/function/src/auth.ts`
+  - `packages/console/app/src/routes/api/*`, `packages/function/src/api.ts` (ruled out as unrelated)
+  - `packages/opencode/src/session/retry.ts` (unchanged from v1)
+- Live HTTP probes against `https://console.opencode.ai` (2026-08-07): `/auth/device/code`, `/auth/device/token`, `/api/orgs`, `/api/user`, `/api/config`, and eight negative-control paths. No credentials used or exposed.
+- https://github.com/anomalyco/opencode/issues/10448 (fetched)
+- https://github.com/anomalyco/opencode/issues/16017 (referenced)
+- https://docs.openclaw.ai/providers/opencode-go (fetched)
+- https://github.com/gaboe/opencode-usage (fetched)
+- Local files inspected (structure only, no secret values captured): `~/.local/share/opencode/auth.json` (schema of all six provider entries, including confirming the `"opencode"` entry is a static API key, not an OAuth pair).
