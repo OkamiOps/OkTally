@@ -28,13 +28,11 @@ final class MiMoUsageProviderTests: XCTestCase {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
         let now = calendar.date(from: DateComponents(year: 2026, month: 8, day: 7))!
-        let expectedResetAt = calendar.date(from: DateComponents(year: 2026, month: 9, day: 1))!
 
         let provider = MiMoUsageProvider(
             allowanceProvider: { 500 },
             usedCreditsProvider: { 125 },
-            now: { now },
-            calendar: calendar
+            now: { now }
         )
 
         let snapshot = try await provider.fetchSnapshot()
@@ -43,25 +41,22 @@ final class MiMoUsageProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.quotas.count, 1)
         let window = snapshot.quotas[0]
         XCTAssertEqual(window.label, "mensal")
-        XCTAssertEqual(window.shape, .estimated(used: 125, limit: 500, basis: .localTokenCount, resetAt: expectedResetAt))
+        XCTAssertEqual(window.shape, .estimated(used: 125, limit: 500, basis: .localTokenCount, resetAt: nil))
     }
 
-    func test_fetchSnapshot_resetAt_crossesYearBoundary() async throws {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        let now = calendar.date(from: DateComponents(year: 2026, month: 12, day: 20))!
-        let expectedResetAt = calendar.date(from: DateComponents(year: 2027, month: 1, day: 1))!
-
+    /// MiMo's research (docs/superpowers/research/plan2-mimo.md) confirms a monthly
+    /// reset but not which day it falls on — it could be the calendar month start or
+    /// the subscription anniversary. Since this is an estimated provider, we must not
+    /// assert a specific reset date we haven't verified.
+    func test_fetchSnapshot_hasNoResetAt_sinceMiMoResetDayIsUnverified() async throws {
         let provider = MiMoUsageProvider(
             allowanceProvider: { 500 },
-            usedCreditsProvider: { 0 },
-            now: { now },
-            calendar: calendar
+            usedCreditsProvider: { 0 }
         )
 
         let snapshot = try await provider.fetchSnapshot()
 
-        XCTAssertEqual(snapshot.quotas[0].shape.resetAt, expectedResetAt)
+        XCTAssertNil(snapshot.quotas[0].shape.resetAt)
     }
 
     func test_fetchSnapshot_usedPercentIsComputedWhenAllowanceSet() async throws {

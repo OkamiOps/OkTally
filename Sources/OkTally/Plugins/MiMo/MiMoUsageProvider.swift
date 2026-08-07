@@ -25,18 +25,15 @@ final class MiMoUsageProvider: UsageProvider {
     private let allowanceProvider: () -> Double?
     private let usedCreditsProvider: () -> Double
     private let now: () -> Date
-    private let calendar: Calendar
 
     init(
         allowanceProvider: @escaping () -> Double?,
         usedCreditsProvider: @escaping () -> Double,
-        now: @escaping () -> Date = Date.init,
-        calendar: Calendar = .current
+        now: @escaping () -> Date = Date.init
     ) {
         self.allowanceProvider = allowanceProvider
         self.usedCreditsProvider = usedCreditsProvider
         self.now = now
-        self.calendar = calendar
     }
 
     func isAuthenticated() async -> Bool {
@@ -48,19 +45,13 @@ final class MiMoUsageProvider: UsageProvider {
             used: usedCreditsProvider(),
             limit: allowanceProvider(),
             basis: .localTokenCount,
-            resetAt: nextMonthStart(after: now())
+            // Deliberately nil: research confirms a monthly reset but not the reset
+            // day (calendar month-start vs. subscription anniversary is unverified).
+            // As an estimated provider, we'd rather show no reset date than assert
+            // one that could be wrong.
+            resetAt: nil
         )
         let window = QuotaWindow(label: "mensal", shape: shape)
         return ProviderSnapshot(providerId: id, fetchedAt: now(), quotas: [window], usageDetail: nil)
-    }
-
-    /// The first instant of the month following `date` — the monthly Token Plan reset.
-    private func nextMonthStart(after date: Date) -> Date {
-        let components = calendar.dateComponents([.year, .month], from: date)
-        guard let firstOfThisMonth = calendar.date(from: components),
-              let nextMonth = calendar.date(byAdding: .month, value: 1, to: firstOfThisMonth) else {
-            return date
-        }
-        return nextMonth
     }
 }
