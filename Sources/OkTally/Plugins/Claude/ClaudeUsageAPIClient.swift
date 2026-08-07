@@ -30,6 +30,15 @@ enum ClaudeUsageError: Error {
     case badResponse(Int?)
 }
 
+extension ClaudeUsageError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .badResponse(let statusCode):
+            return "Claude respondeu com erro (código \(statusCode.map(String.init) ?? "desconhecido"))."
+        }
+    }
+}
+
 final class ClaudeUsageAPIClient: ClaudeUsageFetching {
     private let session: URLSession
     init(session: URLSession = .shared) { self.session = session }

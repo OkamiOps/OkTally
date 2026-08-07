@@ -22,6 +22,17 @@ enum OpenRouterError: Error, Equatable {
     case missingAPIKey
 }
 
+extension OpenRouterError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .missingAPIKey:
+            return "Configure sua chave de API do OpenRouter nas Preferências."
+        case .badResponse(let statusCode):
+            return "OpenRouter respondeu com erro (código \(statusCode.map(String.init) ?? "desconhecido"))."
+        }
+    }
+}
+
 final class OpenRouterAPIClient: OpenRouterCreditsFetching {
     private let session: URLSession
     init(session: URLSession = .shared) { self.session = session }

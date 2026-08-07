@@ -116,4 +116,25 @@ final class SchedulerTests: XCTestCase {
 
         XCTAssertEqual(received.count, 1)
     }
+
+    func test_fetchAll_twoSequentialCallsAboveThreshold_doesNotRefireOnSecondCall() async {
+        let provider = FakeUsageProvider(id: "claude", displayName: "Claude Code")
+        provider.snapshotToReturn = snapshot(providerId: "claude", percent: 75)
+        let registry = PluginRegistry()
+        registry.register(provider)
+        let storage = FakeStorage()
+        let sender = FakeNotificationSender()
+        let scheduler = Scheduler(
+            registry: registry,
+            storage: storage,
+            alertEngine: AlertEngine(),
+            alertDispatcher: AlertDispatcher(sender: sender)
+        )
+
+        _ = await scheduler.fetchAll()
+        _ = await scheduler.fetchAll()
+
+        XCTAssertEqual(sender.sentMessages.count, 1)
+        XCTAssertEqual(storage.saveCount, 2)
+    }
 }

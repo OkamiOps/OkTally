@@ -6,6 +6,17 @@ enum ClaudeCredentialError: Error, Equatable {
     case malformed
 }
 
+extension ClaudeCredentialError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .notFound:
+            return "Credenciais do Claude Code não encontradas — faça login com `claude login` no terminal."
+        case .malformed:
+            return "Credenciais do Claude Code em formato inesperado."
+        }
+    }
+}
+
 protocol CredentialStoreReading {
     func readClaudeCredentialsJSON() -> Data?
 }
