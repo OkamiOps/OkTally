@@ -136,6 +136,105 @@ Two different quota systems are described, for two different products, and they 
 | Consumer chat app (grok.com) quota = fixed daily counters per feature, no intra-day window | documented-by-community (third-party blog, jingrey.com — weakest source in this document) |
 | This machine has an authenticated official Grok CLI installed at `~/.grok` | confirmed-from-source |
 
+## Implementation pin (Task 11 investigation gate — Path A)
+
+The Task 11 gate asked whether the literal OAuth `client_id` this document left
+as an open question (§1.2, §4) could be found in a legitimate public source,
+by reading the two working open-source OAuth clients end-to-end rather than
+stopping at their README summaries. It can. Cloned both repos to a scratch
+directory (never inside this project's git tree) and read the actual
+request-construction code, not just prose descriptions.
+
+**client_id — cross-confirmed by two independent, working implementations:**
+
+```
+b1a00492-073a-47ea-816f-4c329264a828
+```
+
+- `github.com/stnly/pi-grok`, commit `ae1ef2a1a839dab328766a7e8ce11aa52336259f`,
+  `oauth.ts:25` — `const CLIENT_ID = process.env.PI_XAI_OAUTH_CLIENT_ID || "b1a00492-073a-47ea-816f-4c329264a828";`
+  This is the production default (env-var override, not a test-only stub);
+  the same literal also appears in that repo's `device-code.test.ts:10` and
+  `login.test.ts:8` as the value used to construct real requests in tests.
+- `github.com/BlockedPath/pi-xai-oauth`, commit `b6ba011c018614013e6e19e412a4f5cf6f03fd19`,
+  `extensions/xai/constants.ts:11` — `export const XAI_OAUTH_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";`
+  Independently written package, same value, no shared authorship evident.
+
+Two unrelated OAuth client codebases agreeing on the same UUID, used in live
+request bodies rather than documentation prose, is strong enough corroboration
+to use directly — this is reading what a working public client sends, not
+reverse-engineering traffic or guessing.
+
+**Endpoints (also cross-confirmed by both repos):**
+
+| Purpose | URL | Source |
+|---|---|---|
+| OIDC discovery | `https://auth.x.ai/.well-known/openid-configuration` | pi-grok `oauth.ts:19`; pi-xai-oauth `constants.ts:5` |
+| Device authorization | `https://auth.x.ai/oauth2/device/code` | pi-grok `oauth.ts:20`; pi-xai-oauth `constants.ts:6` (`XAI_OAUTH_DEVICE_URL`) |
+| Token (device poll + refresh) | `https://auth.x.ai/oauth2/token` | pi-grok `oauth.ts:21`; pi-xai-oauth `constants.ts:7` (`XAI_OAUTH_TOKEN_URL`) |
+| Authorization (PKCE, not used by OkTally's Path A) | `https://auth.x.ai/oauth2/authorize` | pi-xai-oauth `constants.ts:4` (`XAI_OAUTH_AUTHORIZATION_URL`) |
+
+Device grant type: `urn:ietf:params:oauth:grant-type:device_code` (pi-grok
+`oauth.ts:22`; pi-xai-oauth `constants.ts:17`). Device-code request body:
+`client_id`, `scope`, and a `referrer=grok-build` field (pi-grok
+`oauth.ts:906-912`) — the referrer's exact required-ness is unconfirmed, but
+copying a known-working request shape carries no cost, so OkTally's request
+omits it (kept the request to the RFC 8628 minimum: `client_id` + `scope`)
+rather than asserting a server-side requirement neither repo's docs state
+explicitly. If device-code requests ever fail in the field, `referrer` is the
+first thing to try adding.
+
+**Scopes** (identical in both repos): `openid profile email offline_access
+grok-cli:access api:access conversations:read conversations:write`
+— pi-grok `oauth.ts:28`; pi-xai-oauth `constants.ts:12-13`.
+
+**Quota endpoint — corrects this document's §2.1 guess.** The original
+research guessed a gRPC-web `grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig`
+endpoint from an OmniRoute issue thread, without a captured request/response.
+Reading pi-grok's actual working `usage.ts` shows the real mechanism is
+simpler and plain JSON, not gRPC-web:
+
+1. `GET https://cli-chat-proxy.grok.com/v1/user` (bearer token) → resolve
+   `userId` (camelCase field, direct JSON, no snake_case mapping layer) —
+   pi-grok `account.ts:82`; base URL pinned in pi-xai-oauth `constants.ts:26-29`
+   (`XAI_CLI_BASE_URL`, `XAI_CLI_USER_URL`).
+2. `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` (bearer
+   token + `x-userid: <that userId>` header) → JSON body:
+   `{ subscriptionTier, onDemandEnabled, config: { creditUsagePercent,
+   monthlyLimit: { val }, used: { val }, currentPeriod: { start, end },
+   billingPeriodStart, billingPeriodEnd, history: [...] } }` — pi-grok
+   `usage.ts:14-33` (documented response shape from the same file that parses
+   it) and `usage.ts:345-380` (the two pinned calls); URL also pinned
+   literally in pi-xai-oauth `constants.ts:30` (`XAI_CLI_BILLING_URL`).
+
+Required headers on every proxy call (both repos agree):
+`X-XAI-Token-Auth: xai-grok-cli`, `x-authenticateresponse:
+authenticate-response`, plus `Authorization: Bearer <token>` — pi-grok
+`models.ts:101-111` (`buildProxyHeaders`).
+
+`creditUsagePercent` absent in the response means 0% (xAI's JSON encoding
+omits zero rather than sending it explicitly) per this doc's original §2.1
+note — carried forward into the Swift implementation.
+
+**What this means for the gate decision:** client_id, both auth endpoints,
+and the quota endpoint are now pinned from source, not guessed — **Path A**.
+Implemented as `Sources/OkTally/Auth/DeviceCodeFlow.swift` (RFC 8628 generic
+helper), `Sources/OkTally/Plugins/SuperGrok/SuperGrokOAuth.swift` (the pinned
+config above), `SuperGrokAPIClient.swift` (the two-call billing lookup), and
+`SuperGrokUsageProvider.swift` (maps `creditUsagePercent` → `rollingWindow("weekly",
+used: percent, limit: 100, resetAt: currentPeriod.end ?? billingPeriodEnd)`).
+
+**Residual risk, honestly stated:** none of this is xAI's own documentation —
+it is read from two community client implementations that could be wrong,
+stale, or specific to the "Grok Build" coding-agent product rather than the
+consumer SuperGrok chat app (see this doc's original §3 distinction, which
+still applies: this plugin tracks the coding-agent quota, not the chat app's
+daily message/image/video counters). If xAI changes or revokes this
+`client_id`/these endpoints, OkTally's login will start failing with a normal
+`DeviceCodeError`/`SuperGrokUsageError`, not silently — no different in kind
+from the risk already accepted for Codex/Claude/MiniMax/Cursor's own
+community-sourced OAuth pins in this same plan.
+
 ## Sources
 
 - https://github.com/stnly/pi-grok

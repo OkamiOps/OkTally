@@ -1,0 +1,17 @@
+{
+  "subscriptionTier": "supergrok",
+  "onDemandEnabled": false,
+  "config": {
+    "creditUsagePercent": 42.5,
+    "monthlyLimit": { "val": 10000 },
+    "used": { "val": 4250 },
+    "isUnifiedBillingUser": true,
+    "currentPeriod": {
+      "type": "weekly",
+      "start": "2026-08-04T00:00:00Z",
+      "end": "2026-08-11T00:00:00Z"
+    },
+    "billingPeriodStart": "2026-08-04T00:00:00Z",
+    "billingPeriodEnd": "2026-08-11T00:00:00Z"
+  }
+}

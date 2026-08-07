@@ -1,0 +1,6 @@
+{
+  "userId": "user-123",
+  "email": "owner@example.com",
+  "hasGrokCodeAccess": true,
+  "codingDataRetentionOptOut": false
+}
