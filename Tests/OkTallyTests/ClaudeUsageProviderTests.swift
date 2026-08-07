@@ -7,18 +7,22 @@ final class FakeClaudeUsageFetching: ClaudeUsageFetching {
 }
 
 final class ClaudeUsageProviderTests: XCTestCase {
+    private func makeProvider(fetcher: FakeClaudeUsageFetching, tokenInStore: Bool = true) throws -> ClaudeUsageProvider {
+        let store = InMemoryTokenStore()
+        if tokenInStore {
+            try store.save(OAuthToken(accessToken: "tok", refreshToken: "rt", expiresAt: nil, extra: [:]), providerId: "claude")
+        }
+        return ClaudeUsageProvider(oauthManager: FakeOAuthManaging(), tokenStore: store, apiClient: fetcher, legacyCredentialProvider: nil)
+    }
+
     func test_fetchSnapshot_mapsThreeWindows() async throws {
-        let credentialProvider = ClaudeCredentialProvider(
-            keychainReader: FakeCredentialStoreReadingWithToken(token: "tok"),
-            fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("unused.json")
-        )
         let fetcher = FakeClaudeUsageFetching()
         fetcher.responseToReturn = ClaudeUsageResponse(
             fiveHour: ClaudeUsageWindow(utilization: 42.5, resetsAt: Date(timeIntervalSince1970: 2_000_000)),
             sevenDay: ClaudeUsageWindow(utilization: 61.0, resetsAt: Date(timeIntervalSince1970: 2_500_000)),
             sevenDayOpus: ClaudeUsageWindow(utilization: 15.0, resetsAt: Date(timeIntervalSince1970: 2_500_000))
         )
-        let provider = ClaudeUsageProvider(credentialProvider: credentialProvider, apiClient: fetcher)
+        let provider = try makeProvider(fetcher: fetcher)
 
         let snapshot = try await provider.fetchSnapshot()
 
@@ -30,29 +34,21 @@ final class ClaudeUsageProviderTests: XCTestCase {
     }
 
     func test_fetchSnapshot_withoutOpusWindow_returnsTwoWindows() async throws {
-        let credentialProvider = ClaudeCredentialProvider(
-            keychainReader: FakeCredentialStoreReadingWithToken(token: "tok"),
-            fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("unused.json")
-        )
         let fetcher = FakeClaudeUsageFetching()
         fetcher.responseToReturn = ClaudeUsageResponse(
             fiveHour: ClaudeUsageWindow(utilization: 10, resetsAt: Date()),
             sevenDay: ClaudeUsageWindow(utilization: 20, resetsAt: Date()),
             sevenDayOpus: nil
         )
-        let provider = ClaudeUsageProvider(credentialProvider: credentialProvider, apiClient: fetcher)
+        let provider = try makeProvider(fetcher: fetcher)
 
         let snapshot = try await provider.fetchSnapshot()
 
         XCTAssertEqual(snapshot.quotas.count, 2)
     }
 
-    func test_isAuthenticated_falseWhenNoCredentials() async {
-        let credentialProvider = ClaudeCredentialProvider(
-            keychainReader: FakeCredentialStoreReading(),
-            fileURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        )
-        let provider = ClaudeUsageProvider(credentialProvider: credentialProvider, apiClient: FakeClaudeUsageFetching())
+    func test_isAuthenticated_falseWhenNoCredentials() async throws {
+        let provider = try makeProvider(fetcher: FakeClaudeUsageFetching(), tokenInStore: false)
 
         let isAuthenticated = await provider.isAuthenticated()
 
@@ -73,12 +69,37 @@ final class ClaudeUsageProviderTests: XCTestCase {
         XCTAssertEqual(response.fiveHour.utilization, 42.5)
         XCTAssertEqual(response.sevenDayOpus?.utilization, 15.0)
     }
-}
 
-private final class FakeCredentialStoreReadingWithToken: CredentialStoreReading {
-    let token: String
-    init(token: String) { self.token = token }
-    func readClaudeCredentialsJSON() -> Data? {
-        try? JSONEncoder().encode(["accessToken": token])
+    func test_importLegacyCredentials_savesTokenWhenLegacyExists() throws {
+        let keychain = FakeCredentialStoreReading()
+        keychain.dataToReturn = """
+        {"claudeAiOauth":{"accessToken":"legacy-at","refreshToken":"legacy-rt","expiresAt":1900000000000}}
+        """.data(using: .utf8)
+        let legacy = ClaudeCredentialProvider(keychainReader: keychain, fileURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let store = InMemoryTokenStore()
+        let provider = ClaudeUsageProvider(oauthManager: FakeOAuthManaging(), tokenStore: store, apiClient: FakeClaudeUsageFetching(), legacyCredentialProvider: legacy)
+
+        XCTAssertTrue(provider.importLegacyCredentialsIfAvailable())
+        XCTAssertEqual(store.load(providerId: "claude")?.accessToken, "legacy-at")
+    }
+
+    func test_importLegacyCredentials_falseWhenNoLegacy() {
+        let keychain = FakeCredentialStoreReading()
+        let legacy = ClaudeCredentialProvider(keychainReader: keychain, fileURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let provider = ClaudeUsageProvider(oauthManager: FakeOAuthManaging(), tokenStore: InMemoryTokenStore(), apiClient: FakeClaudeUsageFetching(), legacyCredentialProvider: legacy)
+
+        XCTAssertFalse(provider.importLegacyCredentialsIfAvailable())
+    }
+
+    func test_importLegacyCredentials_skipsWhenTokenAlreadyPresent() throws {
+        let store = InMemoryTokenStore()
+        try store.save(OAuthToken(accessToken: "already", refreshToken: nil, expiresAt: nil, extra: [:]), providerId: "claude")
+        let keychain = FakeCredentialStoreReading()
+        keychain.dataToReturn = "{\"accessToken\":\"legacy\"}".data(using: .utf8)
+        let legacy = ClaudeCredentialProvider(keychainReader: keychain, fileURL: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
+        let provider = ClaudeUsageProvider(oauthManager: FakeOAuthManaging(), tokenStore: store, apiClient: FakeClaudeUsageFetching(), legacyCredentialProvider: legacy)
+
+        XCTAssertFalse(provider.importLegacyCredentialsIfAvailable())
+        XCTAssertEqual(store.load(providerId: "claude")?.accessToken, "already")
     }
 }

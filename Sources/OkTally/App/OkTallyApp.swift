@@ -24,7 +24,11 @@ struct OkTallyApp: App {
             thresholdsProvider: { _ in [:] }
         )
 
-        registry.register(ClaudeUsageProvider())
+        let tokenStore = KeychainTokenStore()
+        let oauthManager = OAuthManager(store: tokenStore)
+        let claudeProvider = ClaudeUsageProvider(oauthManager: oauthManager, tokenStore: tokenStore)
+        claudeProvider.importLegacyCredentialsIfAvailable()
+        registry.register(claudeProvider)
         registry.register(OpenRouterUsageProvider(apiKeyProvider: { preferencesStore.openRouterAPIKey }))
 
         let model = AppModel(registry: registry, scheduler: scheduler)

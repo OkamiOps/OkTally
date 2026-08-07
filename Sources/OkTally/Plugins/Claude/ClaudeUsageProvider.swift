@@ -3,27 +3,46 @@ import Foundation
 final class ClaudeUsageProvider: UsageProvider {
     let id = "claude"
     let displayName = "Claude Code"
-    let authMethod: AuthMethod = .keychain(service: "Claude Code-credentials")
+    let authMethod: AuthMethod = .oauthSession
     let refreshInterval: TimeInterval = 60
 
-    private let credentialProvider: ClaudeCredentialProvider
+    private let oauthManager: OAuthManaging
+    private let tokenStore: TokenStoring
     private let apiClient: ClaudeUsageFetching
+    private let legacyCredentialProvider: ClaudeCredentialProvider?
 
     init(
-        credentialProvider: ClaudeCredentialProvider = ClaudeCredentialProvider(),
-        apiClient: ClaudeUsageFetching = ClaudeUsageAPIClient()
+        oauthManager: OAuthManaging,
+        tokenStore: TokenStoring,
+        apiClient: ClaudeUsageFetching = ClaudeUsageAPIClient(),
+        legacyCredentialProvider: ClaudeCredentialProvider? = ClaudeCredentialProvider()
     ) {
-        self.credentialProvider = credentialProvider
+        self.oauthManager = oauthManager
+        self.tokenStore = tokenStore
         self.apiClient = apiClient
+        self.legacyCredentialProvider = legacyCredentialProvider
     }
 
     func isAuthenticated() async -> Bool {
-        (try? credentialProvider.loadCredentials()) != nil
+        tokenStore.load(providerId: id) != nil
+    }
+
+    @discardableResult
+    func importLegacyCredentialsIfAvailable() -> Bool {
+        guard tokenStore.load(providerId: id) == nil,
+              let credentials = try? legacyCredentialProvider?.loadCredentials() else { return false }
+        let token = OAuthToken(
+            accessToken: credentials.accessToken,
+            refreshToken: credentials.refreshToken,
+            expiresAt: credentials.expiresAt,
+            extra: [:]
+        )
+        return (try? tokenStore.save(token, providerId: id)) != nil
     }
 
     func fetchSnapshot() async throws -> ProviderSnapshot {
-        let credentials = try credentialProvider.loadCredentials()
-        let usage = try await apiClient.fetchUsage(accessToken: credentials.accessToken)
+        let accessToken = try await oauthManager.validAccessToken(providerId: id, config: ClaudeOAuth.config)
+        let usage = try await apiClient.fetchUsage(accessToken: accessToken)
 
         var quotas = [
             QuotaWindow(label: "5h", shape: .rollingWindow(
