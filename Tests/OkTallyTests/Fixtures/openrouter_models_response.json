@@ -1,0 +1,12 @@
+{
+  "data": [
+    {
+      "id": "anthropic/claude-3.5-sonnet",
+      "pricing": { "prompt": "0.000003", "completion": "0.000015" }
+    },
+    {
+      "id": "openai/gpt-4o",
+      "pricing": { "prompt": "0.0000025", "completion": "0.00001" }
+    }
+  ]
+}
