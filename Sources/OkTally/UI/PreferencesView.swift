@@ -6,6 +6,7 @@ struct PreferencesView: View {
     let preferencesStore: PreferencesStore
     let tokenStore: TokenStoring
     let browserFlow: BrowserOAuthFlow
+    let manualFlow: ManualCodeOAuthFlow
     let deviceCodeFlow: DeviceCodeFlow
     let onImportClaudeLegacy: () -> Bool
 
@@ -17,6 +18,8 @@ struct PreferencesView: View {
     @State private var mimoAllowance: String = ""
     @State private var mimoUsed: String = ""
     @State private var claudeLoggedIn = false
+    @State private var claudeSession: ManualCodeSession?
+    @State private var claudePastedCode: String = ""
     @State private var codexLoggedIn = false
     @State private var superGrokLoggedIn = false
     @State private var superGrokDeviceCode: DeviceCodeInfo?
@@ -24,21 +27,33 @@ struct PreferencesView: View {
 
     var body: some View {
         Form {
-            Section("Claude Code") {
+            Section("Claude") {
                 HStack {
                     Text(claudeLoggedIn ? "Conectado" : "Não conectado")
                         .foregroundStyle(claudeLoggedIn ? .green : .secondary)
                     Spacer()
                     if claudeLoggedIn {
-                        Button("Sair") { logout(providerId: "claude", flag: $claudeLoggedIn) }
+                        Button("Sair") {
+                            logout(providerId: "claude", flag: $claudeLoggedIn)
+                            claudeSession = nil
+                        }
                     } else {
-                        Button("Entrar…") { login(config: ClaudeOAuth.config, flag: $claudeLoggedIn) }
-                        Button("Importar login do Claude Code") {
-                            if onImportClaudeLegacy() {
-                                claudeLoggedIn = true
-                                statusMessage = "Login importado."
-                            } else {
-                                statusMessage = "Nenhum login do Claude Code encontrado."
+                        Button("Entrar…") { beginClaudeLogin() }
+                    }
+                }
+                if claudeSession != nil {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Autorize no navegador, copie o código exibido e cole abaixo:")
+                            .font(.caption)
+                        TextField("CÓDIGO#STATE", text: $claudePastedCode)
+                            .textFieldStyle(.roundedBorder)
+                        HStack {
+                            Button("Concluir") { completeClaudeLogin() }
+                                .disabled(claudePastedCode.trimmingCharacters(in: .whitespaces).isEmpty)
+                            Button("Cancelar") {
+                                claudeSession = nil
+                                claudePastedCode = ""
+                                statusMessage = ""
                             }
                         }
                     }
@@ -137,6 +152,31 @@ struct PreferencesView: View {
                 _ = try await browserFlow.login(config: config)
                 await MainActor.run {
                     flag.wrappedValue = true
+                    statusMessage = "Conectado."
+                }
+            } catch {
+                await MainActor.run { statusMessage = error.localizedDescription }
+            }
+        }
+    }
+
+    private func beginClaudeLogin() {
+        claudePastedCode = ""
+        claudeSession = manualFlow.begin(config: ClaudeOAuth.config)
+        statusMessage = "Abrindo o navegador — copie o código e cole aqui."
+    }
+
+    private func completeClaudeLogin() {
+        guard let session = claudeSession else { return }
+        let pasted = claudePastedCode
+        statusMessage = "Validando código…"
+        Task {
+            do {
+                _ = try await manualFlow.complete(pasted: pasted, session: session)
+                await MainActor.run {
+                    claudeLoggedIn = true
+                    claudeSession = nil
+                    claudePastedCode = ""
                     statusMessage = "Conectado."
                 }
             } catch {

@@ -71,7 +71,11 @@ final class LoopbackCallbackServer {
                     if parts.count >= 2 { path = String(parts[1]) }
                 }
 
-                if let path, path.hasPrefix("/callback") {
+                // Accept whatever callback path the provider registered (OpenAI/Codex uses
+                // /auth/callback, others use /callback) by keying on the OAuth result being
+                // present in the query — this still rejects the browser's automatic
+                // GET /favicon.ico, which carries no code=/error=.
+                if let path, path.contains("code=") || path.contains("error=") {
                     self?.onCallback?(path)
                     let body = "OkTally: pode fechar esta aba e voltar ao app."
                     let response = "HTTP/1.1 200 OK\r\nContent-Length: \(body.utf8.count)\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n\(body)"

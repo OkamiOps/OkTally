@@ -29,10 +29,9 @@ final class MiniMaxUsageProvider: UsageProvider {
         guard let apiKey = apiKeyProvider() else { throw MiniMaxError.missingAPIKey }
         let response = try await client.fetchRemains(apiKey: apiKey, region: region())
 
-        // Worst-case-wins across models: for each label (5h / weekly), keep the window with
-        // the highest usedPercent. A model with total_count == 0 ("not entitled", per the
-        // research report's video-quota 0/0 edge case) produces usedPercent == nil via
-        // QuotaShape's own limit > 0 guard, so it never wins over a real quota window.
+        // Worst-case-wins across models: for each window keep the highest usedPercent.
+        // The plan reports usage as `*_remaining_percent` directly (the raw counts are 0 on
+        // this plan), so used% = 100 - remaining%, over a limit of 100.
         var bestFiveHour: QuotaShape?
         var bestWeekly: QuotaShape?
 
@@ -40,8 +39,8 @@ final class MiniMaxUsageProvider: UsageProvider {
             let resetAt = Date().addingTimeInterval(TimeInterval(model.remainsTime) / 1000)
 
             let fiveHour = QuotaShape.rollingWindow(
-                used: Double(model.currentIntervalUsageCount),
-                limit: Double(model.currentIntervalTotalCount),
+                used: 100 - model.currentIntervalRemainingPercent,
+                limit: 100,
                 windowStart: resetAt.addingTimeInterval(-5 * 3600),
                 resetAt: resetAt
             )
@@ -50,8 +49,8 @@ final class MiniMaxUsageProvider: UsageProvider {
             }
 
             let weekly = QuotaShape.periodicCounter(
-                used: Double(model.currentWeeklyUsageCount),
-                limit: Double(model.currentWeeklyTotalCount),
+                used: 100 - model.currentWeeklyRemainingPercent,
+                limit: 100,
                 resetAt: resetAt
             )
             if (weekly.usedPercent ?? -1) > (bestWeekly?.usedPercent ?? -1) {

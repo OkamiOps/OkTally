@@ -11,6 +11,9 @@ final class FakeOAuthManaging: OAuthManaging {
     func exchangeCode(_ code: String, verifier: String, config: OAuthConfig) async throws -> OAuthToken {
         OAuthToken(accessToken: accessTokenToReturn, refreshToken: nil, expiresAt: nil, extra: [:])
     }
+    func exchangeManualCode(code: String, state: String, verifier: String, config: OAuthConfig) async throws -> OAuthToken {
+        OAuthToken(accessToken: accessTokenToReturn, refreshToken: nil, expiresAt: nil, extra: [:])
+    }
     func refresh(providerId: String, config: OAuthConfig) async throws -> OAuthToken {
         OAuthToken(accessToken: accessTokenToReturn, refreshToken: nil, expiresAt: nil, extra: [:])
     }
@@ -34,12 +37,23 @@ final class CodexUsageProviderTests: XCTestCase {
         return CodexUsageProvider(oauthManager: FakeOAuthManaging(), tokenStore: store, apiClient: fetcher)
     }
 
-    func test_fetchSnapshot_mapsBothWindows_andPassesAccountId() async throws {
+    func test_fetchSnapshot_labelsWindowsByDuration_andIncludesAdditionalLimits() async throws {
         let fetcher = FakeCodexUsageFetching()
         fetcher.responseToReturn = CodexUsageResponse(
             planType: "pro",
-            primaryWindow: CodexRateLimitWindow(usedPercent: 37.5, resetAt: Date(timeIntervalSince1970: 1000)),
-            secondaryWindow: CodexRateLimitWindow(usedPercent: 12, resetAt: Date(timeIntervalSince1970: 2000))
+            rateLimit: CodexRateLimit(
+                primaryWindow: CodexRateLimitWindow(usedPercent: 69, limitWindowSeconds: 604800, resetAt: Date(timeIntervalSince1970: 1000)),
+                secondaryWindow: nil
+            ),
+            additionalRateLimits: [
+                CodexAdditionalLimit(
+                    limitName: "GPT-5.3-Codex-Spark",
+                    rateLimit: CodexRateLimit(
+                        primaryWindow: CodexRateLimitWindow(usedPercent: 9, limitWindowSeconds: 604800, resetAt: Date(timeIntervalSince1970: 2000)),
+                        secondaryWindow: nil
+                    )
+                )
+            ]
         )
         let provider = try makeProvider(fetcher: fetcher)
 
@@ -47,23 +61,29 @@ final class CodexUsageProviderTests: XCTestCase {
 
         XCTAssertEqual(snapshot.providerId, "codex")
         XCTAssertEqual(snapshot.quotas.count, 2)
-        XCTAssertEqual(snapshot.quotas.first { $0.label == "5h" }?.shape.usedPercent, 37.5)
-        XCTAssertEqual(snapshot.quotas.first { $0.label == "weekly" }?.shape.usedPercent, 12)
+        // The 604800s general window is labelled "semanal", never "5h".
+        XCTAssertEqual(snapshot.quotas.first { $0.label == "semanal" }?.shape.usedPercent, 69)
+        XCTAssertNil(snapshot.quotas.first { $0.label == "5h" })
+        // The named additional limit surfaces under its feature name.
+        XCTAssertEqual(snapshot.quotas.first { $0.label.contains("GPT-5.3-Codex-Spark") }?.shape.usedPercent, 9)
         XCTAssertEqual(fetcher.lastAccountId, "acc-9")
     }
 
-    func test_fetchSnapshot_missingSecondaryWindow_yieldsOne() async throws {
+    func test_fetchSnapshot_fiveHourWindowLabelled5h() async throws {
         let fetcher = FakeCodexUsageFetching()
         fetcher.responseToReturn = CodexUsageResponse(
             planType: nil,
-            primaryWindow: CodexRateLimitWindow(usedPercent: 5, resetAt: nil),
-            secondaryWindow: nil
+            rateLimit: CodexRateLimit(
+                primaryWindow: CodexRateLimitWindow(usedPercent: 5, limitWindowSeconds: 18000, resetAt: nil),
+                secondaryWindow: nil
+            )
         )
         let provider = try makeProvider(fetcher: fetcher)
 
         let snapshot = try await provider.fetchSnapshot()
 
         XCTAssertEqual(snapshot.quotas.count, 1)
+        XCTAssertEqual(snapshot.quotas.first?.label, "5h")
     }
 
     func test_isAuthenticated_reflectsStoredToken() async throws {
@@ -85,7 +105,7 @@ final class CodexUsageProviderTests: XCTestCase {
         let response = try await client.fetchUsage(accessToken: "tok", accountId: "acc-9")
 
         XCTAssertEqual(response.planType, "pro")
-        XCTAssertEqual(response.primaryWindow?.usedPercent, 37.5)
-        XCTAssertNotNil(response.secondaryWindow)
+        XCTAssertEqual(response.rateLimit?.primaryWindow?.usedPercent, 37.5)
+        XCTAssertNotNil(response.rateLimit?.secondaryWindow)
     }
 }

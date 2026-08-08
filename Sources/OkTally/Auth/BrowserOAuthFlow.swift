@@ -18,7 +18,12 @@ final class BrowserOAuthFlow {
         let port = try server.start(port: config.redirectPort)
         defer { server.stop() }
 
-        let redirect = "http://127.0.0.1:\(port)/callback"
+        // When the provider registered a fixed port, its OAuth app also registered an exact
+        // redirect_uri (host + path) — using anything else returns an "invalid authorize
+        // request". Send that registered URI verbatim (e.g. Codex's
+        // http://localhost:1455/auth/callback). Only the no-fixed-port case builds an
+        // ephemeral loopback URI.
+        let redirect = config.redirectPort != nil ? config.redirectURI : "http://127.0.0.1:\(port)/callback"
         var comps = URLComponents(url: config.authorizeURL, resolvingAgainstBaseURL: false)!
         comps.queryItems = [
             .init(name: "response_type", value: "code"),

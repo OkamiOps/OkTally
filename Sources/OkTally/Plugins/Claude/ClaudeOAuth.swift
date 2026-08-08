@@ -2,25 +2,22 @@
 import Foundation
 
 enum ClaudeOAuth {
-    // NOTE: community-documented values (cedws gist et al.) — confirm against a current
-    // source or traffic capture before first release; wrong values fail loudly at login.
+    // Claude's OAuth (the same public client the Claude Code CLI uses) does NOT use a
+    // loopback redirect. It redirects to a FIXED hosted callback that renders an
+    // authorization code in `CODE#STATE` form for the user to copy and paste back —
+    // so this provider uses ManualCodeOAuthFlow, not the loopback BrowserOAuthFlow.
     //
-    // TODO: confirm porta registrada do redirect_uri da Anthropic. Most OAuth providers
-    // (including OpenAI's Codex app — see CodexOAuth) reject any `redirect_uri` other
-    // than exactly what's pre-registered for the client id, which means an ephemeral
-    // loopback port almost certainly breaks this login too. We did not find a confirmed
-    // fixed port for Anthropic's public client in research, so `redirectPort` is left
-    // `nil` (ephemeral) rather than guessing a wrong number that would fail silently in a
-    // different way. Capture real traffic from `claude login` (or the Claude Code CLI) to
-    // find the actual registered port/path, then set `redirectPort` here the same way
-    // `CodexOAuth` does.
+    // Values are community/binary-derived (shubcodes gist analysing the CLI binary,
+    // cross-checked against maintained open-source implementations). The token-exchange
+    // body shape (JSON, with `state`) and the platform.claude.com host are the parts most
+    // likely to drift; if login fails at the exchange step, that's the first thing to swap.
     static let config = OAuthConfig(
         providerId: "claude",
         authorizeURL: URL(string: "https://claude.ai/oauth/authorize")!,
-        tokenURL: URL(string: "https://console.anthropic.com/v1/oauth/token")!,
+        tokenURL: URL(string: "https://platform.claude.com/v1/oauth/token")!,
         clientId: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
         scopes: ["org:create_api_key", "user:profile", "user:inference"],
-        redirectURI: "http://127.0.0.1:0/callback",
+        redirectURI: "https://platform.claude.com/oauth/code/callback",
         redirectPort: nil
     )
 }

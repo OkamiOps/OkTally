@@ -4,7 +4,9 @@ final class ClaudeUsageProvider: UsageProvider {
     let id = "claude"
     let displayName = "Claude Code"
     let authMethod: AuthMethod = .oauthSession
-    let refreshInterval: TimeInterval = 60
+    // api.anthropic.com/api/oauth/usage rate-limits aggressively (429) — it tolerates
+    // roughly one call per few minutes, so poll every 5 minutes, not every 60s.
+    let refreshInterval: TimeInterval = 300
 
     private let oauthManager: OAuthManaging
     private let tokenStore: TokenStoring

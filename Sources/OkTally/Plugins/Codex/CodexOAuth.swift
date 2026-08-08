@@ -12,7 +12,10 @@ enum CodexOAuth {
         tokenURL: URL(string: "https://auth.openai.com/oauth/token")!,
         clientId: "app_EMoamEEZ73f0CkXaXp7hrann",
         scopes: ["openid", "profile", "email", "offline_access"],
-        redirectURI: "http://127.0.0.1:\(redirectPort)/callback",
+        // Exact redirect the Codex OAuth app registers — host `localhost` (not 127.0.0.1)
+        // and path `/auth/callback` (not `/callback`); any deviation is rejected as an
+        // invalid authorize request.
+        redirectURI: "http://localhost:\(redirectPort)/auth/callback",
         redirectPort: redirectPort
     )
 }

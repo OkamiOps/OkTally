@@ -80,7 +80,7 @@ final class MiniMaxUsageProviderTests: XCTestCase {
     func test_apiClient_decodesFixture() async throws {
         let fixtureURL = Bundle.module.url(forResource: "minimax_remains_response", withExtension: "json", subdirectory: "Fixtures")!
         let data = try Data(contentsOf: fixtureURL)
-        URLProtocolStub.stubResponses[URL(string: "https://api.minimax.io/v1/token_plan/remains")!] = (data, 200)
+        URLProtocolStub.stubResponses[URL(string: "https://www.minimax.io/v1/token_plan/remains")!] = (data, 200)
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [URLProtocolStub.self]
         let session = URLSession(configuration: config)

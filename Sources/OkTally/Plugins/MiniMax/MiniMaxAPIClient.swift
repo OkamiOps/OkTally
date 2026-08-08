@@ -7,8 +7,10 @@ enum MiniMaxRegion: String, Equatable {
 
     var baseURL: String {
         switch self {
-        case .global: return "https://api.minimax.io"
-        case .china: return "https://api.minimaxi.com"
+        // Token Plan usage is served from the www. host, not api. (MiniMax runs separate
+        // backends per domain) — confirmed against the official token-plan docs and tokscale.
+        case .global: return "https://www.minimax.io"
+        case .china: return "https://www.minimaxi.com"
         }
     }
 }
@@ -45,14 +47,14 @@ struct MiniMaxModelRemains: Codable, Equatable {
     }
 }
 
-// NOTE (schema pin, Step 1): the research report only ever reproduces the *per-model* field
-// list above — it explicitly states it never observed the literal raw JSON envelope (array vs
-// object-wrapped-array), see §8: "no source produced the literal raw JSON wrapper". The task
-// brief's own Interfaces section specifies this wrapper as `models: [MiniMaxModelRemains]`
-// (overriding the brief's separate illustrative Step-2 JSON, which used `model_remains` instead)
-// so `models` is used here as the interface contract, not as a research-confirmed field name.
+// Envelope confirmed from a real live response: the array is under `model_remains`, alongside
+// a `base_resp` status object.
 struct MiniMaxRemainsResponse: Codable, Equatable {
     let models: [MiniMaxModelRemains]
+
+    enum CodingKeys: String, CodingKey {
+        case models = "model_remains"
+    }
 }
 
 protocol MiniMaxRemainsFetching {

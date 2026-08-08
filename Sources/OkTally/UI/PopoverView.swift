@@ -18,8 +18,25 @@ struct PopoverView: View {
             Button("Atualizar agora") {
                 Task { await appModel.refreshNow() }
             }
-            Button("Preferências…") {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            // SettingsLink is the public, version-stable way to open the Settings scene
+            // (the private showSettingsWindow:/showPreferencesWindow: selector name has
+            // drifted across macOS releases and silently no-ops when it's wrong). Tapping
+            // it also activates the app, so the window comes to the front for an
+            // LSUIElement menu bar app. Fall back to the selector on macOS 13.
+            if #available(macOS 14.0, *) {
+                SettingsLink {
+                    Text("Preferências…")
+                }
+                .simultaneousGesture(TapGesture().onEnded {
+                    NSApp.activate(ignoringOtherApps: true)
+                })
+            } else {
+                Button("Preferências…") {
+                    NSApp.activate(ignoringOtherApps: true)
+                    DispatchQueue.main.async {
+                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    }
+                }
             }
             Button("Sair") {
                 NSApplication.shared.terminate(nil)

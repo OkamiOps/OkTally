@@ -1,5 +1,79 @@
 # MiniMax Token Plan (Coding Plan) — Usage/Balance API Research
 
+## Re-confirmação do endpoint (dono reportou URL errada)
+
+**Investigado em 2026-08-08. O dono está certo: o host que o OkTally usa hoje está errado.**
+
+### Veredito
+
+| | Path | Method | Header | Host usado hoje no código | Host correto (oficial) |
+|---|---|---|---|---|---|
+| Global | `/v1/token_plan/remains` | GET | `Authorization: Bearer <key>` | `api.minimax.io` ❌ | **`www.minimax.io`** ✅ |
+| China | `/v1/token_plan/remains` | GET | `Authorization: Bearer <key>` | `api.minimaxi.com` ❌ | **`www.minimaxi.com`** ✅ |
+
+O **path** (`/v1/token_plan/remains`), o **método** (GET) e o **header** (`Authorization: Bearer <API Key>`) que já estavam no código sempre estiveram certos. O único erro é o **subdomínio**: o código usa `api.` e o correto é `www.`.
+
+Código atual do OkTally (`Sources/OkTally/Plugins/MiniMax/MiniMaxAPIClient.swift:10-11`):
+```swift
+case .global: return "https://api.minimax.io"
+case .china: return "https://api.minimaxi.com"
+```
+Deveria ser `https://www.minimax.io` e `https://www.minimaxi.com`.
+
+### Evidência (duas fontes independentes, ambas de 2026, ambas verbatim)
+
+**1. Doc oficial** — `platform.minimax.io/docs/token-plan/faq` (seção "How to check Token Plan usage?" → "Method 2: Use the API Endpoint"), texto exato extraído do markdown fonte (`.md` da doc, não resumo de modelo):
+```bash
+curl --location 'https://www.minimax.io/v1/token_plan/remains' \
+--header 'Authorization: Bearer <API Key>' \
+--header 'Content-Type: application/json'
+```
+A versão em chinês da mesma doc (`platform.minimaxi.com/docs/token-plan/faq`) confirma o equivalente para a China:
+```bash
+curl --location 'https://www.minimaxi.com/v1/token_plan/remains' \
+--header 'Authorization: Bearer <API Key>' \
+--header 'Content-Type: application/json'
+```
+Ambas obtidas via `curl` direto no `.md` da doc (bypass do renderer JS), portanto texto literal da MiniMax, não paráfrase.
+
+**2. `junhoyeo/tokscale` (ferramenta comunitária ativa, código-fonte atual em 2026)** — arquivo `crates/tokscale-cli/src/commands/usage/minimax_tokenplan.rs`, lido diretamente do raw GitHub:
+```rust
+const TOKEN_PLAN_PATH: &str = "/v1/token_plan/remains";
+const SITES: &[Site] = &[
+    Site { label: "CN", base_url: "https://www.minimaxi.com", key_env: "MINIMAX_TOKEN_PLAN_CN_KEY" },
+    Site { label: "Global", base_url: "https://www.minimax.io", key_env: "MINIMAX_TOKEN_PLAN_GLOBAL_KEY" },
+];
+```
+com comentário no código: *"MiniMax runs separate token-plan backends for its domestic (minimaxi.com) and international (minimax.io) sites, each behind its own API key."* Headers usados: `Authorization: Bearer <key>`, `Content-Type: application/json`, `Accept: application/json`.
+
+O teste unitário embutido no arquivo (`SAMPLE` JSON) confirma que o **formato de resposta que o código do OkTally já espera está correto** — `model_remains[]` com `model_name`, `current_interval_remaining_percent`, `end_time`, `current_weekly_status`, `current_weekly_remaining_percent`, `weekly_end_time`, `current_interval_total_count`, `current_interval_usage_count`, `current_weekly_total_count`, `current_weekly_usage_count`, `remains_time`, `weekly_remains_time`, mais `base_resp.status_code` / `status_msg`. Não há mudança de schema necessária, só o host.
+
+### Testes ao vivo (sem chave válida, só para checar que os hosts existem e respondem)
+
+Todos os quatro hosts (`api.minimax.io`, `www.minimax.io`, `api.minimaxi.com`, `www.minimaxi.com`) devolveram o mesmo erro de auth (`status_code 1004`, "Please carry the API secret key...") para `GET /v1/token_plan/remains` com uma chave inválida — ou seja, o path resolve nos quatro, o que por si só **não prova qual host é o certo** (provavelmente o mesmo backend/CDN atrás dos quatro nomes, ou um gate de auth que roda antes da checagem de rota). O que decide a questão é a doc oficial + o código-fonte do tokscale, ambos apontando explicitamente para `www.`, nunca `api.`.
+
+Também testei o path alternativo mencionado na issue `MiniMax-AI/MiniMax-M2` #88 (`/v1/api/openplatform/coding_plan/remains` em `www.minimaxi.com`) — esse devolve uma mensagem de erro **diferente** ("cookie is missing, log in again"), confirmando que é de fato um endpoint interno do console que exige sessão de navegador, não chave de API. Não é o endpoint certo — o `/v1/token_plan/remains` é.
+
+### Nível de confiança
+
+**Alto.** Duas fontes independentes e atuais (doc oficial em markdown puro + código-fonte de ferramenta open-source ativa com teste unitário embutido) concordam exatamente no host, path, método e header. Nenhuma fonte aponta `api.` como correto.
+
+### Ação recomendada
+
+Em `Sources/OkTally/Plugins/MiniMax/MiniMaxAPIClient.swift`, trocar:
+```swift
+case .global: return "https://api.minimax.io"
+case .china: return "https://api.minimaxi.com"
+```
+por:
+```swift
+case .global: return "https://www.minimax.io"
+case .china: return "https://www.minimaxi.com"
+```
+Nenhuma outra mudança é necessária — path, método, header e schema de resposta já estão corretos.
+
+---
+
 Researched 2026-08-07 for OkTally's MiniMax usage plugin.
 
 ## TL;DR

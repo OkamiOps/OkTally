@@ -40,6 +40,7 @@ enum OAuthError: Error, LocalizedError {
 protocol OAuthManaging {
     func validAccessToken(providerId: String, config: OAuthConfig) async throws -> String
     func exchangeCode(_ code: String, verifier: String, config: OAuthConfig) async throws -> OAuthToken
+    func exchangeManualCode(code: String, state: String, verifier: String, config: OAuthConfig) async throws -> OAuthToken
     func refresh(providerId: String, config: OAuthConfig) async throws -> OAuthToken
 }
 
@@ -80,6 +81,25 @@ actor OAuthManager: OAuthManaging {
             "code_verifier": verifier
         ]
         let response = try await postForm(form, to: config.tokenURL, failure: OAuthError.tokenExchangeFailed)
+        let token = makeToken(from: response, previousRefresh: nil, previousExtra: extraClaims(from: response))
+        try store.save(token, providerId: config.providerId)
+        return token
+    }
+
+    /// Exchange for providers whose OAuth app uses a FIXED hosted redirect (not loopback)
+    /// and hands the user a `CODE#STATE` string to paste back — currently Claude. The
+    /// token endpoint expects a JSON body carrying `state`, unlike the form-encoded
+    /// loopback exchange above.
+    func exchangeManualCode(code: String, state: String, verifier: String, config: OAuthConfig) async throws -> OAuthToken {
+        let body = [
+            "grant_type": "authorization_code",
+            "code": code,
+            "state": state,
+            "client_id": config.clientId,
+            "redirect_uri": config.redirectURI,
+            "code_verifier": verifier
+        ]
+        let response = try await postJSON(body, to: config.tokenURL, failure: OAuthError.tokenExchangeFailed)
         let token = makeToken(from: response, previousRefresh: nil, previousExtra: extraClaims(from: response))
         try store.save(token, providerId: config.providerId)
         return token
@@ -148,6 +168,18 @@ actor OAuthManager: OAuthManaging {
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = form.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryValueAllowed) ?? $0.value)" }
             .joined(separator: "&").data(using: .utf8)
+        let (data, urlResponse) = try await session.data(for: request)
+        guard let http = urlResponse as? HTTPURLResponse, http.statusCode == 200 else {
+            throw failure((urlResponse as? HTTPURLResponse)?.statusCode)
+        }
+        return try JSONDecoder().decode(TokenEndpointResponse.self, from: data)
+    }
+
+    private func postJSON(_ body: [String: String], to url: URL, failure: (Int?) -> OAuthError) async throws -> TokenEndpointResponse {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, urlResponse) = try await session.data(for: request)
         guard let http = urlResponse as? HTTPURLResponse, http.statusCode == 200 else {
             throw failure((urlResponse as? HTTPURLResponse)?.statusCode)

@@ -7,6 +7,7 @@ struct OkTallyApp: App {
     private let preferencesStore = PreferencesStore()
     private let tokenStore: TokenStoring
     private let browserFlow: BrowserOAuthFlow
+    private let manualFlow: ManualCodeOAuthFlow
     private let deviceCodeFlow: DeviceCodeFlow
     private let claudeProvider: ClaudeUsageProvider
 
@@ -31,9 +32,11 @@ struct OkTallyApp: App {
         let tokenStore = KeychainTokenStore()
         let oauthManager = OAuthManager(store: tokenStore)
         let browserFlow = BrowserOAuthFlow(manager: oauthManager)
+        let manualFlow = ManualCodeOAuthFlow(manager: oauthManager)
         let deviceCodeFlow = DeviceCodeFlow(tokenStore: tokenStore)
         self.tokenStore = tokenStore
         self.browserFlow = browserFlow
+        self.manualFlow = manualFlow
         self.deviceCodeFlow = deviceCodeFlow
 
         let claudeProvider = ClaudeUsageProvider(oauthManager: oauthManager, tokenStore: tokenStore)
@@ -76,6 +79,7 @@ struct OkTallyApp: App {
                 preferencesStore: preferencesStore,
                 tokenStore: tokenStore,
                 browserFlow: browserFlow,
+                manualFlow: manualFlow,
                 deviceCodeFlow: deviceCodeFlow,
                 onImportClaudeLegacy: { claudeProvider.importLegacyCredentialsIfAvailable() }
             )

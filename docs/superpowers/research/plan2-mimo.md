@@ -1,3 +1,247 @@
+## Endpoint do console via análise do bundle JS (v4, 2026-08-08)
+
+**Resultado: o path literal foi encontrado lendo o bundle JS público do
+console (`platform.xiaomimimo.com`) e confirmado ao vivo com curl (respostas
+`401`/`200` reais do servidor, não suposição). O candidato da v3
+(`/api/v1/token-plan/usage`) estava ERRADO no path — o real é
+`/api/v1/tokenPlan/detail` (camelCase, sem hífen, sub-recurso `detail` não
+`usage`). A hipótese "app SolidStart" da v3 também estava errada: o console é
+uma SPA React buildada com **rspack** (`server: MiFE/3.4.x`), servida como
+bundle estático de `platform.xiaomimimo.com/static/*.chunk.js`.**
+
+### Como cheguei lá
+
+1. `curl https://platform.xiaomimimo.com/` → HTML raiz lista
+   `<link rel="preload" href="/static/main.b8e846eca32da09f.chunk.js">`. O
+   runtime rspack inline no HTML contém o mapa completo `chunkId → hash` para
+   todos os ~30 chunks lazy-loaded do app (`u.u = function(e){...}`).
+2. Baixei todos os ~30 chunks (`/static/<id>.<hash>.chunk.js`, ~5.3 MB total)
+   e fiz `grep` por strings literais de URL (`"/tokenPlan..."`, `"/usage..."`,
+   `"token-plan..."`).
+3. O chunk `846.<hash>.chunk.js` (sidebar/console shell + tela
+   `/console/plan-manage`) contém, em texto puro no bundle minificado:
+   - `url:"/tokenPlan/detail",method:"GET",skipAuthRedirect:!0` (chunk
+     `364.<hash>.chunk.js`, usado na tela de planos/pricing)
+   - `d.d1.fetchDetail()` / `{tokenPlanDetail:e,isLoading:t}=d.d1` — o store
+     que popula a tela `/console/plan-manage` (componente `aP`/`aR` no chunk
+     846) chama esse mesmo `fetchDetail`.
+   - `url:"/tokenPlan/list",method:"GET"` e
+     `url:"/openTokenPlan/list",method:"GET"` (catálogo de planos).
+   - `url:"/usage/token-plan/list",method:"POST"` e
+     `url:"/usage/token-plan/export",method:"POST"` — tabela de uso detalhado
+     por dia/mês (não é a barra, é a lista/exportação abaixo dela).
+4. **Confirmação ao vivo com curl** (sem login, então tudo autenticado bate
+   `401`, mas o path é reconhecido pelo servidor — não `404`):
+   ```
+   GET https://platform.xiaomimimo.com/api/v1/tokenPlan/detail
+   → HTTP/2 401
+     {"code":401,"loginUrl":"https://account.xiaomi.com/pass/serviceLogin?...
+       followup=http://platform.xiaomimimo.com/api/v1/tokenPlan/detail&sid=api-platform..."}
+
+   POST https://platform.xiaomimimo.com/api/v1/usage/token-plan/list
+   → HTTP/2 401  (mesmo formato, followup=.../api/v1/usage/token-plan/list)
+
+   GET https://platform.xiaomimimo.com/api/v1/tokenPlan/list
+   → HTTP/2 401  (mesmo formato)
+
+   GET https://platform.xiaomimimo.com/api/v1/openTokenPlan/list
+   → HTTP/2 200  { "code":0, "data":[ {planCode:"lite", planName:"Lite", ...} ] }
+     (esta é pública — catálogo de planos, sem exigir sessão)
+   ```
+   O `www-authenticate: CustomBasic realm="default"` e o corpo `{"code":401,
+   "loginUrl":"https://account.xiaomi.com/pass/serviceLogin?...sid=api-platform..."}`
+   confirmam exatamente o modelo de auth: **cookie de sessão obtido via SSO
+   `account.xiaomi.com`**, igual ao que o plano do OkTally já previa (WKWebView
+   de login + captura de cookie). Sem header `Authorization: Bearer tp-...` /
+   `x-api-key`.
+
+### Path, método, host — literal, confirmado
+
+- **Host**: `platform.xiaomimimo.com` (não é subdomínio separado tipo
+  `token-plan-*.xiaomimimo.com` — esses existem mas são para outra coisa, ver
+  abaixo).
+- **Prefixo real da API**: `/api/v1/` (o bundle usa paths relativos como
+  `/tokenPlan/detail`; o prefixo `/api/v1` foi descoberto por tentativa direta
+  — `/tokenPlan/detail` sem prefixo devolve a SPA HTML, com `/api/v1/` na
+  frente devolve o JSON 401 real).
+- **Endpoint da barra "Current plan usage" / "Plan usage"**:
+  `GET https://platform.xiaomimimo.com/api/v1/tokenPlan/detail`
+  (cookie de sessão obrigatório).
+- **Endpoint da lista/tabela de uso detalhado** (não é a barra, é a seção
+  abaixo dela no console): `POST
+  https://platform.xiaomimimo.com/api/v1/usage/token-plan/list` (body JSON
+  com filtros, ex. `{month, ...}` — não capturado literalmente ainda).
+- **Endpoint do catálogo de planos** (público, sem sessão):
+  `GET https://platform.xiaomimimo.com/api/v1/openTokenPlan/list`.
+- Existe também `GET /api/v1/tokenPlan/list` (autenticado) — planos do
+  usuário logado, usado junto com `/tokenPlan/detail` pra achar o plano ativo.
+
+### Nomes de campo da resposta (extraídos do JS, não observados ao vivo — a
+resposta autenticada não foi capturada, só a estrutura de acesso no código)
+
+O componente que renderiza a barra (`aN`, chunk 846) itera
+`tokenPlanDetail.usage.items` (ou seja, a resposta de `GET
+/api/v1/tokenPlan/detail` tem um campo `usage: { items: [...] }`). Cada item:
+```js
+{
+  name: string,      // ex. "compensation_total_token" (comparado literalmente no código)
+  percent: number,   // 0-100, passado para a progress bar (`aria-valuenow`)
+  used: number,       // Number.isFinite(e.used) checado antes de formatar
+  limit: number        // Number.isFinite(e.limit) checado antes de formatar
+}
+```
+Strings i18n confirmando que é exatamente essa tela/barra:
+`console.planManage.part1.currentPlanUsage` (o título "Current plan usage"),
+`console.planManage.part1.usageSectionTitle`, `console.planManage.part1.usageProgressUsed`,
+`console.planManage.part1.usageUsedLimitTokens` (formata `{used}` / `{limit}`).
+Outros campos do objeto raiz `tokenPlanDetail` vistos destruturados no código:
+`planCode`, `planName`, `expired`, `currentPeriodEnd`, `hasAutoRenewSubscribed`,
+`enableAutoRenew`, `clawEnabled`.
+
+### Sobre os hosts `token-plan-{cn,sgp,ams}.xiaomimimo.com`
+
+Achados no bundle (chunk 690) como um mapa de região:
+```js
+{CN:"https://token-plan-cn.xiaomimimo.com/v1",
+ SGP:"https://token-plan-sgp.xiaomimimo.com/v1",
+ EU:"https://token-plan-ams.xiaomimimo.com/v1"}
+```
+Não confirmei para que serve esse mapa especificamente (pagamento/checkout
+regional, provavelmente, dado o contexto do trecho — perto de permissões tipo
+`generateApiKey`/`accessAccount`). **Não é** o host usado por
+`/tokenPlan/detail` — esse é sempre relativo a `platform.xiaomimimo.com`
+mesmo (confirmado pelo `loginUrl.followup` retornado, que sempre aponta de
+volta pra `platform.xiaomimimo.com/api/v1/...`).
+
+### Nível de confiança
+
+- **Path/método/host do endpoint de detail (`GET
+  /api/v1/tokenPlan/detail`)**: alto. Confirmado tanto no código-fonte do
+  bundle quanto por resposta HTTP real do servidor (401 com `loginUrl`
+  correto, não 404).
+- **Que esse endpoint específico é o que popula a barra "Current plan
+  usage"**: alto — rastreado diretamente do componente (`d.d1.fetchDetail()`
+  → `tokenPlanDetail` → `usage.items` → barra de progresso) até o
+  `url:"/tokenPlan/detail"` no fetcher.
+- **Nomes de campo exatos da resposta JSON**: médio — vêm de como o código
+  acessa o objeto (`e.used`, `e.limit`, `e.percent`, `e.name`,
+  `usage.items`), não de uma resposta JSON capturada ao vivo (não tenho
+  sessão logada). Structuralmente devem bater, mas não é 100% garantido sem
+  ver o payload real uma vez.
+- **Refuta o candidato da v3** (`/api/v1/token-plan/usage`, hipótese
+  SolidStart/`_server`): sim, refutado — o app é rspack/React, não
+  SolidStart, e o path real usa `tokenPlan/detail` (camelCase, `detail` não
+  `usage`).
+
+### Passo restante
+
+Para fechar 100%: logar no console com uma conta real, abrir DevTools →
+Network, visitar `/#/console/plan-manage` e confirmar o payload JSON exato de
+`GET /api/v1/tokenPlan/detail` (nomes de campo, e se `usage.items[].name`
+inclui algo como `"total_token"` genérico além de
+`"compensation_total_token"`). Isso é só para validar os nomes de campo —
+path/método/host/modelo-de-auth já estão confirmados o suficiente para o
+OkTally implementar a chamada (WKWebView SSO login → capturar cookie de
+sessão → `GET https://platform.xiaomimimo.com/api/v1/tokenPlan/detail` com
+esse cookie → parsear `usage.items`).
+
+---
+
+## Re-investigação: endpoint do console de Plan usage (v3, 2026-08-08)
+
+**Pergunta direta: existe uma URL HTTP que a barra "Plan usage" no console
+(`platform.xiaomimimo.com/#/console/plan-manage`) chama, e ela aceita a chave
+`tp-...`?**
+
+**Resposta curta: não há endpoint que aceite a chave `tp-`. O endpoint que
+alimenta a barra existe, mas é gated por cookie de sessão web (SSO
+Xiaomi), não por API key. Isso foi confirmado por três ângulos independentes
+nesta passada, todos concordando com a v2.**
+
+### Candidato mais provável (nome do endpoint, não verificado ao vivo)
+
+- **Padrão de URL**: `https://platform.xiaomimimo.com/api/v1/token-plan/usage`
+  (v1 já tinha sondado isso ao vivo e recebido `401` com um `loginUrl` de SSO
+  — não uma resposta 404, ou seja, a rota existe e é reconhecida pelo
+  servidor, só que autenticação diferente é exigida).
+- **Método**: provavelmente `GET`.
+- **Auth exigida**: cookie httpOnly assinado (`ZEN_SESSION_SECRET`), obtido
+  via login OAuth/OIDC completo do site (`account.xiaomi.com` SSO,
+  `clientID: "app"`) — **não** um header `Authorization: Bearer tp-...` nem
+  `x-api-key: tp-...`. Confirmado lendo o código-fonte real
+  (`packages/console/app/src/routes/workspace/[id]/usage/index.tsx` →
+  `usage-section.tsx` → server function `getUsageInfo` → `withActor(() =>
+  Billing.usages(...), workspaceID)` → `getActor` lê `useSession` do
+  SolidStart, populada só depois do fluxo de login do próprio site).
+- Como é uma SolidStart app renderizada por RPC de "server functions" (não
+  uma API REST documentada publicamente), a chamada real feita pelo
+  navegador provavelmente é para um caminho gerado automaticamente pelo
+  framework (algo como `/_server?...` ou uma rota `/api/...` interna
+  específica do SolidStart), não necessariamente o path humano
+  `/api/v1/token-plan/usage` — o v1 pode ter sondado um alias/rewrite dessa
+  rota que devolve 401 corretamente, mas o path exato batido pelo browser
+  ainda não foi capturado literalmente de um Network tab real.
+
+### O que esta passada verificou de novo
+
+1. **Doc oficial da assinatura** (`mimo.mi.com/docs/en-US/tokenplan/Token
+   Plan/subscription`) — fetchada agora. Ela **não documenta nenhum endpoint
+   de API** para uso/quota. A única instrução é textual: "You can check the
+   quota and usage of your current plan in [Token
+   Plan](https://platform.xiaomimimo.com/#/console/plan-manage)" — ou seja,
+   a própria documentação oficial aponta para o console web, não para uma
+   API.
+2. **`platform.xiaomimimo.com/docs/llms.txt`** redireciona (302) para
+   `mimo.mi.com/docs/llms.txt`. Esse índice não lista nenhuma rota de
+   usage/quota/billing/credits — só links para quick-start, pricing,
+   first-api-call, model summary, FAQ, e os logins do MiMo Studio/Claw
+   (`aistudio.xiaomimimo.com/open-apis/v1/genLoginUrl`, que também é um
+   fluxo de login redirecionado, não uma API de dados).
+3. **Busca web dirigida** por `platform.xiaomimimo.com api rate-limit usage
+   endpoint` e `"token-plan" xiaomimimo "usage" api endpoint github` não
+   retornou nenhum endpoint de consulta de saldo/uso — só a doc de
+   rate-limit (RPM/TPM, que é sobre limites de taxa da API de inferência,
+   não sobre o saldo de créditos do plano) e as mesmas issues de terceiros
+   (cc-switch, 9router) já catalogadas na v2, todas pedindo essa
+   funcionalidade sem resposta.
+
+### Conclusão sobre `tp-` vs cookie
+
+**A chave `tp-` NÃO é aceita no endpoint que alimenta a barra "Plan usage".**
+Ela só é aceita no gateway de inferência (`/v1/chat/completions`,
+`/anthropic/v1/messages`), e mesmo lá o servidor explicitamente remove
+qualquer header de rate-limit/quota da resposta (`keepHeaders =
+["content-type", "cache-control"]`, confirmado em código na v2). O endpoint
+de uso/plano é uma "server function" da aplicação web, autenticada
+exclusivamente por sessão de navegador logado via SSO Xiaomi — nunca por
+API key.
+
+### Nível de confiança
+
+- **Alto** (confirmado por doc oficial + código-fonte + ausência em toda
+  documentação pública) que não existe hoje um endpoint aceitando `tp-` para
+  ler uso/plano.
+- **Médio** quanto ao path HTTP *exato* batido pelo navegador do dono
+  (`/api/v1/token-plan/usage` é a melhor hipótese, consistente com o 401 já
+  observado na v1, mas não foi capturado literalmente de um DevTools Network
+  tab).
+
+### Único passo restante para fechar 100%
+
+Pedir ao dono para abrir o console logado
+(`https://platform.xiaomimimo.com/#/console/plan-manage`), abrir
+DevTools → aba Network, dar refresh na página, filtrar por "usage" ou
+"plan-manage", e reportar: (a) o path completo da requisição que retorna os
+dados da barra de progresso, (b) o método, (c) se o header de auth é
+`Cookie: ...` (confirmando sessão) ou algo diferente. Isso fecha a única
+lacuna restante (o path literal), mas não deve mudar a conclusão principal:
+é cookie-gated, não aceita a chave `tp-`, e portanto não é viável para um
+app como o OkTally sem pedir ao usuário para extrair um cookie de sessão —
+o que está fora do padrão de confiança do resto do OkTally e não é
+recomendado.
+
+---
+
 # Xiaomi MiMo Token Plan — Usage/Quota API Research (v2)
 
 Research date: 2026-08-07 (supersedes the 2026-08-07 v1 pass in this same file)

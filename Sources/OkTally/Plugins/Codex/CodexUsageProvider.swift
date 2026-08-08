@@ -27,20 +27,46 @@ final class CodexUsageProvider: UsageProvider {
         let usage = try await apiClient.fetchUsage(accessToken: accessToken, accountId: accountId)
 
         var quotas: [QuotaWindow] = []
-        if let primary = usage.primaryWindow {
-            quotas.append(QuotaWindow(label: "5h", shape: .rollingWindow(
-                used: primary.usedPercent, limit: 100,
-                windowStart: (primary.resetAt ?? Date()).addingTimeInterval(-5 * 3600),
-                resetAt: primary.resetAt ?? Date()
-            )))
-        }
-        if let secondary = usage.secondaryWindow {
-            quotas.append(QuotaWindow(label: "weekly", shape: .rollingWindow(
-                used: secondary.usedPercent, limit: 100,
-                windowStart: (secondary.resetAt ?? Date()).addingTimeInterval(-7 * 24 * 3600),
-                resetAt: secondary.resetAt ?? Date()
-            )))
+        // General plan limits (each window labelled by its real duration, not assumed).
+        appendWindow(usage.rateLimit?.primaryWindow, defaultLabel: nil, into: &quotas)
+        appendWindow(usage.rateLimit?.secondaryWindow, defaultLabel: nil, into: &quotas)
+        // Per-feature limits like "GPT-5.3-Codex-Spark" — labelled by their name.
+        for extra in usage.additionalRateLimits ?? [] {
+            appendWindow(extra.rateLimit?.primaryWindow, defaultLabel: extra.limitName, into: &quotas)
+            appendWindow(extra.rateLimit?.secondaryWindow, defaultLabel: extra.limitName, into: &quotas)
         }
         return ProviderSnapshot(providerId: id, fetchedAt: Date(), quotas: quotas, usageDetail: nil)
+    }
+
+    /// Appends one rate-limit window as a rolling-window quota. The label is the feature
+    /// name when given (e.g. "GPT-5.3-Codex-Spark"), otherwise derived from the window's
+    /// real duration (`limit_window_seconds`) so a weekly window is never mislabelled "5h".
+    private func appendWindow(_ window: CodexRateLimitWindow?, defaultLabel: String?, into quotas: inout [QuotaWindow]) {
+        guard let window else { return }
+        let seconds = window.limitWindowSeconds
+        let durationLabel = Self.label(forWindowSeconds: seconds)
+        let label: String
+        if let name = defaultLabel {
+            label = durationLabel.map { "\(name) (\($0))" } ?? name
+        } else {
+            label = durationLabel ?? "uso"
+        }
+        let windowSpan = TimeInterval(seconds ?? 0)
+        let resetAt = window.resetAt ?? Date()
+        quotas.append(QuotaWindow(label: label, shape: .rollingWindow(
+            used: window.usedPercent, limit: 100,
+            windowStart: resetAt.addingTimeInterval(-windowSpan),
+            resetAt: resetAt
+        )))
+    }
+
+    private static func label(forWindowSeconds seconds: Int?) -> String? {
+        switch seconds {
+        case 18000: return "5h"
+        case 604800: return "semanal"
+        case let s? where s % 86400 == 0: return "\(s / 86400)d"
+        case let s? where s % 3600 == 0: return "\(s / 3600)h"
+        default: return nil
+        }
     }
 }
