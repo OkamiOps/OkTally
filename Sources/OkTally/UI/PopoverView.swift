@@ -4,6 +4,72 @@ import SwiftUI
 struct PopoverView: View {
     @ObservedObject var appModel: AppModel
 
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            ScrollView {
+                PopoverContentView(appModel: appModel)
+            }
+            // Fixed height, not maxHeight: inside a MenuBarExtra window the ScrollView
+            // gets no height proposal and collapses to zero with only a max constraint.
+            .frame(height: 480)
+            Divider()
+            footer
+        }
+        .frame(width: 360)
+    }
+
+    private var header: some View {
+        HStack {
+            Text("OkTally").font(.system(size: 14, weight: .bold))
+            Spacer()
+            Text(pinnedHint).font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    private var pinnedHint: String {
+        let count = appModel.menuBarPins.count
+        switch count {
+        case 0: return "Barra: automático"
+        case 1: return "Barra: 1 fixado"
+        default: return "Barra: \(count) fixados"
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 14) {
+            Button("Atualizar") { Task { await appModel.refreshNow() } }
+            Spacer()
+            if #available(macOS 14.0, *) {
+                SettingsLink { Text("Preferências") }
+                    .simultaneousGesture(TapGesture().onEnded { NSApp.activate(ignoringOtherApps: true) })
+            } else {
+                Button("Preferências") {
+                    NSApp.activate(ignoringOtherApps: true)
+                    DispatchQueue.main.async { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) }
+                }
+            }
+            Button("Sair") { NSApplication.shared.terminate(nil) }
+        }
+        .buttonStyle(.plain)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+    }
+}
+
+// MARK: - Content
+
+/// The scrollable body of the popover, separate from `PopoverView` so it can also be
+/// rendered directly (e.g. offscreen for README assets — ScrollView contents don't
+/// survive `ImageRenderer`).
+struct PopoverContentView: View {
+    @ObservedObject var appModel: AppModel
+
     private var providers: [UsageProvider] { appModel.orderedProviders }
 
     /// Providers that produced at least one quota window → gauge cards.
@@ -54,85 +120,32 @@ struct PopoverView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            ScrollView {
-                VStack(spacing: 10) {
-                    if let hero {
-                        HeroCard(
-                            provider: hero.provider,
-                            window: hero.window,
-                            remaining: hero.remaining,
-                            isPinned: appModel.isPinned(providerId: hero.provider.id, windowLabel: hero.window.label),
-                            onPin: { appModel.togglePin(providerId: hero.provider.id, windowLabel: hero.window.label) }
-                        )
-                    }
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
-                              spacing: 10) {
-                        ForEach(withData, id: \.provider.id) { entry in
-                            ProviderGaugeCard(
-                                provider: entry.provider,
-                                snapshot: entry.snapshot,
-                                isPinned: { appModel.isPinned(providerId: entry.provider.id, windowLabel: $0) },
-                                onPin: { appModel.togglePin(providerId: entry.provider.id, windowLabel: $0) }
-                            )
-                        }
-                    }
-                    if !problems.isEmpty {
-                        ProblemsSection(problems: problems)
-                    }
-                }
-                .padding(12)
+        VStack(spacing: 10) {
+            if let hero {
+                HeroCard(
+                    provider: hero.provider,
+                    window: hero.window,
+                    remaining: hero.remaining,
+                    isPinned: appModel.isPinned(providerId: hero.provider.id, windowLabel: hero.window.label),
+                    onPin: { appModel.togglePin(providerId: hero.provider.id, windowLabel: hero.window.label) }
+                )
             }
-            // Fixed height, not maxHeight: inside a MenuBarExtra window the ScrollView
-            // gets no height proposal and collapses to zero with only a max constraint.
-            .frame(height: 480)
-            Divider()
-            footer
-        }
-        .frame(width: 360)
-    }
-
-    private var header: some View {
-        HStack {
-            Text("OkTally").font(.system(size: 14, weight: .bold))
-            Spacer()
-            Text(pinnedHint).font(.caption).foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-    }
-
-    private var pinnedHint: String {
-        let count = appModel.menuBarPins.count
-        switch count {
-        case 0: return "Barra: automático"
-        case 1: return "Barra: 1 fixado"
-        default: return "Barra: \(count) fixados"
-        }
-    }
-
-    private var footer: some View {
-        HStack(spacing: 14) {
-            Button("Atualizar") { Task { await appModel.refreshNow() } }
-            Spacer()
-            if #available(macOS 14.0, *) {
-                SettingsLink { Text("Preferências") }
-                    .simultaneousGesture(TapGesture().onEnded { NSApp.activate(ignoringOtherApps: true) })
-            } else {
-                Button("Preferências") {
-                    NSApp.activate(ignoringOtherApps: true)
-                    DispatchQueue.main.async { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) }
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+                      spacing: 10) {
+                ForEach(withData, id: \.provider.id) { entry in
+                    ProviderGaugeCard(
+                        provider: entry.provider,
+                        snapshot: entry.snapshot,
+                        isPinned: { appModel.isPinned(providerId: entry.provider.id, windowLabel: $0) },
+                        onPin: { appModel.togglePin(providerId: entry.provider.id, windowLabel: $0) }
+                    )
                 }
             }
-            Button("Sair") { NSApplication.shared.terminate(nil) }
+            if !problems.isEmpty {
+                ProblemsSection(problems: problems)
+            }
         }
-        .buttonStyle(.plain)
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(12)
     }
 }
 
