@@ -18,7 +18,7 @@ struct PopoverView: View {
                             snapshot: appModel.snapshotsByProvider[provider.id],
                             errorMessage: appModel.errorsByProvider[provider.id],
                             errorKind: appModel.errorKindByProvider[provider.id],
-                            pin: appModel.menuBarPin,
+                            pin: appModel.menuBarPins.first,
                             onPinWindow: { label in appModel.togglePin(providerId: provider.id, windowLabel: label) }
                         )
                         if index < providers.count - 1 {
@@ -46,7 +46,7 @@ struct PopoverView: View {
     }
 
     private var pinnedHint: String {
-        if let pin = appModel.menuBarPin, let p = providers.first(where: { $0.id == pin.providerId }) {
+        if let pin = appModel.menuBarPins.first, let p = providers.first(where: { $0.id == pin.providerId }) {
             return "Barra: \(p.displayName) · \(pin.windowLabel)"
         }
         return "Barra: automático"
