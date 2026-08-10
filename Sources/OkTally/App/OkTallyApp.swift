@@ -84,6 +84,7 @@ struct OkTallyApp: App {
                 manualFlow: manualFlow,
                 deviceCodeFlow: deviceCodeFlow,
                 mimoSessionStore: mimoSessionStore,
+                appModel: appModel,
                 onImportClaudeLegacy: { claudeProvider.importLegacyCredentialsIfAvailable() }
             )
         }

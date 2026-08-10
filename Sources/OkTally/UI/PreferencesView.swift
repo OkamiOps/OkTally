@@ -2,6 +2,11 @@
 import SwiftUI
 import AppKit
 
+enum PreferencesPane: Hashable {
+    case general
+    case provider(String)
+}
+
 struct PreferencesView: View {
     let preferencesStore: PreferencesStore
     let tokenStore: TokenStoring
@@ -9,13 +14,15 @@ struct PreferencesView: View {
     let manualFlow: ManualCodeOAuthFlow
     let deviceCodeFlow: DeviceCodeFlow
     let mimoSessionStore: MiMoSessionStoring
+    @ObservedObject var appModel: AppModel
     let onImportClaudeLegacy: () -> Bool
+
+    @State private var pane: PreferencesPane = .general
 
     @State private var openRouterAPIKey: String = ""
     @State private var minimaxAPIKey: String = ""
     @State private var minimaxRegionIsChina = false
     @State private var openCodeAPIKey: String = ""
-    @State private var mimoAPIKey: String = ""
     @State private var mimoAllowance: String = ""
     @State private var mimoUsed: String = ""
     @State private var claudeLoggedIn = false
@@ -27,58 +34,133 @@ struct PreferencesView: View {
     @State private var mimoLoggedIn = false
     @State private var statusMessage: String = ""
 
+    /// Sidebar order — mirrors the old card order, not registration order.
+    private let providerIds = ["claude", "codex", "supergrok", "cursor", "openrouter", "minimax", "opencode", "mimo"]
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Contas e chaves")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
-
-                claudeCard
-                codexCard
-                superGrokCard
-                cursorCard
-                keyCard("OpenRouter", initial: "O", text: $openRouterAPIKey) {
-                    saveSecret("OpenRouter") { try preferencesStore.setOpenRouterAPIKey(openRouterAPIKey) }
-                }
-                minimaxCard
-                keyCard("OpenCode", initial: "◇", text: $openCodeAPIKey) {
-                    saveSecret("OpenCode") { try preferencesStore.setOpenCodeAPIKey(openCodeAPIKey) }
-                }
-                mimoCard
-
-                if !statusMessage.isEmpty {
-                    Text(statusMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 2)
+        NavigationSplitView {
+            List(selection: $pane) {
+                Label("Geral", systemImage: "slider.horizontal.3")
+                    .tag(PreferencesPane.general)
+                Section("Contas") {
+                    ForEach(providerIds, id: \.self) { id in
+                        sidebarRow(id).tag(PreferencesPane.provider(id))
+                    }
                 }
             }
-            .padding(20)
+            .navigationSplitViewColumnWidth(min: 170, ideal: 180, max: 200)
+        } detail: {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    detailContent
+                    if !statusMessage.isEmpty {
+                        Text(statusMessage).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
-        .frame(width: 460, height: 620)
+        .frame(width: 640, height: 460)
         .onAppear(perform: load)
     }
 
-    // MARK: - Cards
+    // MARK: - Sidebar
 
-    private var claudeCard: some View {
-        card("Claude", initial: "C", active: claudeLoggedIn) {
+    private func sidebarRow(_ id: String) -> some View {
+        let identity = ProviderPalette.color(for: id)
+        return HStack(spacing: 8) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)).frame(width: 20, height: 20)
+                Text(ProviderPalette.glyph(forId: id))
+                    .font(.system(size: 10, weight: .heavy)).foregroundStyle(identity)
+            }
+            Text(providerName(id)).font(.system(size: 12))
+            Spacer()
+            Circle()
+                .fill(isConfigured(id) ? Color.green : Color.secondary.opacity(0.35))
+                .frame(width: 7, height: 7)
+        }
+    }
+
+    private func providerName(_ id: String) -> String {
+        appModel.orderedProviders.first(where: { $0.id == id })?.displayName ?? id
+    }
+
+    private func isConfigured(_ id: String) -> Bool {
+        switch id {
+        case "claude": return claudeLoggedIn
+        case "codex": return codexLoggedIn
+        case "supergrok": return superGrokLoggedIn
+        case "cursor": return true // reads the Cursor app session automatically
+        case "openrouter": return !openRouterAPIKey.isEmpty
+        case "minimax": return !minimaxAPIKey.isEmpty
+        case "opencode": return !openCodeAPIKey.isEmpty
+        case "mimo": return mimoLoggedIn || !mimoAllowance.isEmpty
+        default: return false
+        }
+    }
+
+    // MARK: - Detail routing
+
+    @ViewBuilder private var detailContent: some View {
+        switch pane {
+        case .general:
+            GeneralPane(appModel: appModel, providerName: providerName)
+        case .provider("claude"): claudePane
+        case .provider("codex"): codexPane
+        case .provider("supergrok"): superGrokPane
+        case .provider("cursor"): cursorPane
+        case .provider("openrouter"):
+            keyPane("openrouter", text: $openRouterAPIKey, status: openRouterAPIKey.isEmpty ? "Sem chave" : "Chave salva") {
+                saveSecret("OpenRouter") { try preferencesStore.setOpenRouterAPIKey(openRouterAPIKey) }
+            }
+        case .provider("minimax"): minimaxPane
+        case .provider("opencode"):
+            keyPane("opencode", text: $openCodeAPIKey, status: openCodeAPIKey.isEmpty ? "Sem chave" : "Chave salva") {
+                saveSecret("OpenCode") { try preferencesStore.setOpenCodeAPIKey(openCodeAPIKey) }
+            }
+        case .provider("mimo"): mimoPane
+        case .provider: EmptyView()
+        }
+    }
+
+    private func paneHeader(_ id: String, status: String, active: Bool) -> some View {
+        HStack(spacing: 12) {
+            let identity = ProviderPalette.color(for: id)
+            ZStack {
+                RoundedRectangle(cornerRadius: 9).fill(identity.opacity(0.16)).frame(width: 40, height: 40)
+                Text(ProviderPalette.glyph(forId: id))
+                    .font(.system(size: 19, weight: .heavy)).foregroundStyle(identity)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(providerName(id)).font(.system(size: 16, weight: .bold))
+                Text(status).font(.caption).foregroundStyle(active ? .green : .secondary)
+            }
+            Spacer()
+        }
+        .padding(.bottom, 4)
+    }
+
+    // MARK: - Provider panes
+
+    private var claudePane: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            paneHeader("claude", status: claudeLoggedIn ? "Conectado" : "Não conectado", active: claudeLoggedIn)
             HStack {
-                statusText(claudeLoggedIn ? "Conectado" : "Não conectado", active: claudeLoggedIn)
-                Spacer()
                 if claudeLoggedIn {
                     Button("Sair") { logout(providerId: "claude", flag: $claudeLoggedIn); claudeSession = nil }
-                        .buttonStyle(.bordered).controlSize(.small)
+                        .buttonStyle(.bordered)
                 } else {
                     Button("Entrar…") { beginClaudeLogin() }
-                        .buttonStyle(.borderedProminent).controlSize(.small)
+                        .buttonStyle(.borderedProminent)
                     Button("Importar do Claude Code") {
                         statusMessage = onImportClaudeLegacy() ? "Login importado." : "Nenhum login do Claude Code encontrado."
                         claudeLoggedIn = tokenStore.load(providerId: "claude") != nil
                     }
-                    .buttonStyle(.bordered).controlSize(.small)
+                    .buttonStyle(.bordered)
                 }
+                Spacer()
             }
             if claudeSession != nil {
                 VStack(alignment: .leading, spacing: 6) {
@@ -87,45 +169,42 @@ struct PreferencesView: View {
                     TextField("CÓDIGO#STATE", text: $claudePastedCode).textFieldStyle(.roundedBorder)
                     HStack {
                         Button("Concluir") { completeClaudeLogin() }
-                            .buttonStyle(.borderedProminent).controlSize(.small)
+                            .buttonStyle(.borderedProminent)
                             .disabled(claudePastedCode.trimmingCharacters(in: .whitespaces).isEmpty)
                         Button("Cancelar") { claudeSession = nil; claudePastedCode = ""; statusMessage = "" }
-                            .buttonStyle(.bordered).controlSize(.small)
+                            .buttonStyle(.bordered)
                     }
                 }
-                .padding(.top, 4)
             }
         }
     }
 
-    private var codexCard: some View {
-        card("Codex", initial: "X", active: codexLoggedIn) {
+    private var codexPane: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            paneHeader("codex", status: codexLoggedIn ? "Conectado" : "Não conectado", active: codexLoggedIn)
             HStack {
-                statusText(codexLoggedIn ? "Conectado" : "Não conectado", active: codexLoggedIn)
-                Spacer()
                 if codexLoggedIn {
-                    Button("Sair") { logout(providerId: "codex", flag: $codexLoggedIn) }
-                        .buttonStyle(.bordered).controlSize(.small)
+                    Button("Sair") { logout(providerId: "codex", flag: $codexLoggedIn) }.buttonStyle(.bordered)
                 } else {
                     Button("Entrar…") { login(config: CodexOAuth.config, flag: $codexLoggedIn) }
-                        .buttonStyle(.borderedProminent).controlSize(.small)
+                        .buttonStyle(.borderedProminent)
                 }
+                Spacer()
             }
         }
     }
 
-    private var superGrokCard: some View {
-        card("SuperGrok", initial: "G", active: superGrokLoggedIn) {
+    private var superGrokPane: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            paneHeader("supergrok", status: superGrokLoggedIn ? "Conectado" : "Não conectado", active: superGrokLoggedIn)
             HStack {
-                statusText(superGrokLoggedIn ? "Conectado" : "Não conectado", active: superGrokLoggedIn)
-                Spacer()
                 if superGrokLoggedIn {
                     Button("Sair") { logout(providerId: SuperGrokOAuth.providerId, flag: $superGrokLoggedIn) }
-                        .buttonStyle(.bordered).controlSize(.small)
+                        .buttonStyle(.bordered)
                 } else {
-                    Button("Entrar…") { loginSuperGrok() }
-                        .buttonStyle(.borderedProminent).controlSize(.small)
+                    Button("Entrar…") { loginSuperGrok() }.buttonStyle(.borderedProminent)
                 }
+                Spacer()
             }
             if let info = superGrokDeviceCode {
                 VStack(alignment: .leading, spacing: 4) {
@@ -133,41 +212,55 @@ struct PreferencesView: View {
                         .font(.caption).foregroundStyle(.secondary)
                     Text(info.userCode).font(.title3.monospaced()).textSelection(.enabled)
                 }
-                .padding(.top, 4)
             }
         }
     }
 
-    private var cursorCard: some View {
-        card("Cursor", initial: "▹", active: true) {
-            statusText("Lê a sessão do app Cursor automaticamente", active: true)
+    private var cursorPane: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            paneHeader("cursor", status: "Lê a sessão do app Cursor automaticamente", active: true)
+            Text("Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho.")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
-    private var minimaxCard: some View {
-        card("MiniMax", initial: "M", active: !minimaxAPIKey.isEmpty) {
-            SecureField("API Key", text: $minimaxAPIKey).textFieldStyle(.roundedBorder)
+    private func keyPane(_ id: String, text: Binding<String>, status: String, save: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            paneHeader(id, status: status, active: !text.wrappedValue.isEmpty)
+            SecureField("API Key", text: text).textFieldStyle(.roundedBorder).frame(maxWidth: 380)
+            HStack { Button("Salvar", action: save).buttonStyle(.borderedProminent); Spacer() }
+        }
+    }
+
+    private var minimaxPane: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            paneHeader("minimax", status: minimaxAPIKey.isEmpty ? "Sem chave" : "Chave salva", active: !minimaxAPIKey.isEmpty)
+            SecureField("API Key", text: $minimaxAPIKey).textFieldStyle(.roundedBorder).frame(maxWidth: 380)
             Toggle("Região China (minimaxi.com)", isOn: $minimaxRegionIsChina)
-                .toggleStyle(.switch).controlSize(.mini)
+                .toggleStyle(.switch).controlSize(.small)
             HStack {
-                Spacer()
                 Button("Salvar") {
                     saveSecret("MiniMax") { try preferencesStore.setMinimaxAPIKey(minimaxAPIKey) }
                     preferencesStore.minimaxRegionRaw = minimaxRegionIsChina ? "china" : "global"
                 }
-                .buttonStyle(.borderedProminent).controlSize(.small)
+                .buttonStyle(.borderedProminent)
+                Spacer()
             }
         }
     }
 
-    private var mimoCard: some View {
-        card("MiMo", initial: "K", active: mimoLoggedIn) {
+    private var mimoPane: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            paneHeader("mimo",
+                       status: mimoLoggedIn ? "Sessão ativa — uso automático" : "Sem sessão (usa estimativa manual)",
+                       active: mimoLoggedIn)
             HStack {
-                statusText(mimoLoggedIn ? "Sessão ativa — uso automático" : "Sem sessão (usa estimativa)", active: mimoLoggedIn)
-                Spacer()
                 if mimoLoggedIn {
-                    Button("Sair") { mimoSessionStore.isLoggedIn = false; mimoLoggedIn = false; statusMessage = "Sessão do MiMo removida." }
-                        .buttonStyle(.bordered).controlSize(.small)
+                    Button("Sair") {
+                        mimoSessionStore.isLoggedIn = false; mimoLoggedIn = false
+                        statusMessage = "Sessão do MiMo removida."
+                    }
+                    .buttonStyle(.bordered)
                 } else {
                     Button("Entrar no MiMo…") {
                         MiMoWebSession.shared.presentLogin {
@@ -176,61 +269,38 @@ struct PreferencesView: View {
                             statusMessage = "Sessão do MiMo ativa — uso automático."
                         }
                     }
-                    .buttonStyle(.borderedProminent).controlSize(.small)
+                    .buttonStyle(.borderedProminent)
                 }
-            }
-            if !mimoLoggedIn {
-                HStack(spacing: 8) {
-                    TextField("Franquia (Credits)", text: $mimoAllowance).textFieldStyle(.roundedBorder)
-                    TextField("Usados", text: $mimoUsed).textFieldStyle(.roundedBorder)
-                    Button("Salvar") {
-                        preferencesStore.mimoMonthlyAllowanceCredits = Double(mimoAllowance)
-                        preferencesStore.mimoUsedCredits = Double(mimoUsed) ?? 0
-                    }
-                    .buttonStyle(.bordered).controlSize(.small)
-                }
-                .padding(.top, 2)
-            }
-        }
-    }
-
-    // MARK: - Reusable pieces
-
-    private func keyCard(_ title: String, initial: String, text: Binding<String>, save: @escaping () -> Void) -> some View {
-        card(title, initial: initial, active: !text.wrappedValue.isEmpty) {
-            SecureField("API Key", text: text).textFieldStyle(.roundedBorder)
-            HStack { Spacer(); Button("Salvar", action: save).buttonStyle(.borderedProminent).controlSize(.small) }
-        }
-    }
-
-    private func card<C: View>(_ title: String, initial: String, active: Bool, @ViewBuilder content: () -> C) -> some View {
-        let accent: Color = active ? .green : .secondary
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle().fill(accent.opacity(0.16)).frame(width: 30, height: 30)
-                    Text(initial).font(.system(size: 14, weight: .bold)).foregroundStyle(accent)
-                }
-                Text(title).font(.system(size: 14, weight: .semibold))
                 Spacer()
             }
-            content()
+            if mimoLoggedIn {
+                Text("A sessão sobrevive a reinícios e se renova sozinha quando o console expira — só pede login de novo se a conta Xiaomi deslogar de verdade.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Estimativa manual (sem sessão):").font(.caption).foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        TextField("Franquia (Credits)", text: $mimoAllowance).textFieldStyle(.roundedBorder)
+                        TextField("Usados", text: $mimoUsed).textFieldStyle(.roundedBorder)
+                        Button("Salvar") {
+                            preferencesStore.mimoMonthlyAllowanceCredits = Double(mimoAllowance)
+                            preferencesStore.mimoUsedCredits = Double(mimoUsed) ?? 0
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .frame(maxWidth: 420)
+                }
+            }
         }
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.045)))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.07)))
     }
 
-    private func statusText(_ text: String, active: Bool) -> some View {
-        Text(text).font(.caption).foregroundStyle(active ? .green : .secondary)
-    }
+    // MARK: - State loading
 
     private func load() {
         openRouterAPIKey = preferencesStore.openRouterAPIKey ?? ""
         minimaxAPIKey = preferencesStore.minimaxAPIKey ?? ""
         minimaxRegionIsChina = preferencesStore.minimaxRegionRaw == "china"
         openCodeAPIKey = preferencesStore.openCodeAPIKey ?? ""
-        mimoAPIKey = preferencesStore.mimoAPIKey ?? ""
         mimoAllowance = preferencesStore.mimoMonthlyAllowanceCredits.map { String($0) } ?? ""
         mimoUsed = String(preferencesStore.mimoUsedCredits)
         claudeLoggedIn = tokenStore.load(providerId: "claude") != nil
@@ -306,5 +376,59 @@ struct PreferencesView: View {
         try? tokenStore.delete(providerId: providerId)
         flag.wrappedValue = false
         statusMessage = "Desconectado."
+    }
+}
+
+// MARK: - General pane
+
+/// Menu bar pin management. Refresh intervals were deliberately left out: the store's
+/// per-provider interval is not wired into the Scheduler, so a UI for it would lie.
+private struct GeneralPane: View {
+    @ObservedObject var appModel: AppModel
+    let providerName: (String) -> String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Barra de menu").font(.system(size: 16, weight: .bold))
+            if appModel.menuBarPins.isEmpty {
+                Text("Nada fixado — a barra mostra automaticamente a janela mais próxima do limite.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(Array(appModel.menuBarPins.enumerated()), id: \.element.stored) { index, pin in
+                        HStack(spacing: 8) {
+                            Text(ProviderPalette.glyph(forId: pin.providerId))
+                                .font(.system(size: 10, weight: .heavy))
+                                .foregroundStyle(ProviderPalette.color(for: pin.providerId))
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(RoundedRectangle(cornerRadius: 5)
+                                    .fill(ProviderPalette.color(for: pin.providerId).opacity(0.16)))
+                            Text("\(providerName(pin.providerId)) · \(pin.windowLabel)")
+                                .font(.system(size: 12))
+                            Spacer()
+                            Button { move(index, by: -1) } label: { Image(systemName: "chevron.up") }
+                                .buttonStyle(.plain).disabled(index == 0)
+                            Button { move(index, by: 1) } label: { Image(systemName: "chevron.down") }
+                                .buttonStyle(.plain).disabled(index == appModel.menuBarPins.count - 1)
+                            Button { appModel.menuBarPins.remove(at: index) } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.045)))
+                    }
+                }
+                .frame(maxWidth: 420)
+            }
+            Text("Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func move(_ index: Int, by offset: Int) {
+        let target = index + offset
+        guard appModel.menuBarPins.indices.contains(target) else { return }
+        appModel.menuBarPins.swapAt(index, target)
     }
 }
