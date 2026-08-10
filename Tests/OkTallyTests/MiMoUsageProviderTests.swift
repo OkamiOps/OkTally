@@ -29,12 +29,14 @@ final class MiMoUsageProviderTests: XCTestCase {
     }
 
     func test_isAuthenticated_falseWhenNoSessionAndNoAllowance() async {
-        XCTAssertFalse(await makeProvider().isAuthenticated())
+        let authenticated = await makeProvider().isAuthenticated()
+        XCTAssertFalse(authenticated)
     }
 
     func test_isAuthenticated_trueWithSession() async {
         let session = FakeMiMoSessionStore(); session.isLoggedIn = true
-        XCTAssertTrue(await makeProvider(session: session).isAuthenticated())
+        let authenticated = await makeProvider(session: session).isAuthenticated()
+        XCTAssertTrue(authenticated)
     }
 
     func test_liveSnapshot_mapsPlanAndMonthUsageFromWebSession() async throws {

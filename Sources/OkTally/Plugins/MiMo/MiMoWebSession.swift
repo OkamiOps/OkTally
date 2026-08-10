@@ -91,21 +91,37 @@ final class MiMoWebSession: NSObject, MiMoUsageFetching {
     }
 
     func fetchUsageJSON() async throws -> Data {
+        let recovery = MiMoSessionRecovery(
+            fetch: { [weak self] in try await self?.rawFetch() ?? Data() },
+            reload: { [weak self] in try await self?.reloadConsole() }
+        )
+        return try await recovery.fetchWithRecovery()
+    }
+
+    private func rawFetch() async throws -> Data {
         try await ensureConsoleLoaded()
         let js = """
         const r = await fetch('/api/v1/tokenPlan/usage', { credentials: 'include' });
         return await r.text();
         """
-        var last = Data()
-        for attempt in 0..<6 {
-            if attempt > 0 { try? await Task.sleep(nanoseconds: 2_000_000_000) }
-            guard let s = try await webView.callAsyncJavaScript(js, arguments: [:], in: nil, contentWorld: .page) as? String else {
-                continue
+        // The console SPA may still be booting right after a load; give the JS bridge a
+        // short settling loop. A 401 body is returned immediately — judging it (and
+        // recovering via reload) is `MiMoSessionRecovery`'s job, not this method's.
+        for attempt in 0..<3 {
+            if attempt > 0 { try? await Task.sleep(nanoseconds: 1_500_000_000) }
+            if let s = try await webView.callAsyncJavaScript(js, arguments: [:], in: nil, contentWorld: .page) as? String {
+                return Data(s.utf8)
             }
-            last = Data(s.utf8)
-            if !s.contains("\"code\":401") { return last }
         }
-        return last // still unauthorized after the STS grace period
+        throw MiMoConsoleError.noData
+    }
+
+    private func reloadConsole() async throws {
+        everLoaded = false
+        try await ensureConsoleLoaded()
+        // The SPA re-establishes the STS cookie via redirects after load; give it a beat
+        // before the retried fetch.
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
     }
 
     private func ensureConsoleLoaded() async throws {
