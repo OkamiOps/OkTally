@@ -85,7 +85,9 @@ struct PopoverView: View {
                 }
                 .padding(12)
             }
-            .frame(maxHeight: 520)
+            // Fixed height, not maxHeight: inside a MenuBarExtra window the ScrollView
+            // gets no height proposal and collapses to zero with only a max constraint.
+            .frame(height: 480)
             Divider()
             footer
         }
