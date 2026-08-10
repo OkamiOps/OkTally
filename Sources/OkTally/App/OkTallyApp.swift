@@ -10,6 +10,7 @@ struct OkTallyApp: App {
     private let manualFlow: ManualCodeOAuthFlow
     private let deviceCodeFlow: DeviceCodeFlow
     private let claudeProvider: ClaudeUsageProvider
+    private let mimoSessionStore = MiMoSessionStore()
 
     init() {
         let appSupportDir = NSHomeDirectory() + "/Library/Application Support/OkTally"
@@ -53,6 +54,8 @@ struct OkTallyApp: App {
         registry.register(CursorUsageProvider())
         registry.register(OpenCodeUsageProvider(apiKeyProvider: { preferencesStore.openCodeAPIKey }))
         registry.register(MiMoUsageProvider(
+            sessionStore: mimoSessionStore,
+            usageFetcher: MiMoWebSession.shared,
             allowanceProvider: { preferencesStore.mimoMonthlyAllowanceCredits },
             usedCreditsProvider: { preferencesStore.mimoUsedCredits }
         ))
@@ -81,6 +84,7 @@ struct OkTallyApp: App {
                 browserFlow: browserFlow,
                 manualFlow: manualFlow,
                 deviceCodeFlow: deviceCodeFlow,
+                mimoSessionStore: mimoSessionStore,
                 onImportClaudeLegacy: { claudeProvider.importLegacyCredentialsIfAvailable() }
             )
         }

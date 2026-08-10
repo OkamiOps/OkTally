@@ -1,100 +1,75 @@
 import XCTest
 @testable import OkTally
 
+private final class FakeMiMoSessionStore: MiMoSessionStoring {
+    var isLoggedIn: Bool = false
+}
+
+private final class FakeMiMoUsageFetcher: MiMoUsageFetching {
+    var json: String = "{}"
+    var errorToThrow: Error?
+    func fetchUsageJSON() async throws -> Data {
+        if let errorToThrow { throw errorToThrow }
+        return Data(json.utf8)
+    }
+}
+
 final class MiMoUsageProviderTests: XCTestCase {
-    func test_isAuthenticated_falseWhenAllowanceNotConfigured() async {
-        let provider = MiMoUsageProvider(
-            allowanceProvider: { nil },
-            usedCreditsProvider: { 0 }
+    private func makeProvider(
+        session: FakeMiMoSessionStore = FakeMiMoSessionStore(),
+        fetcher: FakeMiMoUsageFetcher = FakeMiMoUsageFetcher(),
+        allowance: Double? = nil,
+        used: Double = 0,
+        now: @escaping () -> Date = Date.init
+    ) -> MiMoUsageProvider {
+        MiMoUsageProvider(
+            sessionStore: session, usageFetcher: fetcher,
+            allowanceProvider: { allowance }, usedCreditsProvider: { used }, now: now
         )
-
-        let authenticated = await provider.isAuthenticated()
-
-        XCTAssertFalse(authenticated)
     }
 
-    func test_isAuthenticated_trueWhenAllowanceConfigured() async {
-        let provider = MiMoUsageProvider(
-            allowanceProvider: { 500 },
-            usedCreditsProvider: { 0 }
-        )
-
-        let authenticated = await provider.isAuthenticated()
-
-        XCTAssertTrue(authenticated)
+    func test_isAuthenticated_falseWhenNoSessionAndNoAllowance() async {
+        XCTAssertFalse(await makeProvider().isAuthenticated())
     }
 
-    func test_fetchSnapshot_returnsSingleEstimatedMensalWindow() async throws {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        let now = calendar.date(from: DateComponents(year: 2026, month: 8, day: 7))!
+    func test_isAuthenticated_trueWithSession() async {
+        let session = FakeMiMoSessionStore(); session.isLoggedIn = true
+        XCTAssertTrue(await makeProvider(session: session).isAuthenticated())
+    }
 
-        let provider = MiMoUsageProvider(
-            allowanceProvider: { 500 },
-            usedCreditsProvider: { 125 },
-            now: { now }
-        )
+    func test_liveSnapshot_mapsPlanAndMonthUsageFromWebSession() async throws {
+        let session = FakeMiMoSessionStore(); session.isLoggedIn = true
+        let fetcher = FakeMiMoUsageFetcher()
+        // Real tokenPlan/usage shape: percent is a fraction.
+        fetcher.json = #"{"code":0,"data":{"monthUsage":{"percent":0.0622},"usage":{"percent":0.06}}}"#
+        let snapshot = try await makeProvider(session: session, fetcher: fetcher).fetchSnapshot()
 
-        let snapshot = try await provider.fetchSnapshot()
+        XCTAssertEqual(snapshot.quotas.count, 2)
+        XCTAssertEqual(snapshot.quotas.first { $0.label == "mensal" }?.shape.usedPercent ?? -1, 6.22, accuracy: 0.001)
+        XCTAssertEqual(snapshot.quotas.first { $0.label == "plano" }?.shape.usedPercent ?? -1, 6.0, accuracy: 0.001)
+    }
 
-        XCTAssertEqual(snapshot.providerId, "mimo")
+    func test_expiredSession_401_clearsFlagAndFallsBackToManual() async throws {
+        let session = FakeMiMoSessionStore(); session.isLoggedIn = true
+        let fetcher = FakeMiMoUsageFetcher()
+        fetcher.json = #"{"code":401,"loginUrl":"https://account.xiaomi.com/..."}"#
+        let snapshot = try await makeProvider(session: session, fetcher: fetcher, allowance: 500, used: 125).fetchSnapshot()
+
+        XCTAssertFalse(session.isLoggedIn) // cleared
         XCTAssertEqual(snapshot.quotas.count, 1)
-        let window = snapshot.quotas[0]
-        XCTAssertEqual(window.label, "mensal")
-        XCTAssertEqual(window.shape, .estimated(used: 125, limit: 500, basis: .localTokenCount, resetAt: nil))
-    }
-
-    /// MiMo's research (docs/superpowers/research/plan2-mimo.md) confirms a monthly
-    /// reset but not which day it falls on — it could be the calendar month start or
-    /// the subscription anniversary. Since this is an estimated provider, we must not
-    /// assert a specific reset date we haven't verified.
-    func test_fetchSnapshot_hasNoResetAt_sinceMiMoResetDayIsUnverified() async throws {
-        let provider = MiMoUsageProvider(
-            allowanceProvider: { 500 },
-            usedCreditsProvider: { 0 }
-        )
-
-        let snapshot = try await provider.fetchSnapshot()
-
-        XCTAssertNil(snapshot.quotas[0].shape.resetAt)
-    }
-
-    func test_fetchSnapshot_usedPercentIsComputedWhenAllowanceSet() async throws {
-        let provider = MiMoUsageProvider(
-            allowanceProvider: { 400 },
-            usedCreditsProvider: { 100 }
-        )
-
-        let snapshot = try await provider.fetchSnapshot()
-
-        XCTAssertNotNil(snapshot.quotas[0].shape.usedPercent)
+        XCTAssertEqual(snapshot.quotas[0].label, "mensal")
         XCTAssertEqual(snapshot.quotas[0].shape.usedPercent, 25)
     }
 
-    func test_fetchSnapshot_worksWithoutAllowanceConfigured() async throws {
-        let provider = MiMoUsageProvider(
-            allowanceProvider: { nil },
-            usedCreditsProvider: { 0 }
-        )
-
-        let snapshot = try await provider.fetchSnapshot()
-
-        guard case .estimated(let used, let limit, let basis, _) = snapshot.quotas[0].shape else {
-            return XCTFail("expected .estimated shape")
-        }
-        XCTAssertEqual(used, 0)
-        XCTAssertNil(limit)
-        XCTAssertEqual(basis, .localTokenCount)
-        XCTAssertNil(snapshot.quotas[0].shape.usedPercent)
+    func test_noSession_usesManualEstimate() async throws {
+        let snapshot = try await makeProvider(allowance: 400, used: 100).fetchSnapshot()
+        XCTAssertEqual(snapshot.quotas[0].label, "mensal")
+        XCTAssertEqual(snapshot.quotas[0].shape.usedPercent, 25)
     }
 
     func test_id_and_refreshInterval() {
-        let provider = MiMoUsageProvider(
-            allowanceProvider: { nil },
-            usedCreditsProvider: { 0 }
-        )
-
+        let provider = makeProvider()
         XCTAssertEqual(provider.id, "mimo")
-        XCTAssertEqual(provider.refreshInterval, 3600)
+        XCTAssertEqual(provider.refreshInterval, 600)
     }
 }
