@@ -72,8 +72,7 @@ struct OkTallyApp: App {
         MenuBarExtra {
             PopoverView(appModel: appModel)
         } label: {
-            Text(MenuBarStateCalculator.labelText(for: appModel.menuBarState))
-                .foregroundStyle(Self.color(for: MenuBarStateCalculator.colorName(for: appModel.menuBarState)))
+            Image(nsImage: MenuBarLabelRenderer.image(for: appModel.menuBarSegments))
         }
         .menuBarExtraStyle(.window)
 
@@ -99,14 +98,5 @@ struct OkTallyApp: App {
             return storage
         }
         return try! SQLiteStorage(path: ":memory:")
-    }
-
-    private static func color(for colorName: String) -> Color {
-        switch colorName {
-        case "red": return .red
-        case "yellow": return .yellow
-        case "gray": return .gray
-        default: return .green
-        }
     }
 }

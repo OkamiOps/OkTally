@@ -83,11 +83,10 @@ final class AppModel: ObservableObject {
         _ = await scheduler.fetchAll()
     }
 
-    var menuBarState: MenuBarState {
-        // Replaced by `menuBarSegments` in the label-model task; kept minimally alive so
-        // intermediate commits compile. Uses only the automatic (worst-window) path.
-        MenuBarStateCalculator.worstState(
-            snapshots: Array(snapshotsByProvider.values),
+    var menuBarSegments: [MenuBarSegment] {
+        MenuBarLabelModel.segments(
+            pins: menuBarPins,
+            snapshots: snapshotsByProvider,
             hasAnyError: !errorsByProvider.isEmpty
         )
     }

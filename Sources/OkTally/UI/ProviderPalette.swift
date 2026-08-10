@@ -20,6 +20,22 @@ enum ProviderPalette {
 
     /// One or two letters for the identity chip.
     static func glyph(for provider: UsageProvider) -> String {
-        String(provider.displayName.prefix(1)).uppercased()
+        glyph(forId: provider.id)
+    }
+
+    /// Short distinct glyph per provider id (displayName initials collide:
+    /// Claude/Codex/Cursor all start with "C").
+    static func glyph(forId id: String) -> String {
+        switch id {
+        case "claude": return "C"
+        case "codex": return "X"
+        case "supergrok": return "G"
+        case "cursor": return "▹"
+        case "openrouter": return "O"
+        case "minimax": return "M"
+        case "opencode": return "◇"
+        case "mimo": return "K"
+        default: return "?"
+        }
     }
 }

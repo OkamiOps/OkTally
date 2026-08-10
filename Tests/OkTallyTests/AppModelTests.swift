@@ -96,7 +96,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(defaults.string(forKey: "menuBarPin"), "legacy key must be cleared after migration")
     }
 
-    func test_menuBarState_reflectsWorstSnapshot() async {
+    func test_menuBarSegments_reflectWorstSnapshot() async {
         let provider = FakeUsageProvider(id: "claude", displayName: "Claude Code")
         provider.snapshotToReturn = ProviderSnapshot(
             providerId: "claude",
@@ -116,6 +116,7 @@ final class AppModelTests: XCTestCase {
 
         await model.refreshNow()
 
-        XCTAssertEqual(model.menuBarState.percent, 88)
+        // 88% used → 12% remaining, warn tier, no glyph in automatic mode.
+        XCTAssertEqual(model.menuBarSegments, [MenuBarSegment(glyph: nil, providerId: nil, text: "12", danger: .warn)])
     }
 }
