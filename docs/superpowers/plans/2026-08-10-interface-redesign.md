@@ -28,7 +28,7 @@
 - Produces: `struct MiMoSessionRecovery { init(fetch: @escaping () async throws -> Data, reload: @escaping () async throws -> Void); func fetchWithRecovery() async throws -> Data }` — throws `MiMoConsoleError.notLoggedIn` only when a fetch *after* reload still returns `"code":401`.
 - Consumes: `MiMoConsoleError` (exists).
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```swift
 import XCTest
@@ -89,9 +89,9 @@ final class MiMoSessionRecoveryTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run tests, verify they fail** — `swift test --filter MiMoSessionRecoveryTests` → FAIL (type not defined).
+- [x] **Step 2: Run tests, verify they fail** — `swift test --filter MiMoSessionRecoveryTests` → FAIL (type not defined).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```swift
 // Sources/OkTally/Plugins/MiMo/MiMoSessionRecovery.swift
@@ -163,9 +163,9 @@ func reloadConsole() async throws {
 
 `MiMoUsageProvider` keeps its existing behavior: `MiMoConsoleError.notLoggedIn` → clear `isLoggedIn`, fall back to manual. Since `fetchWithRecovery` now *throws* on persistent 401 instead of returning the 401 body, the provider's string check `text.contains("\"code\":401")` becomes dead for the web path but harmless for fakes — leave it (tests use it).
 
-- [ ] **Step 4: Run tests** — `swift test --filter "MiMoSessionRecoveryTests|MiMoUsageProviderTests"` → PASS; full `swift build` clean.
+- [x] **Step 4: Run tests** — `swift test --filter "MiMoSessionRecoveryTests|MiMoUsageProviderTests"` → PASS; full `swift build` clean.
 
-- [ ] **Step 5: Commit** — `fix(mimo): recover from STS expiry by reloading console instead of demanding relogin`
+- [x] **Step 5: Commit** — `fix(mimo): recover from STS expiry by reloading console instead of demanding relogin`
 
 ---
 
@@ -179,7 +179,7 @@ func reloadConsole() async throws {
 - Produces: `AppModel.menuBarPins: [MenuBarPin]` (published, persisted under `"menuBarPins"`, `\u{2}`-joined stored forms; migrates legacy `"menuBarPin"`); `togglePin(providerId:windowLabel:)` (append/remove keeping order); `isPinned(providerId:windowLabel:) -> Bool`. `menuBarState` removed in Task 3 (kept until then).
 - Consumes: `MenuBarPin.stored` / `init?(stored:)` (exists).
 
-- [ ] **Step 1: Failing tests** (in `AppModelTests`, using its existing fixtures/UserDefaults handling; add a suiteName-scoped `UserDefaults` to avoid polluting real prefs)
+- [x] **Step 1: Failing tests** (in `AppModelTests`, using its existing fixtures/UserDefaults handling; add a suiteName-scoped `UserDefaults` to avoid polluting real prefs)
 
 ```swift
 func test_togglePin_appendsAndRemoves_keepingOrder() { /* toggle A, B, A → [B] */ }
@@ -203,9 +203,9 @@ func test_togglePin_appendsAndRemoves_keepingOrder() {
 
 Persistence tests inject `UserDefaults(suiteName: #function)!` (AppModel gains a `defaults:` init parameter defaulting to `.standard`).
 
-- [ ] **Step 2: Run, verify fail** — `swift test --filter AppModelTests` → FAIL.
+- [x] **Step 2: Run, verify fail** — `swift test --filter AppModelTests` → FAIL.
 
-- [ ] **Step 3: Implement** in `AppModel`:
+- [x] **Step 3: Implement** in `AppModel`:
 
 ```swift
 @Published var menuBarPins: [MenuBarPin] {
@@ -242,9 +242,9 @@ func isPinned(providerId: String, windowLabel: String) -> Bool {
 
 Delete the old `menuBarPin` property; temporarily patch `menuBarState` and `PopoverView` call sites to compile (`pin:` → first pin) — both are rebuilt in Tasks 3–4.
 
-- [ ] **Step 4: Run tests** — PASS (fix any fallout in `MenuBarStateCalculatorTests` only if compilation breaks).
+- [x] **Step 4: Run tests** — PASS (fix any fallout in `MenuBarStateCalculatorTests` only if compilation breaks).
 
-- [ ] **Step 5: Commit** — `feat: menu bar pins become an ordered, persisted list (migrates legacy single pin)`
+- [x] **Step 5: Commit** — `feat: menu bar pins become an ordered, persisted list (migrates legacy single pin)`
 
 ---
 
@@ -276,7 +276,7 @@ MenuBarLabelRenderer.image(for: [MenuBarSegment]) -> NSImage // @MainActor, non-
 AppModel.menuBarSegments: [MenuBarSegment]
 ```
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
 
 ```swift
 import XCTest
@@ -342,9 +342,9 @@ final class MenuBarLabelModelTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run, verify fail.**
+- [x] **Step 2: Run, verify fail.**
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```swift
 // Sources/OkTally/UI/MenuBarLabelModel.swift
@@ -507,9 +507,9 @@ var menuBarSegments: [MenuBarSegment] {
 
 (delete the `color(for:)` helper). Delete `MenuBarStateCalculator.swift` + its test file.
 
-- [ ] **Step 4: Run** — `swift test` full suite → PASS.
+- [x] **Step 4: Run** — `swift test` full suite → PASS.
 
-- [ ] **Step 5: Commit** — `feat: colored multi-pin menu bar label rendered as non-template image`
+- [x] **Step 5: Commit** — `feat: colored multi-pin menu bar label rendered as non-template image`
 
 ---
 
@@ -524,7 +524,7 @@ var menuBarSegments: [MenuBarSegment] {
 - Consumes: `appModel.isPinned/togglePin/menuBarPins`, `QuotaPresentation.*`, `ProviderPalette.*`.
 - Produces: `RingGauge(remaining: Double, size: CGFloat, color: Color, content: some View)`; `PopoverView` (same external shape: `init(appModel:)`).
 
-- [ ] **Step 1: RingGauge**
+- [x] **Step 1: RingGauge**
 
 ```swift
 // Sources/OkTally/UI/RingGauge.swift
@@ -552,7 +552,7 @@ struct RingGauge<Content: View>: View {
 }
 ```
 
-- [ ] **Step 2: Rewrite PopoverView** with this structure (full code in file; key pieces):
+- [x] **Step 2: Rewrite PopoverView** with this structure (full code in file; key pieces):
 
 ```swift
 struct PopoverView: View {
@@ -594,9 +594,9 @@ struct PopoverView: View {
 - `ProblemsSection`: rows `[chip] name — message` with color by `ProviderErrorPresentation` (`notConfigured` → `.secondary`, `needsReauth` → `.orange`, else `.red`), message truncated to 2 lines with `.help(fullMessage)`.
 - Estimated shapes keep the `~` prefix from `QuotaPresentation.remainingText` and get `.help("Estimativa local…")`.
 
-- [ ] **Step 3: Build + full test suite** — `swift build && swift test` → PASS.
+- [x] **Step 3: Build + full test suite** — `swift build && swift test` → PASS.
 
-- [ ] **Step 4: Commit** — `feat: popover redesign — hero gauge, provider cards, quiet problem rows`
+- [x] **Step 4: Commit** — `feat: popover redesign — hero gauge, provider cards, quiet problem rows`
 
 ---
 
@@ -611,7 +611,7 @@ struct PopoverView: View {
 - Consumes: everything the current `PreferencesView` consumes (unchanged init signature), plus `appModel` for pin management → **add `appModel: AppModel` parameter**, passed from `OkTallyApp`.
 - Produces: same-name `PreferencesView` with `NavigationSplitView`.
 
-- [ ] **Step 1: Structure**
+- [x] **Step 1: Structure**
 
 ```swift
 enum PreferencesPane: Hashable { case general, provider(String) }
@@ -644,9 +644,9 @@ struct PreferencesView: View {
 - `GeneralPane`: "Fixados na barra de menu" list — each pin as `[glyph colored] Provider · janela` with ✕ remove button and ↑/↓ reorder buttons mutating `appModel.menuBarPins`; empty state text "Nada fixado — a barra mostra a pior janela automaticamente." plus caption explaining pinning from the dropdown.
 - `statusMessage` stays but renders inside the active detail pane footer.
 
-- [ ] **Step 2: Build + suite** — PASS.
+- [x] **Step 2: Build + suite** — PASS.
 
-- [ ] **Step 3: Commit** — `feat: sidebar Preferences (System Settings style) with pin management pane`
+- [x] **Step 3: Commit** — `feat: sidebar Preferences (System Settings style) with pin management pane`
 
 ---
 
@@ -655,7 +655,7 @@ struct PreferencesView: View {
 **Files:**
 - Modify: `Scripts/build_app.sh`
 
-- [ ] **Step 1: Implement**
+- [x] **Step 1: Implement**
 
 ```bash
 # Ad-hoc signatures change identity every build, which invalidates Keychain ACLs and
@@ -678,14 +678,14 @@ fi
 
 (replaces the unconditional `codesign --force --deep --sign -` line)
 
-- [ ] **Step 2: Run `bash Scripts/build_app.sh`** — expect successful bundle + warning path (no identity on this machine yet).
+- [x] **Step 2: Run `bash Scripts/build_app.sh`** — expect successful bundle + warning path (no identity on this machine yet).
 
-- [ ] **Step 3: Commit** — `fix(build): sign with stable "OkTally Dev" identity when available so Keychain survives rebuilds`
+- [x] **Step 3: Commit** — `fix(build): sign with stable "OkTally Dev" identity when available so Keychain survives rebuilds`
 
 ---
 
 ### Task 7: Final verification
 
-- [ ] `swift test` — entire suite green.
-- [ ] `bash Scripts/build_app.sh` — bundle builds.
-- [ ] Update spec's "Fora de escopo" with the refresh-interval cut; commit docs.
+- [x] `swift test` — entire suite green.
+- [x] `bash Scripts/build_app.sh` — bundle builds.
+- [x] Update spec's "Fora de escopo" with the refresh-interval cut; commit docs.
