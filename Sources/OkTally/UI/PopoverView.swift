@@ -6,29 +6,86 @@ struct PopoverView: View {
 
     private var providers: [UsageProvider] { appModel.orderedProviders }
 
+    /// Providers that produced at least one quota window → gauge cards.
+    private var withData: [(provider: UsageProvider, snapshot: ProviderSnapshot)] {
+        providers.compactMap { provider in
+            guard let snapshot = appModel.snapshotsByProvider[provider.id],
+                  !snapshot.quotas.isEmpty,
+                  appModel.errorsByProvider[provider.id] == nil
+            else { return nil }
+            return (provider, snapshot)
+        }
+    }
+
+    /// Everything else: errors, unconfigured, still loading — quiet rows at the bottom.
+    private var problems: [(provider: UsageProvider, message: String, kind: ProviderErrorPresentation?)] {
+        providers.compactMap { provider in
+            if let message = appModel.errorsByProvider[provider.id] {
+                return (provider, message, appModel.errorKindByProvider[provider.id])
+            }
+            if appModel.snapshotsByProvider[provider.id] == nil {
+                return (provider, "Carregando…", nil)
+            }
+            if appModel.snapshotsByProvider[provider.id]?.quotas.isEmpty == true {
+                return (provider, "Sem dados de cota", nil)
+            }
+            return nil
+        }
+    }
+
+    /// Most critical window overall: smallest remaining fraction; ties → nearest reset.
+    private var hero: (provider: UsageProvider, window: QuotaWindow, remaining: Double)? {
+        var best: (UsageProvider, QuotaWindow, Double)?
+        for (provider, snapshot) in withData {
+            for window in snapshot.quotas {
+                guard let remaining = QuotaPresentation.remainingFraction(window.shape) else { continue }
+                if let (_, currentWindow, currentRemaining) = best {
+                    if remaining < currentRemaining ||
+                        (remaining == currentRemaining &&
+                         (window.shape.resetAt ?? .distantFuture) < (currentWindow.shape.resetAt ?? .distantFuture)) {
+                        best = (provider, window, remaining)
+                    }
+                } else {
+                    best = (provider, window, remaining)
+                }
+            }
+        }
+        return best
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
             ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(Array(providers.enumerated()), id: \.element.id) { index, provider in
-                        ProviderRow(
-                            provider: provider,
-                            snapshot: appModel.snapshotsByProvider[provider.id],
-                            errorMessage: appModel.errorsByProvider[provider.id],
-                            errorKind: appModel.errorKindByProvider[provider.id],
-                            pin: appModel.menuBarPins.first,
-                            onPinWindow: { label in appModel.togglePin(providerId: provider.id, windowLabel: label) }
+                VStack(spacing: 10) {
+                    if let hero {
+                        HeroCard(
+                            provider: hero.provider,
+                            window: hero.window,
+                            remaining: hero.remaining,
+                            isPinned: appModel.isPinned(providerId: hero.provider.id, windowLabel: hero.window.label),
+                            onPin: { appModel.togglePin(providerId: hero.provider.id, windowLabel: hero.window.label) }
                         )
-                        if index < providers.count - 1 {
-                            Divider().padding(.leading, 44)
+                    }
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+                              spacing: 10) {
+                        ForEach(withData, id: \.provider.id) { entry in
+                            ProviderGaugeCard(
+                                provider: entry.provider,
+                                snapshot: entry.snapshot,
+                                isPinned: { appModel.isPinned(providerId: entry.provider.id, windowLabel: $0) },
+                                onPin: { appModel.togglePin(providerId: entry.provider.id, windowLabel: $0) }
+                            )
                         }
                     }
+                    if !problems.isEmpty {
+                        ProblemsSection(problems: problems)
+                    }
                 }
-                .padding(.vertical, 4)
+                .padding(12)
             }
-            .frame(height: 460)
+            .frame(maxHeight: 520)
             Divider()
             footer
         }
@@ -46,14 +103,12 @@ struct PopoverView: View {
     }
 
     private var pinnedHint: String {
-        if let pin = appModel.menuBarPins.first, let p = providers.first(where: { $0.id == pin.providerId }) {
-            return "Barra: \(p.displayName) · \(pin.windowLabel)"
+        let count = appModel.menuBarPins.count
+        switch count {
+        case 0: return "Barra: automático"
+        case 1: return "Barra: 1 fixado"
+        default: return "Barra: \(count) fixados"
         }
-        return "Barra: automático"
-    }
-
-    private var activeCount: Int {
-        providers.filter { appModel.snapshotsByProvider[$0.id]?.quotas.isEmpty == false }.count
     }
 
     private var footer: some View {
@@ -79,119 +134,206 @@ struct PopoverView: View {
     }
 }
 
-/// One provider, always visible: identity chip + name on the left, its quota windows stacked
-/// on the right as compact bars. No selection — everything is on screen at once.
-struct ProviderRow: View {
-    let provider: UsageProvider
-    let snapshot: ProviderSnapshot?
-    let errorMessage: String?
-    let errorKind: ProviderErrorPresentation?
-    var pin: AppModel.MenuBarPin? = nil
-    var onPinWindow: (String) -> Void = { _ in }
+// MARK: - Hero
 
+/// Spotlight on the window closest to running out. The provider still appears in the
+/// grid below — this is a highlight, not a move.
+private struct HeroCard: View {
+    let provider: UsageProvider
+    let window: QuotaWindow
+    let remaining: Double
+    let isPinned: Bool
+    let onPin: () -> Void
+
+    private var danger: Color { QuotaPresentation.color(remaining: remaining) }
     private var identity: Color { ProviderPalette.color(for: provider.id) }
-    private var isProviderPinned: Bool { pin?.providerId == provider.id }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            chip
-            VStack(alignment: .leading, spacing: 8) {
-                Text(provider.displayName)
-                    .font(.system(size: 13, weight: .semibold))
-                content
+        HStack(spacing: 14) {
+            RingGauge(remaining: remaining, size: 56, color: danger, lineWidth: 6) {
+                Text("\(Int((remaining * 100).rounded()))")
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                    .foregroundStyle(danger)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(ProviderPalette.glyph(for: provider))
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(identity)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)))
+                    Text("\(provider.displayName) · \(window.label)")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                Text(QuotaPresentation.remainingText(window.shape))
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(danger)
+                if let reset = QuotaPresentation.resetText(window.shape) {
+                    Text(reset).font(.caption).foregroundStyle(.secondary)
+                }
             }
             Spacer(minLength: 0)
+            PinButton(isPinned: isPinned, identity: identity, onPin: onPin)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(isProviderPinned ? identity.opacity(0.06) : .clear)
-    }
-
-    private var chip: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 7).fill(identity.opacity(0.16)).frame(width: 26, height: 26)
-            Text(ProviderPalette.glyph(for: provider))
-                .font(.system(size: 13, weight: .bold)).foregroundStyle(identity)
-        }
-        .padding(.top, 1)
-    }
-
-    @ViewBuilder private var content: some View {
-        if let errorMessage {
-            Text(errorMessage)
-                .font(.caption)
-                .foregroundStyle(errorColor)
-                .fixedSize(horizontal: false, vertical: true)
-        } else if let snapshot, !snapshot.quotas.isEmpty {
-            ForEach(snapshot.quotas, id: \.label) { window in
-                CompactQuotaBar(
-                    window: window,
-                    identity: identity,
-                    isPinned: pin?.providerId == provider.id && pin?.windowLabel == window.label,
-                    onPin: { onPinWindow(window.label) }
-                )
-            }
-        } else if snapshot != nil {
-            Text("Sem dados de cota").font(.caption).foregroundStyle(.tertiary)
-        } else {
-            Text("Carregando…").font(.caption).foregroundStyle(.tertiary)
-        }
-    }
-
-    private var errorColor: Color {
-        switch errorKind {
-        case .notConfigured: return .secondary
-        case .needsReauth: return .orange
-        default: return .red
-        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(danger.opacity(0.07)))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(danger.opacity(0.25)))
+        .help(window.shape.isEstimated ? "Estimativa local, não confirmada pelo provedor" : "")
     }
 }
 
-/// Compact single-line quota: label + reset on top, thin bar with the remaining % inline.
-struct CompactQuotaBar: View {
+// MARK: - Provider card
+
+private struct ProviderGaugeCard: View {
+    let provider: UsageProvider
+    let snapshot: ProviderSnapshot
+    let isPinned: (String) -> Bool
+    let onPin: (String) -> Void
+
+    private var identity: Color { ProviderPalette.color(for: provider.id) }
+
+    /// The provider's worst percent window drives the card's ring; balance-only
+    /// providers show their value instead.
+    private var worst: (window: QuotaWindow, remaining: Double)? {
+        snapshot.quotas
+            .compactMap { w in QuotaPresentation.remainingFraction(w.shape).map { (w, $0) } }
+            .min { $0.1 < $1.1 }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(ProviderPalette.glyph(for: provider))
+                    .font(.system(size: 10, weight: .heavy))
+                    .foregroundStyle(identity)
+                    .padding(.horizontal, 5).padding(.vertical, 2)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)))
+                Text(provider.displayName)
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            HStack {
+                Spacer(minLength: 0)
+                if let worst {
+                    RingGauge(remaining: worst.remaining,
+                              size: 44,
+                              color: QuotaPresentation.color(remaining: worst.remaining),
+                              lineWidth: 5) {
+                        Text("\(Int((worst.remaining * 100).rounded()))")
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundStyle(QuotaPresentation.color(remaining: worst.remaining))
+                    }
+                } else if let balance = snapshot.quotas.first {
+                    Text(QuotaPresentation.remainingText(balance.shape))
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .frame(height: 44)
+                }
+                Spacer(minLength: 0)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(snapshot.quotas, id: \.label) { window in
+                    QuotaLine(
+                        window: window,
+                        identity: identity,
+                        isPinned: isPinned(window.label),
+                        onPin: { onPin(window.label) }
+                    )
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.045)))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.07)))
+    }
+}
+
+/// One compact line per quota window inside a card.
+private struct QuotaLine: View {
     let window: QuotaWindow
     let identity: Color
-    var isPinned: Bool = false
-    var onPin: () -> Void = {}
+    let isPinned: Bool
+    let onPin: () -> Void
 
     var body: some View {
         let remaining = QuotaPresentation.remainingFraction(window.shape)
-        let danger = QuotaPresentation.color(remaining: remaining)
-        return VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 5) {
-                Button(action: onPin) {
-                    Image(systemName: isPinned ? "pin.fill" : "pin")
-                        .font(.system(size: 9))
-                        .foregroundStyle(isPinned ? identity : Color.secondary.opacity(0.45))
-                }
-                .buttonStyle(.plain)
-                .help(isPinned ? "Fixado na barra de menu" : "Fixar esta janela na barra de menu")
-                Text(window.label)
-                    .font(.caption).foregroundStyle(.secondary)
-                Spacer()
+        HStack(spacing: 4) {
+            PinButton(isPinned: isPinned, identity: identity, onPin: onPin)
+            Text(window.label)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 2)
+            VStack(alignment: .trailing, spacing: 0) {
                 Text(QuotaPresentation.remainingText(window.shape))
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(remaining != nil ? danger : .primary)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(remaining != nil ? QuotaPresentation.color(remaining: remaining) : .primary)
+                    .lineLimit(1)
                 if let reset = QuotaPresentation.resetText(window.shape) {
-                    Text("· \(reset)").font(.system(size: 10)).foregroundStyle(.tertiary)
+                    Text(reset).font(.system(size: 9)).foregroundStyle(.tertiary).lineLimit(1)
                 }
-            }
-            if let remaining {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.primary.opacity(0.08))
-                        Capsule().fill(barColor(remaining: remaining, danger: danger))
-                            .frame(width: max(3, geo.size.width * remaining))
-                    }
-                }
-                .frame(height: 5)
             }
         }
+        .help(window.shape.isEstimated ? "Estimativa local, não confirmada pelo provedor" : "")
+    }
+}
+
+private struct PinButton: View {
+    let isPinned: Bool
+    let identity: Color
+    let onPin: () -> Void
+
+    var body: some View {
+        Button(action: onPin) {
+            Image(systemName: isPinned ? "pin.fill" : "pin")
+                .font(.system(size: 9))
+                .foregroundStyle(isPinned ? identity : Color.secondary.opacity(0.45))
+        }
+        .buttonStyle(.plain)
+        .help(isPinned ? "Remover da barra de menu" : "Fixar esta janela na barra de menu")
+    }
+}
+
+// MARK: - Problems
+
+private struct ProblemsSection: View {
+    let problems: [(provider: UsageProvider, message: String, kind: ProviderErrorPresentation?)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(problems, id: \.provider.id) { entry in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(ProviderPalette.glyph(for: entry.provider))
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundStyle(ProviderPalette.color(for: entry.provider.id).opacity(0.7))
+                        .padding(.horizontal, 4).padding(.vertical, 1)
+                        .background(RoundedRectangle(cornerRadius: 4)
+                            .fill(ProviderPalette.color(for: entry.provider.id).opacity(0.10)))
+                    Text(entry.provider.displayName)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Text(entry.message)
+                        .font(.system(size: 10))
+                        .foregroundStyle(color(for: entry.kind))
+                        .lineLimit(2)
+                        .help(entry.message)
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.03)))
     }
 
-    // Identity color while healthy, danger color when getting low — keeps rows distinct but
-    // still flags trouble.
-    private func barColor(remaining: Double, danger: Color) -> Color {
-        remaining <= 0.30 ? danger : identity
+    private func color(for kind: ProviderErrorPresentation?) -> Color {
+        switch kind {
+        case .notConfigured: return .secondary
+        case .needsReauth: return .orange
+        case .error: return .red
+        case nil: return .secondary
+        }
     }
 }
