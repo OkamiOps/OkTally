@@ -72,12 +72,16 @@ struct PopoverContentView: View {
 
     private var providers: [UsageProvider] { appModel.orderedProviders }
 
-    /// Providers that produced at least one quota window → gauge cards.
+    /// Providers that produced at least one quota window → gauge cards. A provider whose
+    /// latest refresh failed keeps showing its last good snapshot (freshly fetched or
+    /// restored from disk) — the failure is still listed in the problems section below,
+    /// but usage the owner is tracking must not vanish because one poll errored. Only
+    /// `.notConfigured` hides the card: the owner signed out, so old numbers are noise.
     private var withData: [(provider: UsageProvider, snapshot: ProviderSnapshot)] {
         providers.compactMap { provider in
             guard let snapshot = appModel.snapshotsByProvider[provider.id],
                   !snapshot.quotas.isEmpty,
-                  appModel.errorsByProvider[provider.id] == nil
+                  appModel.errorKindByProvider[provider.id] != .notConfigured
             else { return nil }
             return (provider, snapshot)
         }
@@ -257,11 +261,31 @@ private struct ProviderGaugeCard: View {
                     )
                 }
             }
+            if let staleness = Self.stalenessText(fetchedAt: snapshot.fetchedAt) {
+                Label(staleness, systemImage: "clock")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                    .help("Última atualização bem-sucedida — a busca mais recente falhou ou ainda não rodou")
+            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.045)))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.07)))
+    }
+
+    /// "Atualizado há 25min" once the snapshot is older than any provider's normal poll
+    /// cadence — i.e. only when the data on screen is genuinely a survivor (app just
+    /// relaunched, or refreshes have been failing). Fresh cards stay caption-free.
+    static func stalenessText(fetchedAt: Date, now: Date = Date()) -> String? {
+        let age = now.timeIntervalSince(fetchedAt)
+        guard age > 15 * 60 else { return nil }
+        let fmt = DateComponentsFormatter()
+        fmt.unitsStyle = .abbreviated
+        fmt.allowedUnits = [.day, .hour, .minute]
+        fmt.maximumUnitCount = 2
+        guard let s = fmt.string(from: age) else { return nil }
+        return "Atualizado há \(s)"
     }
 }
 

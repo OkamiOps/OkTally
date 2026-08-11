@@ -3,8 +3,8 @@
     "billingCycleEnd": "1786429152000",
     "planUsage": {
         "totalSpend": 25423,
-        "includedSpend": 2000,
-        "bonusSpend": 23423,
+        "includedSpend": 25423,
+        "remaining": 1965,
         "limit": 2000,
         "remainingBonus": false,
         "bonusTooltip": "We work with model providers to give you free usage beyond what you've purchased. Amounts may vary.",
