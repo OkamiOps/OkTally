@@ -67,8 +67,6 @@ final class FakeCursorUsageFetching: CursorUsageFetching {
 final class CursorUsageProviderTests: XCTestCase {
     private func makeResponse(
         totalSpend: Double = 25423,
-        includedSpend: Double = 2000,
-        bonusSpend: Double = 23423,
         limit: Double = 2000,
         totalPercentUsed: Double = 73.68985507246377
     ) -> CursorUsageResponse {
@@ -77,8 +75,6 @@ final class CursorUsageProviderTests: XCTestCase {
             billingCycleEnd: "1786429152000",
             planUsage: .init(
                 totalSpend: totalSpend,
-                includedSpend: includedSpend,
-                bonusSpend: bonusSpend,
                 limit: limit,
                 totalPercentUsed: totalPercentUsed
             )
@@ -164,8 +160,6 @@ final class CursorUsageProviderTests: XCTestCase {
         XCTAssertEqual(response.billingCycleStart, "1783750752000")
         XCTAssertEqual(response.billingCycleEnd, "1786429152000")
         XCTAssertEqual(response.planUsage.totalSpend, 25423)
-        XCTAssertEqual(response.planUsage.includedSpend, 2000)
-        XCTAssertEqual(response.planUsage.bonusSpend, 23423)
         XCTAssertEqual(response.planUsage.limit, 2000)
         XCTAssertEqual(response.planUsage.totalPercentUsed, 73.68985507246377)
     }

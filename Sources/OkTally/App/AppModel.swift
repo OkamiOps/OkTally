@@ -45,7 +45,12 @@ final class AppModel: ObservableObject {
     private let registry: PluginRegistry
     private let scheduler: Scheduler
 
-    init(registry: PluginRegistry, scheduler: Scheduler, defaults: UserDefaults = .standard) {
+    init(
+        registry: PluginRegistry,
+        scheduler: Scheduler,
+        storage: StorageManaging? = nil,
+        defaults: UserDefaults = .standard
+    ) {
         self.registry = registry
         self.scheduler = scheduler
         self.defaults = defaults
@@ -56,6 +61,16 @@ final class AppModel: ObservableObject {
             defaults.removeObject(forKey: Self.legacyMenuBarPinKey)
         } else {
             self.menuBarPins = []
+        }
+        // Seed from the last persisted snapshot per provider so a relaunch (or a provider
+        // whose next fetch fails) shows the last known usage instead of nothing. Each
+        // snapshot carries its own `fetchedAt`, so the UI can label it as stale.
+        if let storage {
+            for provider in registry.providers {
+                if let snapshot = try? storage.latestSnapshot(providerId: provider.id), !snapshot.quotas.isEmpty {
+                    snapshotsByProvider[provider.id] = snapshot
+                }
+            }
         }
         scheduler.onResult = { [weak self] result in
             Task { @MainActor in self?.apply(result) }

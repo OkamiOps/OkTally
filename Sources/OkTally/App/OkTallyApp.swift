@@ -61,7 +61,7 @@ struct OkTallyApp: App {
         ))
         registry.register(SuperGrokUsageProvider(oauthManager: oauthManager, tokenStore: tokenStore))
 
-        let model = AppModel(registry: registry, scheduler: scheduler)
+        let model = AppModel(registry: registry, scheduler: scheduler, storage: storage)
         _appModel = StateObject(wrappedValue: model)
 
         Task { await notificationSender.requestAuthorizationIfNeeded() }

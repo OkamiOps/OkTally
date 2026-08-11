@@ -96,6 +96,61 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(defaults.string(forKey: "menuBarPin"), "legacy key must be cleared after migration")
     }
 
+    /// Persistence regression: a relaunch must come up showing the last usage each
+    /// provider reported, not "Carregando…" (or an error) with no numbers.
+    func test_init_seedsSnapshotsFromPersistedStorage() throws {
+        let provider = FakeUsageProvider(id: "claude", displayName: "Claude Code")
+        let registry = PluginRegistry()
+        registry.register(provider)
+        let storage = FakeStorage()
+        let persisted = ProviderSnapshot(
+            providerId: "claude",
+            fetchedAt: Date(timeIntervalSince1970: 1_000_000),
+            quotas: [QuotaWindow(label: "5h", shape: .rollingWindow(used: 40, limit: 100, windowStart: Date(), resetAt: Date()))],
+            usageDetail: nil
+        )
+        try storage.save(persisted)
+        let scheduler = Scheduler(
+            registry: registry,
+            storage: storage,
+            alertEngine: AlertEngine(),
+            alertDispatcher: AlertDispatcher(sender: FakeNotificationSender())
+        )
+
+        let model = AppModel(registry: registry, scheduler: scheduler, storage: storage)
+
+        XCTAssertEqual(model.snapshotsByProvider["claude"], persisted)
+    }
+
+    /// A failed refresh records the error but must NOT clear the snapshot already on
+    /// screen — the popover keeps showing the last good usage alongside the error.
+    func test_failedRefresh_keepsPreviousSnapshot() async throws {
+        let provider = FakeUsageProvider(id: "claude", displayName: "Claude Code")
+        provider.errorToThrow = FakeError.boom
+        let registry = PluginRegistry()
+        registry.register(provider)
+        let storage = FakeStorage()
+        let persisted = ProviderSnapshot(
+            providerId: "claude",
+            fetchedAt: Date(timeIntervalSince1970: 1_000_000),
+            quotas: [QuotaWindow(label: "5h", shape: .rollingWindow(used: 40, limit: 100, windowStart: Date(), resetAt: Date()))],
+            usageDetail: nil
+        )
+        try storage.save(persisted)
+        let scheduler = Scheduler(
+            registry: registry,
+            storage: storage,
+            alertEngine: AlertEngine(),
+            alertDispatcher: AlertDispatcher(sender: FakeNotificationSender())
+        )
+        let model = AppModel(registry: registry, scheduler: scheduler, storage: storage)
+
+        await model.refreshNow()
+
+        XCTAssertNotNil(model.errorsByProvider["claude"])
+        XCTAssertEqual(model.snapshotsByProvider["claude"], persisted)
+    }
+
     func test_menuBarSegments_reflectWorstSnapshot() async {
         let provider = FakeUsageProvider(id: "claude", displayName: "Claude Code")
         provider.snapshotToReturn = ProviderSnapshot(

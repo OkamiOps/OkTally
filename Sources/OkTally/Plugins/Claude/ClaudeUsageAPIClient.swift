@@ -2,7 +2,11 @@ import Foundation
 
 struct ClaudeUsageWindow: Codable, Equatable {
     let utilization: Double
-    let resetsAt: Date
+    /// `null` in the live API whenever the window is idle — right after a reset, or when
+    /// nothing has been used in it yet (confirmed against a live response on 2026-08-12).
+    /// Decoding this as a required `Date` made the entire provider fail with "The data
+    /// couldn't be read because it is missing" precisely when a limit reset.
+    let resetsAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case utilization

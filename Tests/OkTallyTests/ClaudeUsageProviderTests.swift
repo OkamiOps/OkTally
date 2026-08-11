@@ -67,7 +67,27 @@ final class ClaudeUsageProviderTests: XCTestCase {
         let response = try await client.fetchUsage(accessToken: "tok")
 
         XCTAssertEqual(response.fiveHour.utilization, 42.5)
+        // Idle window: the live API reports `resets_at: null` — must decode, not fail.
         XCTAssertEqual(response.sevenDayOpus?.utilization, 15.0)
+        XCTAssertNil(response.sevenDayOpus?.resetsAt)
+    }
+
+    func test_fetchSnapshot_windowWithNilReset_stillProducesQuota() async throws {
+        let fetcher = FakeClaudeUsageFetching()
+        fetcher.responseToReturn = ClaudeUsageResponse(
+            fiveHour: ClaudeUsageWindow(utilization: 0, resetsAt: nil),
+            sevenDay: ClaudeUsageWindow(utilization: 61.0, resetsAt: Date(timeIntervalSince1970: 2_500_000)),
+            sevenDayOpus: nil
+        )
+        let provider = try makeProvider(fetcher: fetcher)
+
+        let snapshot = try await provider.fetchSnapshot()
+
+        XCTAssertEqual(snapshot.quotas.count, 2)
+        let fiveHour = try XCTUnwrap(snapshot.quotas.first { $0.label == "5h" })
+        XCTAssertEqual(fiveHour.shape.usedPercent, 0)
+        // Synthetic reset anchored at fetch time: no countdown is rendered for it.
+        XCTAssertNil(QuotaPresentation.resetText(fiveHour.shape))
     }
 
     func test_importLegacyCredentials_savesTokenWhenLegacyExists() throws {
