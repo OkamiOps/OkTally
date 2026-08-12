@@ -113,7 +113,7 @@ Cada provedor é um plugin que implementa um único protocolo `UsageProvider` e 
 
 ### DMG (recomendado)
 
-1. Baixe `OkTally-0.8.0.dmg` na [página de Releases](https://github.com/OkamiOps/OkTally/releases).
+1. Baixe `OkTally-0.9.0.dmg` na [página de Releases](https://github.com/OkamiOps/OkTally/releases).
 2. Abra e arraste **OkTally** para Aplicativos.
 3. O app não é notarizado: no primeiro uso, clique com o botão direito (Ctrl-clique) em `OkTally.app` → **Abrir** → **Abrir**.
 
@@ -134,7 +134,7 @@ bash Scripts/install_launch_agent.sh   # iniciar o OkTally no login
 bash Scripts/make_dmg.sh               # empacotar um DMG de arrastar-e-soltar
 ```
 
-> **Recomendado ao compilar do código:** crie um certificado de assinatura autoassinado chamado `OkTally Dev` (Acesso às Chaves → Assistente de Certificado → Criar um Certificado… → Raiz Autoassinada, Assinatura de Código). Assinaturas ad-hoc mudam a identidade do app a cada build, o que invalida as ACLs do Keychain e força novo login. O `build_app.sh` usa o certificado automaticamente quando ele existe.
+> **Assinatura estável:** o `build_app.sh` assina automaticamente com uma identidade estável — o certificado autoassinado `OkTally Dev` se você criou um, senão qualquer certificado **Apple Development** já presente na máquina. Só quando nenhum dos dois existe ele cai para assinatura ad-hoc, que muda a identidade do app a cada build e força novo login nos provedores após cada rebuild.
 
 ## Primeiros passos
 
