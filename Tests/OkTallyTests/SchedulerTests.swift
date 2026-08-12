@@ -40,6 +40,12 @@ final class FakeStorage: StorageManaging {
     func snapshots(providerId: String, since: Date) throws -> [ProviderSnapshot] {
         (byProvider[providerId] ?? []).filter { $0.fetchedAt >= since }
     }
+
+    func prune(olderThan cutoff: Date) throws {
+        for (key, value) in byProvider {
+            byProvider[key] = value.filter { $0.fetchedAt >= cutoff }
+        }
+    }
 }
 
 enum FakeError: Error { case boom }
