@@ -246,6 +246,9 @@ private struct ProviderGaugeCard: View {
                 Text(provider.displayName)
                     .font(.system(size: 12, weight: .semibold))
                     .lineLimit(1)
+                if let plan = snapshot.planLabel {
+                    PlanBadge(label: plan)
+                }
                 Spacer(minLength: 0)
             }
             HStack {

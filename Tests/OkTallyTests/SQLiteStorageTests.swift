@@ -67,6 +67,26 @@ final class SQLiteStorageTests: XCTestCase {
         XCTAssertEqual(latest, snapshot)
     }
 
+    func test_planLabel_roundTrips_andOldRowsWithoutItDecode() throws {
+        let storage = try SQLiteStorage(path: ":memory:")
+        let snapshot = ProviderSnapshot(
+            providerId: "copilot",
+            fetchedAt: Date(timeIntervalSince1970: 100),
+            quotas: [],
+            usageDetail: nil,
+            planLabel: "Pro"
+        )
+        try storage.save(snapshot)
+        XCTAssertEqual(try storage.latestSnapshot(providerId: "copilot")?.planLabel, "Pro")
+
+        // Linhas antigas não têm a chave — o decode não pode falhar.
+        let legacyJSON = Data(#"{"providerId":"claude","fetchedAt":0,"quotas":[]}"#.utf8)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        let legacy = try decoder.decode(ProviderSnapshot.self, from: legacyJSON)
+        XCTAssertNil(legacy.planLabel)
+    }
+
     func test_prune_deletesOnlySnapshotsOlderThanCutoff() throws {
         let storage = try SQLiteStorage(path: ":memory:")
         let old = ProviderSnapshot(providerId: "claude", fetchedAt: Date(timeIntervalSince1970: 100), quotas: [], usageDetail: nil)

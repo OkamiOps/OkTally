@@ -220,6 +220,9 @@ private struct ProviderOverviewCard: View {
                     .padding(.horizontal, 5).padding(.vertical, 2)
                     .background(RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)))
                 Text(provider.displayName).font(.system(size: 13, weight: .semibold))
+                if let plan = snapshot.planLabel {
+                    PlanBadge(label: plan)
+                }
                 Spacer(minLength: 0)
             }
             if let worst {
@@ -390,7 +393,12 @@ private struct ProviderDetailScreen: View {
                         .font(.system(size: 16, weight: .heavy)).foregroundStyle(identity)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(provider.displayName).font(.system(size: 16, weight: .bold))
+                    HStack(spacing: 6) {
+                        Text(provider.displayName).font(.system(size: 16, weight: .bold))
+                        if let plan = snapshot.planLabel {
+                            PlanBadge(label: plan)
+                        }
+                    }
                     Text("Atualizado \(Self.relative(snapshot.fetchedAt))")
                         .font(.caption).foregroundStyle(.secondary)
                 }

@@ -35,7 +35,20 @@ final class CodexUsageProvider: UsageProvider {
             appendWindow(extra.rateLimit?.primaryWindow, defaultLabel: extra.limitName, into: &quotas)
             appendWindow(extra.rateLimit?.secondaryWindow, defaultLabel: extra.limitName, into: &quotas)
         }
-        return ProviderSnapshot(providerId: id, fetchedAt: Date(), quotas: quotas, usageDetail: nil)
+        return ProviderSnapshot(
+            providerId: id,
+            fetchedAt: Date(),
+            quotas: quotas,
+            usageDetail: nil,
+            planLabel: usage.planType.map(Self.planDisplayName)
+        )
+    }
+
+    /// "pro" → "Pro", "plus" → "Plus"; valores compostos ("chatgpt_team") viram a última
+    /// palavra capitalizada.
+    static func planDisplayName(_ raw: String) -> String {
+        let last = raw.split(separator: "_").last.map(String.init) ?? raw
+        return last.prefix(1).uppercased() + last.dropFirst()
     }
 
     /// Appends one rate-limit window as a rolling-window quota. The label is the feature

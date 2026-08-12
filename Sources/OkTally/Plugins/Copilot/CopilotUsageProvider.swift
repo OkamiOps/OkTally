@@ -63,7 +63,8 @@ final class CopilotUsageProvider: UsageProvider {
             providerId: id,
             fetchedAt: now,
             quotas: Self.windows(from: entitlement, now: now),
-            usageDetail: nil
+            usageDetail: nil,
+            planLabel: entitlement.planDisplayName
         )
     }
 
@@ -163,6 +164,8 @@ final class CopilotUsageProvider: UsageProvider {
         let quotaSnapshots: Snapshots?
         let limitedUserQuotas: CountQuotas?
         let monthlyQuotas: CountQuotas?
+        let accessTypeSku: String?
+        let copilotPlan: String?
 
         enum CodingKeys: String, CodingKey {
             case quotaResetDate = "quota_reset_date"
@@ -171,6 +174,25 @@ final class CopilotUsageProvider: UsageProvider {
             case quotaSnapshots = "quota_snapshots"
             case limitedUserQuotas = "limited_user_quotas"
             case monthlyQuotas = "monthly_quotas"
+            case accessTypeSku = "access_type_sku"
+            case copilotPlan = "copilot_plan"
+        }
+
+        /// Nome de plano amigável a partir do SKU/plano cru (regras portadas do Quotio,
+        /// que as calibrou contra contas reais de cada tier).
+        var planDisplayName: String? {
+            let sku = accessTypeSku?.lowercased() ?? ""
+            let plan = copilotPlan?.lowercased() ?? ""
+            if sku.contains("enterprise") || plan == "enterprise" { return "Enterprise" }
+            if sku.contains("business") || plan == "business" { return "Business" }
+            // Cota educacional se comporta como Pro (chat/completions ilimitados).
+            if sku.contains("educational") { return "Pro" }
+            if sku.contains("pro") || plan.contains("pro") { return "Pro" }
+            if plan == "individual" && !sku.contains("free_limited") { return "Pro" }
+            if sku.contains("free_limited") || sku == "free" || plan.contains("free") { return "Free" }
+            if let plan = copilotPlan, !plan.isEmpty { return plan.capitalized }
+            if let sku = accessTypeSku, !sku.isEmpty { return sku.capitalized }
+            return nil
         }
 
         var resetDate: Date? {

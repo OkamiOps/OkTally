@@ -67,6 +67,13 @@ final class CodexUsageProviderTests: XCTestCase {
         // The named additional limit surfaces under its feature name.
         XCTAssertEqual(snapshot.quotas.first { $0.label.contains("GPT-5.3-Codex-Spark") }?.shape.usedPercent, 9)
         XCTAssertEqual(fetcher.lastAccountId, "acc-9")
+        XCTAssertEqual(snapshot.planLabel, "Pro")
+    }
+
+    func test_planDisplayName_capitalizesAndStripsPrefix() {
+        XCTAssertEqual(CodexUsageProvider.planDisplayName("pro"), "Pro")
+        XCTAssertEqual(CodexUsageProvider.planDisplayName("plus"), "Plus")
+        XCTAssertEqual(CodexUsageProvider.planDisplayName("chatgpt_team"), "Team")
     }
 
     func test_fetchSnapshot_fiveHourWindowLabelled5h() async throws {
