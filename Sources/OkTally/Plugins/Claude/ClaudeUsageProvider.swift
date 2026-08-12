@@ -11,17 +11,20 @@ final class ClaudeUsageProvider: UsageProvider {
     private let oauthManager: OAuthManaging
     private let tokenStore: TokenStoring
     private let apiClient: ClaudeUsageFetching
+    private let profileClient: ClaudeProfileFetching?
     private let legacyCredentialProvider: ClaudeCredentialProvider?
 
     init(
         oauthManager: OAuthManaging,
         tokenStore: TokenStoring,
         apiClient: ClaudeUsageFetching = ClaudeUsageAPIClient(),
+        profileClient: ClaudeProfileFetching? = ClaudeProfileClient(),
         legacyCredentialProvider: ClaudeCredentialProvider? = ClaudeCredentialProvider()
     ) {
         self.oauthManager = oauthManager
         self.tokenStore = tokenStore
         self.apiClient = apiClient
+        self.profileClient = profileClient
         self.legacyCredentialProvider = legacyCredentialProvider
     }
 
@@ -54,7 +57,8 @@ final class ClaudeUsageProvider: UsageProvider {
         if let opus = usage.sevenDayOpus {
             quotas.append(QuotaWindow(label: "weekly-opus", shape: Self.shape(for: opus, windowLength: 7 * 24 * 3600, now: now)))
         }
-        return ProviderSnapshot(providerId: id, fetchedAt: now, quotas: quotas, usageDetail: nil)
+        let planLabel = await profileClient?.fetchPlanLabel(accessToken: accessToken)
+        return ProviderSnapshot(providerId: id, fetchedAt: now, quotas: quotas, usageDetail: nil, planLabel: planLabel)
     }
 
     /// The API reports `resets_at: null` for a window that is idle (just reset, or never
