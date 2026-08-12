@@ -10,7 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Plan badges** (Pro/Free/Business/Enterprise) on provider cards, overview cards and detail pages — populated by Codex (`plan_type`) and GitHub Copilot (SKU-based tier rules).
 - **Update check**: OkTally checks GitHub Releases once a day and shows an orange "vX available" chip in the popover header linking to the release page. (Chosen over Sparkle deliberately: without notarization, auto-install would hit Gatekeeper anyway.)
-- **English localization** (158 strings): the UI now follows the system language — English or Portuguese; dates and month labels localize too.
+- **English localization** (164 strings): the UI now follows the system language — English or Portuguese; dates and month labels localize too.
+- **Antigravity provider** (zero-config): reads the Antigravity IDE login from its local state database, refreshes the Google OAuth token, and reports the Gemini and Claude/GPT quota groups (5h + weekly windows) from the Cloud Code quota-summary API.
+- Plan badges extended to **Claude** (OAuth profile → Pro/Max/Team/Enterprise) and **Cursor** (membership type from the local session — Pro/Free/Pro Student).
 
 ## [0.9.0-beta] — 2026-08-12
 

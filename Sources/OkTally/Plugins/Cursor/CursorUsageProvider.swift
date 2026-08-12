@@ -44,7 +44,18 @@ final class CursorUsageProvider: UsageProvider {
             windows.append(percentWindow)
         }
 
-        return ProviderSnapshot(providerId: id, fetchedAt: Date(), quotas: windows, usageDetail: nil)
+        return ProviderSnapshot(
+            providerId: id,
+            fetchedAt: Date(),
+            quotas: windows,
+            usageDetail: nil,
+            planLabel: tokenReader.readMembershipType().map(Self.planDisplayName)
+        )
+    }
+
+    /// "pro" → "Pro", "pro_student" → "Pro Student".
+    static func planDisplayName(_ raw: String) -> String {
+        raw.split(separator: "_").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
     }
 
     private static func parseEpochMillis(_ value: String) -> Date? {

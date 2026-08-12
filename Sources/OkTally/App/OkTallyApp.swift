@@ -60,6 +60,7 @@ struct OkTallyApp: App {
         ))
         registry.register(CursorUsageProvider())
         registry.register(CopilotUsageProvider())
+        registry.register(AntigravityUsageProvider())
         registry.register(OpenCodeUsageProvider(apiKeyProvider: { preferencesStore.openCodeAPIKey }))
         registry.register(MiMoUsageProvider(
             sessionStore: mimoSessionStore,

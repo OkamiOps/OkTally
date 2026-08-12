@@ -52,6 +52,13 @@ enum ProviderErrorPresentation: Equatable {
             case .badResponse: return .error
             }
         }
+        if let error = error as? AntigravityError {
+            switch error {
+            case .notDetected: return .notConfigured
+            case .tokenRejected: return .needsReauth
+            case .badResponse: return .error
+            }
+        }
         return .error
     }
 }
