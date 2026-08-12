@@ -22,8 +22,21 @@ struct PopoverView: View {
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 8) {
             Text("OkTally").font(.system(size: 14, weight: .bold))
+            if let update = appModel.availableUpdate {
+                Button {
+                    NSWorkspace.shared.open(update.url)
+                } label: {
+                    Label("\(update.version) disponível", systemImage: "arrow.down.circle.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(Capsule().fill(Color.orange.opacity(0.15)))
+                        .foregroundStyle(.orange)
+                }
+                .buttonStyle(.plain)
+                .help("Abrir a página da nova versão no GitHub")
+            }
             Spacer()
             Text(pinnedHint).font(.caption).foregroundStyle(.secondary)
         }
