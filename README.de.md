@@ -2,26 +2,28 @@
 
 # OkTally
 
-**Jedes Kontingent deiner KI-Coding-Abos, direkt in der macOS-Menüleiste — bevor du an die Wand läufst.**
+**Jedes KI-Abo-Kontingent in der macOS-Menüleiste — bevor du gegen die Wand läufst.**
 
-[![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-black?style=flat)](https://www.apple.com/macos/)
-[![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat)](https://swift.org)
-[![License](https://img.shields.io/badge/license-MIT-blue?style=flat)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/OkamiOps/OkTally?style=flat)](https://github.com/OkamiOps/OkTally/releases)
-[![Tests](https://img.shields.io/badge/tests-180%20passing-brightgreen?style=flat)](#entwicklung)
+[![Platform](https://img.shields.io/badge/Plattform-macOS%2013%2B-black?style=flat&logo=apple)](https://www.apple.com/macos/)
+[![Swift](https://img.shields.io/badge/Swift-5.9-F05138?style=flat&logo=swift&logoColor=white)](https://swift.org)
+[![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat)](https://developer.apple.com/xcode/swiftui/)
+[![License](https://img.shields.io/badge/Lizenz-MIT-blue?style=flat)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/OkamiOps/OkTally?include_prereleases&style=flat&color=orange)](https://github.com/OkamiOps/OkTally/releases)
+[![Tests](https://img.shields.io/badge/Tests-235%20bestanden-brightgreen?style=flat)](#entwicklung)
+[![No telemetry](https://img.shields.io/badge/Telemetrie-keine-success?style=flat)](#datenschutz)
 
 [English](README.md) | **Deutsch** | [Français](README.fr.md) | [Português (BR)](README.pt-BR.md)
 
 <br />
 
-<img src="docs/assets/menubar.png" width="260" alt="OkTally menu bar label showing multiple pinned quota windows" />
+<img src="docs/assets/menubar.png" width="260" alt="OkTally-Menüleiste mit mehreren angehefteten Kontingentfenstern" />
 
 <br />
 <br />
 
-<img src="docs/assets/popover.png" width="400" alt="OkTally popover dashboard with hero gauge and provider cards" />
+<img src="docs/assets/popover.png" width="400" alt="OkTally-Popover mit Hero-Gauge, Provider-Karten und 24h-Sparklines" />
 
-<sub>Screenshots zeigen Demodaten.</sub>
+<sub>Alle Screenshots zeigen Demo-Daten.</sub>
 
 </div>
 
@@ -29,52 +31,73 @@
 
 ## Warum OkTally
 
-KI-Abo-Tools warnen dich nicht. Das 5-Stunden-Fenster von Claude Code schließt sich mitten im Refactoring, das wöchentliche Limit fällt zufällig auf einen Donnerstag, und das erste Anzeichen für Ärger ist die Meldung „du hast dein Limit erreicht". Und das Kontingent, das auf einem anderen Abo noch ungenutzt herumliegt, bleibt derweil ungenutzt, weil dir niemand sagt, dass es da ist.
+Abo-basierte KI-Tools warnen nicht. Das 5-Stunden-Fenster von Claude Code schließt mitten im Refactoring, das Wochenlimit fällt auf einen Donnerstag, und das erste Anzeichen ist die Meldung *„Limit erreicht"*. Währenddessen liegt Kontingent auf einem anderen Abo ungenutzt herum, weil nichts dir sagt, dass es da ist.
 
-OkTally ist eine native macOS-Menüleisten-App, die jedes dieser Kontingente auf einen Blick sichtbar hält — ein farbiger Streifen in der Menüleiste, ein Popover mit dem vollständigen Überblick und eine Benachrichtigung, bevor dir das Kontingent ausgeht, statt danach.
+OkTally ist eine **native macOS-Menüleisten-App**, die all diese Kontingente auf einen Blick sichtbar hält — ein farbiger Streifen in der Menüleiste, ein Popover mit dem Gesamtbild, ein Übersichtsfenster mit Nutzungsanalyse und eine Benachrichtigung, **bevor** es leer ist statt danach.
 
-## Funktionen
+## Funktionen auf einen Blick
 
-**Farbige Menüleiste, so viele Pins wie du willst.** Pinne beliebig viele Kontingentfenster an. Jedes wird als Anbieter-Symbol in der Identitätsfarbe des Anbieters dargestellt, gefolgt vom verbleibenden Prozentsatz, dessen Farbe sich nach der Nähe zum Limit richtet — grün über 30 %, gelb bei 30 % oder darunter, rot bei 10 % oder darunter:
+| | Funktion | Was sie tut |
+| :-: | --- | --- |
+| 📌 | **Farbige Menüleisten-Pins** | Beliebig viele Fenster anheften; jedes erscheint als `C 78 · X 86 · ▹ 26` — Glyphe in Providerfarbe, Rest-% nach Dringlichkeit gefärbt |
+| 🎯 | **Engpass-zuerst-Popover** | Ein Hero-Gauge zeigt das knappste Fenster mit Reset-Countdown; darunter Provider-Karten mit Ringen |
+| 📈 | **24h-Sparklines** | Jede Karte trägt einen Mini-Trend der letzten 24 Stunden aus der lokalen Historie |
+| 🪟 | **Übersichtsfenster** | Sidebar, KPI-Zeile (Provider · Engpass · geschätzte Kosten), Kapselbalken pro Fenster, 7-Tage-Trends |
+| 📊 | **Analyse-Tab** | Token-Statistiken + GitHub-artige Heatmap, aggregiert über Codex, Claude Code und OpenCode — Streaks, Tagesspitze, heute/gestern/30 Tage |
+| 🔔 | **Konfigurierbare Alarme** | macOS-Benachrichtigungen bei 70/90/100 % (deine Wahl) plus USD-Schwelle für niedriges Guthaben — einmal pro Überschreitung |
+| 💰 | **Kostenschätzung** | Lokale Token-Zahlen × öffentliche OpenRouter-Preistabelle → „geschätzte Kosten (30d)" auf der Karte |
+| 🧲 | **Zero-Config-Erkennung** | Cursor und GitHub Copilot werden aus den Logins erkannt, die schon auf dem Mac sind |
+| 🔐 | **Geheimnisse nur im Schlüsselbund** | OAuth-Tokens und API-Keys nie im Klartext; alles läuft lokal |
 
-```
-C 78 · X 86 · ▹ 26
-```
+## Das Übersichtsfenster
 
-Pinnst du nichts, zeigt OkTally automatisch das Fenster, das seinem Limit am nächsten ist. Das Label wird als echtes (nicht-template) Bild gezeichnet, sodass die Farben in der Menüleiste erhalten bleiben, statt auf Monochrom reduziert zu werden.
+<div align="center">
+<img src="docs/assets/overview.png" width="640" alt="Übersichtsfenster mit KPI-Karten und Engpass-zuerst-Provider-Karten" />
+</div>
 
-**Ein Popover, das die Frage sofort beantwortet.** Eine Hauptanzeige rückt das Fenster in den Fokus, das seinem Limit am nächsten ist, mit einem Countdown bis zum Reset. Darunter ein zweispaltiges Raster mit Anbieter-Karten: eine Ringanzeige pro Anbieter, dann eine Zeile pro Fenster mit verbleibendem Prozentsatz und Reset-Zeit. Anbieter mit Fehlern oder ohne Konfiguration klappen zu unauffälligen Zeilen am unteren Rand zusammen, außer Sichtweite.
+Über das Popover öffnen („Visão geral"). Die Sidebar listet jeden Provider mit Live-Status-Punkt; das Raster stellt das **knappste Fenster jedes Providers zuerst** dar — getönter Hero-Block, Kapselbalken, Reset-Countdown — die übrigen Fenster als kompakte Zeilen mit 7-Tage-Sparkline darunter.
 
-**Einstellungen, die sich wie die Systemeinstellungen anfühlen.** Eine Seitenleiste listet jeden Anbieter mit einem Live-Statuspunkt, ein Bereich pro Anbieter, dazu ein Allgemein-Bereich zum Umsortieren und Entfernen von Menüleisten-Pins.
+## Der Analyse-Tab
 
-**Benachrichtigungen vor der Wand.** Eine kantengetriggerte Warn-Engine löst eine macOS-Benachrichtigung genau in dem Moment aus, in dem eine Schwelle überschritten wird — einmal pro Überschreitung, nicht einmal pro Abfrage.
+<div align="center">
+<img src="docs/assets/analytics.png" width="560" alt="Analyse-Tab mit Statistik-Chips und Nutzungs-Heatmap" />
+</div>
 
-## Anbieter
-
-| Anbieter | Authentifizierung | Was du siehst |
+| Quelle | Woher die Zahlen kommen | Hinweise |
 | --- | --- | --- |
-| **Claude Code** | OAuth oder Ein-Klick-Import deines bestehenden Claude-Code-CLI-Logins | 5h- + wöchentliche Fenster |
-| **Codex** | OAuth | Wöchentliche Fenster |
-| **SuperGrok** | OAuth-Gerätecode | Plan-Fenster |
-| **Cursor** | Automatisch — liest deine lokale Cursor-App-Sitzung | Guthaben + Nutzung % |
-| **OpenRouter** | API-Schlüssel | Guthabenstand |
-| **MiniMax** | API-Schlüssel (global oder China-Region) | 5h- + wöchentliche Fenster |
-| **OpenCode** | API-Schlüssel | Plan-Nutzung |
-| **MiMo** | In-App-Websitzung (selbstheilend) oder manuelle Schätzung | Monatlicher Plan |
+| **Codex** | Konto-Statistik-API (ChatGPT) | Echte Lifetime-Tokens, längste Aufgabe, Streaks |
+| **Claude Code** | Lokale Transkripte (`~/.claude/projects`) | Inkrementeller Datei-Cache — erster Scan dauert etwas, danach <0,1s |
+| **OpenCode** | Lokale Sitzungsdatenbank | Tokens pro Tag inkl. Cache/Reasoning |
 
-**Selbstheilende MiMo-Sitzung.** Die Xiaomi-Konsolen-Sitzung lebt in einer persistenten In-App-Webansicht. Läuft das kurzlebige STS-Cookie ab, lädt OkTally die Konsole transparent neu und versucht es erneut — du musst dich nur dann erneut anmelden, wenn die zugrunde liegende Xiaomi-SSO-Sitzung tatsächlich abgelaufen ist.
+Der **Analyse**-Tab summiert alle Quellen in eine Heatmap + Chips (Gesamt, Tagesspitze, aktueller/längster Streak, heute, gestern, 30 Tage), mit Aufschlüsselung pro Provider. Lokale Zahlen sind ehrliche Schätzungen — keine Rechnung.
+
+## Provider
+
+| Provider | Auth | Kontingentfenster | Analyse | Kosten |
+| --- | --- | --- | :-: | :-: |
+| **Claude Code** | OAuth oder Ein-Klick-Import des CLI-Logins | 5h-Session + wöchentlich (+ Opus) | ✅ lokal | — |
+| **Codex** | OAuth | Wöchentlich + Feature-Fenster (z. B. Spark) | ✅ Konto | — |
+| **GitHub Copilot** | **Zero-Config** — liest Copilot/gh-CLI-Login | Chat, Completions, Premium | — | — |
+| **Cursor** | **Zero-Config** — liest lokale Cursor-Session | Guthaben + Zyklus-% | — | — |
+| **SuperGrok** | OAuth Device Code | Wochenfenster | — | — |
+| **OpenRouter** | API-Key | Guthaben | — | Preisquelle |
+| **MiniMax** | API-Key (global oder China) | 5h + wöchentlich | — | — |
+| **OpenCode** | API-Key + lokale DB | 5h / wöchentlich / monatlich (geschätzt) | ✅ lokal | ✅ |
+| **MiMo** | In-App-Websession (selbstheilend) oder manuell | Monatsplan | — | — |
+
+**Schema-Drift-tolerant.** Größtenteils undokumentierte APIs: OkTally dekodiert nur konsumierte Felder, behandelt sie als optional, wo Live-Traffic `null` gezeigt hat, und zeigt bei fehlgeschlagenem Poll die **letzten guten Daten** (mit „aktualisiert vor X").
 
 ## Installation
 
 ### DMG (empfohlen)
 
-1. Lade `OkTally-1.0.0.dmg` von der [Releases-Seite](https://github.com/OkamiOps/OkTally/releases) herunter.
-2. Öffne die Datei und ziehe **OkTally** in den Ordner „Programme".
-3. Die App ist nicht notarisiert: Beim ersten Start Rechtsklick (Ctrl-Klick) auf `OkTally.app` → **Öffnen** → **Öffnen**.
+1. `OkTally-0.8.0.dmg` von der [Releases-Seite](https://github.com/OkamiOps/OkTally/releases) laden.
+2. Öffnen und **OkTally** nach Programme ziehen.
+3. Die App ist nicht notarisiert: beim ersten Start Rechtsklick (Ctrl-Klick) auf `OkTally.app` → **Öffnen** → **Öffnen**.
 
-### Aus dem Quellcode bauen
+### Aus dem Quellcode
 
-Erfordert die Xcode Command Line Tools mit Swift 5.9 oder neuer.
+Benötigt Xcode Command Line Tools mit Swift 5.9+.
 
 ```bash
 git clone https://github.com/OkamiOps/OkTally.git
@@ -82,40 +105,33 @@ cd OkTally
 bash Scripts/build_app.sh    # baut .build/OkTally.app
 ```
 
-Optionale Extras:
-
-```bash
-bash Scripts/install_launch_agent.sh   # OkTally beim Login starten
-bash Scripts/make_dmg.sh               # eine Drag-and-drop-DMG paketieren
-```
-
-> **Empfehlung beim Bauen aus dem Quellcode:** Erstelle ein selbstsigniertes Code-Signing-Zertifikat namens `OkTally Dev` (Schlüsselbundverwaltung → Zertifikatsassistent → Zertifikat erstellen… → Selbstsigniertes Stammzertifikat, Code-Signierung). Ad-hoc-Signaturen ändern bei jedem Build die Identität der App, was Keychain-ACLs ungültig macht und dich zwingt, dich erneut anzumelden. `build_app.sh` erkennt das Zertifikat automatisch, wenn es existiert.
+> **Empfohlen:** ein selbstsigniertes Zertifikat namens `OkTally Dev` anlegen (Schlüsselbundverwaltung → Zertifikatsassistent), sonst invalidieren Ad-hoc-Signaturen bei jedem Build die Keychain-ACLs.
 
 ## Erste Schritte
 
-1. Klicke auf das OkTally-Symbol in der Menüleiste und öffne dann **Einstellungen**.
-2. Verbinde jeden Anbieter, den du nutzt — OAuth-Login, API-Schlüssel oder den MiMo-Web-Login.
-3. Pinne im Popover die Fenster, die dich interessieren, mit dem Pin-Symbol.
-4. Sortiere oder entferne Pins unter „Preferências → Geral" (Einstellungen → Allgemein).
+1. OkTally in der Menüleiste anklicken — der erste Start zeigt einen **Provider-verbinden**-Aufruf.
+2. In den **Einstellungen** jeden genutzten Provider verbinden — OAuth, API-Key oder gar nichts (Cursor/Copilot).
+3. Im Popover die wichtigen Fenster mit dem Pin-Symbol anheften.
+4. Alarmschwellen (70/90/100 % + Guthaben) unter **Einstellungen → Allgemein** anpassen.
+5. **Visão geral** für das volle Dashboard und den **Análise**-Tab öffnen.
 
 ## Entwicklung
 
 ```bash
-swift test    # 180 Unit-Tests
+swift test    # 235 Unit-Tests
 ```
 
-Jeder Anbieter ist ein Plugin, das einem einzigen `UsageProvider`-Protokoll entspricht, und normalisiert seine Daten in ein gemeinsames `QuotaShape`-Modell — rollierendes Fenster, periodischer Zähler, Guthabenstand, gemessen oder geschätzt —, sodass die Oberfläche niemals anbieterspezifische Sonderfälle behandeln muss. Ein Scheduler fragt Anbieter in anbieterspezifischen Intervallen ab, und die Präsentationslogik liegt in reinen Modellen wie `MenuBarLabelModel`, was das Rendering von Label und Dashboard vollständig testbar macht, ohne dass die App laufen muss. Design-Dokumente liegen in `docs/superpowers/`.
+Jeder Provider ist ein Plugin hinter einem einzigen `UsageProvider`-Protokoll und normalisiert in ein `QuotaShape`-Modell, damit die UI nie einen Anbieter als Sonderfall behandeln muss. Designdokumente liegen in `docs/superpowers/`.
 
 ## Datenschutz
 
 Alles läuft lokal auf deinem Mac.
 
-- OAuth-Tokens und API-Schlüssel werden im **macOS-Schlüsselbund** gespeichert, niemals im Klartext.
-- Der Nutzungsverlauf liegt in einer lokalen **SQLite**-Datenbank.
-- Keine Telemetrie, keine Analytics, keine externen Server — OkTally kommuniziert ausschließlich mit den eigenen APIs der Anbieter.
+- OAuth-Tokens und API-Keys liegen im **macOS-Schlüsselbund**, nie im Klartext.
+- Die Nutzungshistorie liegt in einer lokalen **SQLite**-Datenbank (30 Tage Aufbewahrung).
+- Claude-Code-/OpenCode-Analyse liest Dateien, **die schon auf deinem Rechner sind** — nichts wird hochgeladen.
+- Keine Telemetrie, keine Analytics, keine externen Server.
 
 ## Lizenz
 
 [MIT](LICENSE) © OkamiOps
-</content>
-</invoke>

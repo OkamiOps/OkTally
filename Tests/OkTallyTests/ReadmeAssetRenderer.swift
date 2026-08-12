@@ -28,6 +28,46 @@ final class ReadmeAssetRenderer: XCTestCase {
                     .background(Color(nsColor: .windowBackgroundColor)),
                   to: "popover.png")
         try write(view: menuBarStrip(model), to: "menubar.png")
+        try write(view: OverviewScreen(
+                        appModel: model,
+                        entries: model.orderedProviders.compactMap { provider in
+                            model.snapshotsByProvider[provider.id].map { (provider, $0) }
+                        },
+                        onSelect: { _ in })
+                    .padding(24)
+                    .frame(width: 760)
+                    .background(Color(nsColor: .windowBackgroundColor)),
+                  to: "overview.png")
+        try write(view: AnalyticsSection(analytics: demoAnalytics())
+                    .padding(24)
+                    .frame(width: 560)
+                    .background(Color(nsColor: .windowBackgroundColor)),
+                  to: "analytics.png")
+    }
+
+    /// Deterministic pseudo-random daily buckets (LCG) so re-rendering doesn't churn
+    /// the committed PNG.
+    private func demoAnalytics() -> TokenAnalytics {
+        var state: UInt64 = 0x5DEECE66D
+        func next() -> UInt64 {
+            state = state &* 6364136223846793005 &+ 1442695040888963407
+            return state >> 33
+        }
+        var buckets: [DailyTokens] = []
+        for offset in stride(from: 180, through: 0, by: -1) {
+            let date = Calendar.current.date(byAdding: .day, value: -offset, to: Date())!
+            let roll = next() % 10
+            let tokens = roll < 4 ? 0 : Int(next() % 90_000_000) + 100_000
+            buckets.append(DailyTokens(day: TokenAnalytics.dayKey(date), tokens: tokens))
+        }
+        return TokenAnalytics(
+            lifetimeTokens: 2_200_000_000,
+            peakDailyTokens: 385_400_000,
+            currentStreakDays: 6,
+            longestStreakDays: 8,
+            longestRunningTurnSeconds: 2673,
+            dailyBuckets: buckets
+        )
     }
 
     // MARK: - Demo data (fictitious but realistic)
@@ -59,6 +99,10 @@ final class ReadmeAssetRenderer: XCTestCase {
             ("cursor", "Cursor", [
                 QuotaWindow(label: "percent", shape: rolling(74, hours: 15.4))
             ]),
+            ("copilot", "GitHub Copilot", [
+                QuotaWindow(label: "premium", shape: rolling(35, hours: 460)),
+                QuotaWindow(label: "chat", shape: rolling(12, hours: 460))
+            ]),
             ("mimo", "MiMo", [
                 QuotaWindow(label: "mensal", shape: rolling(6, hours: 500))
             ])
@@ -71,13 +115,33 @@ final class ReadmeAssetRenderer: XCTestCase {
 
         let defaults = UserDefaults(suiteName: "ReadmeAssetRenderer")!
         defaults.removePersistentDomain(forName: "ReadmeAssetRenderer")
+        // Histórico de 24h seed para os sparklines dos cards aparecerem no screenshot:
+        // uma curva de uso subindo suavemente por provider.
+        let storage = FakeStorage()
+        for (id, _, quotas) in entries {
+            for step in 0..<12 {
+                let age = Double(12 - step) * 2 * 3600
+                let factor = 0.35 + Double(step) * 0.05
+                let past = quotas.map { window -> QuotaWindow in
+                    guard case .rollingWindow(let used, let limit, let start, let reset) = window.shape else { return window }
+                    return QuotaWindow(label: window.label, shape: .rollingWindow(
+                        used: used * factor, limit: limit, windowStart: start, resetAt: reset))
+                }
+                try storage.save(ProviderSnapshot(
+                    providerId: id,
+                    fetchedAt: now.addingTimeInterval(-age),
+                    quotas: past,
+                    usageDetail: nil
+                ))
+            }
+        }
         let scheduler = Scheduler(
             registry: registry,
-            storage: FakeStorage(),
+            storage: storage,
             alertEngine: AlertEngine(),
             alertDispatcher: AlertDispatcher(sender: FakeNotificationSender())
         )
-        let model = AppModel(registry: registry, scheduler: scheduler, defaults: defaults)
+        let model = AppModel(registry: registry, scheduler: scheduler, storage: storage, defaults: defaults)
         await model.refreshNow()
         try await Task.sleep(nanoseconds: 200_000_000) // let onResult callbacks land
         model.menuBarPins = [
