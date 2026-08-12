@@ -35,7 +35,7 @@ struct PreferencesView: View {
     @State private var statusMessage: String = ""
 
     /// Sidebar order — mirrors the old card order, not registration order.
-    private let providerIds = ["claude", "codex", "supergrok", "cursor", "openrouter", "minimax", "opencode", "mimo"]
+    private let providerIds = ["claude", "codex", "supergrok", "cursor", "copilot", "openrouter", "minimax", "opencode", "mimo"]
 
     var body: some View {
         NavigationSplitView {
@@ -93,6 +93,7 @@ struct PreferencesView: View {
         case "codex": return codexLoggedIn
         case "supergrok": return superGrokLoggedIn
         case "cursor": return true // reads the Cursor app session automatically
+        case "copilot": return CopilotTokenReader().firstToken() != nil
         case "openrouter": return !openRouterAPIKey.isEmpty
         case "minimax": return !minimaxAPIKey.isEmpty
         case "opencode": return !openCodeAPIKey.isEmpty
@@ -111,6 +112,7 @@ struct PreferencesView: View {
         case .provider("codex"): codexPane
         case .provider("supergrok"): superGrokPane
         case .provider("cursor"): cursorPane
+        case .provider("copilot"): copilotPane
         case .provider("openrouter"):
             keyPane("openrouter", text: $openRouterAPIKey, status: openRouterAPIKey.isEmpty ? "Sem chave" : "Chave salva") {
                 saveSecret("OpenRouter") { try preferencesStore.setOpenRouterAPIKey(openRouterAPIKey) }
@@ -220,6 +222,19 @@ struct PreferencesView: View {
         VStack(alignment: .leading, spacing: 12) {
             paneHeader("cursor", status: "Lê a sessão do app Cursor automaticamente", active: true)
             Text("Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var copilotPane: some View {
+        let detected = CopilotTokenReader().firstToken() != nil
+        return VStack(alignment: .leading, spacing: 12) {
+            paneHeader(
+                "copilot",
+                status: detected ? "Login do Copilot/gh CLI detectado" : "Nenhum login do Copilot/gh CLI encontrado",
+                active: detected
+            )
+            Text("Nada a configurar — detectado automaticamente a partir do login do Copilot ou do gh CLI neste Mac.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }

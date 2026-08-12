@@ -14,6 +14,7 @@ enum ProviderPalette {
         case "minimax":   return Color(red: 0.90, green: 0.35, blue: 0.55) // pink
         case "opencode":  return Color(red: 0.60, green: 0.45, blue: 0.90) // violet
         case "mimo":      return Color(red: 0.95, green: 0.62, blue: 0.20) // amber
+        case "copilot":   return Color(red: 0.45, green: 0.40, blue: 0.75) // slate-violet
         default:          return .accentColor
         }
     }
@@ -35,6 +36,7 @@ enum ProviderPalette {
         case "minimax": return "M"
         case "opencode": return "◇"
         case "mimo": return "K"
+        case "copilot": return "P"
         default: return "?"
         }
     }
