@@ -22,7 +22,11 @@ struct OkTallyApp: App {
         // Retention: the snapshots table grows on every poll (~2.3k rows/dia com 8
         // providers); 30 dias cobrem qualquer janela de cota exibida com folga.
         try? storage.prune(olderThan: Date().addingTimeInterval(-30 * 24 * 3600))
-        let alertEngine = AlertEngine()
+        let alertEngine = AlertEngine(
+            percentThresholds: { preferencesStore.alertPercentThresholds },
+            lowBalanceLimit: { Decimal(preferencesStore.alertLowBalanceThreshold) },
+            isEnabled: { preferencesStore.alertsEnabled }
+        )
         let notificationSender = UNNotificationSender()
         let alertDispatcher = AlertDispatcher(sender: notificationSender)
         let scheduler = Scheduler(

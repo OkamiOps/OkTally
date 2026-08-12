@@ -106,7 +106,7 @@ struct PreferencesView: View {
     @ViewBuilder private var detailContent: some View {
         switch pane {
         case .general:
-            GeneralPane(appModel: appModel, providerName: providerName)
+            GeneralPane(appModel: appModel, preferencesStore: preferencesStore, providerName: providerName)
         case .provider("claude"): claudePane
         case .provider("codex"): codexPane
         case .provider("supergrok"): superGrokPane
@@ -385,7 +385,16 @@ struct PreferencesView: View {
 /// per-provider interval is not wired into the Scheduler, so a UI for it would lie.
 private struct GeneralPane: View {
     @ObservedObject var appModel: AppModel
+    let preferencesStore: PreferencesStore
     let providerName: (String) -> String
+
+    @State private var alertsEnabled = true
+    @State private var percentSteps: Set<Double> = []
+    @State private var lowBalanceText = ""
+
+    /// The selectable percentage crossings, mirroring Quotio's 10/20/30/50% picker but in
+    /// the "usado" convention this app already alerts on.
+    private static let percentOptions: [Double] = [0.7, 0.9, 1.0]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -423,7 +432,56 @@ private struct GeneralPane: View {
             }
             Text("Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra.")
                 .font(.caption).foregroundStyle(.secondary)
+
+            Divider().padding(.vertical, 4)
+
+            Text("Alertas").font(.system(size: 16, weight: .bold))
+            Toggle("Notificações de cota", isOn: $alertsEnabled)
+                .toggleStyle(.switch).controlSize(.small)
+                .onChange(of: alertsEnabled) { newValue in
+                    preferencesStore.alertsEnabled = newValue
+                }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Avisar quando o uso cruzar:").font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 14) {
+                    ForEach(Self.percentOptions, id: \.self) { step in
+                        Toggle("\(Int(step * 100))%", isOn: percentBinding(step))
+                            .toggleStyle(.checkbox)
+                    }
+                }
+                HStack(spacing: 6) {
+                    Text("Saldo baixo (USD):").font(.caption).foregroundStyle(.secondary)
+                    TextField("5.00", text: $lowBalanceText)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 70)
+                        .onSubmit(saveLowBalance)
+                    Button("Salvar", action: saveLowBalance)
+                        .controlSize(.small)
+                }
+            }
+            .disabled(!alertsEnabled)
+            .opacity(alertsEnabled ? 1 : 0.5)
         }
+        .onAppear {
+            alertsEnabled = preferencesStore.alertsEnabled
+            percentSteps = Set(preferencesStore.alertPercentThresholds)
+            lowBalanceText = String(format: "%.2f", preferencesStore.alertLowBalanceThreshold)
+        }
+    }
+
+    private func percentBinding(_ step: Double) -> Binding<Bool> {
+        Binding(
+            get: { percentSteps.contains(step) },
+            set: { include in
+                if include { percentSteps.insert(step) } else { percentSteps.remove(step) }
+                preferencesStore.alertPercentThresholds = percentSteps.sorted()
+            }
+        )
+    }
+
+    private func saveLowBalance() {
+        guard let value = Double(lowBalanceText.replacingOccurrences(of: ",", with: ".")), value > 0 else { return }
+        preferencesStore.alertLowBalanceThreshold = value
     }
 
     private func move(_ index: Int, by offset: Int) {
