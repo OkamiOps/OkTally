@@ -15,6 +15,7 @@ enum ProviderPalette {
         case "opencode":  return Color(red: 0.60, green: 0.45, blue: 0.90) // violet
         case "mimo":      return Color(red: 0.95, green: 0.62, blue: 0.20) // amber
         case "copilot":   return Color(red: 0.45, green: 0.40, blue: 0.75) // slate-violet
+        case "antigravity": return Color(red: 0.25, green: 0.55, blue: 0.90) // google blue
         default:          return .accentColor
         }
     }
@@ -37,6 +38,7 @@ enum ProviderPalette {
         case "opencode": return "◇"
         case "mimo": return "K"
         case "copilot": return "P"
+        case "antigravity": return "A"
         default: return "?"
         }
     }

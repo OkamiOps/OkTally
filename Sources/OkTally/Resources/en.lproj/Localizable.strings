@@ -181,3 +181,11 @@
 "OpenCode não detectado — o banco local de uso (opencode.db) não foi encontrado." = "OpenCode not detected — the local usage database (opencode.db) was not found.";
 "SuperGrok respondeu com erro (código %@)." = "SuperGrok returned an error (code %@).";
 "Não foi possível confirmar a identidade da conta SuperGrok." = "Could not confirm the SuperGrok account identity.";
+
+/* Antigravity */
+"Antigravity não detectado — instale/entre no IDE Antigravity para acompanhar o uso." = "Antigravity not detected — install/sign in to the Antigravity IDE to track usage.";
+"Login do Antigravity recusado — entre novamente no IDE." = "Antigravity login rejected — sign in to the IDE again.";
+"Antigravity respondeu HTTP %d." = "Antigravity returned HTTP %d.";
+"Login do IDE Antigravity detectado" = "Antigravity IDE login detected";
+"Nenhum login do Antigravity encontrado" = "No Antigravity login found";
+"Nada a configurar — detectado automaticamente a partir do login do IDE Antigravity neste Mac." = "Nothing to configure — detected automatically from the Antigravity IDE login on this Mac.";

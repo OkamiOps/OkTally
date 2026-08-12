@@ -81,6 +81,7 @@ A aba **Análise** soma todas as fontes num único heatmap + chips (total, pico 
 | **Codex** | OAuth | Semanal + janelas por recurso (ex.: Spark) | ✅ conta | — |
 | **GitHub Copilot** | **Zero-config** — lê o login do Copilot/gh CLI | Chat, autocomplete, premium | — | — |
 | **Cursor** | **Zero-config** — lê a sessão local do Cursor | Saldo + % do ciclo | — | — |
+| **Antigravity** | **Zero-config** — lê o login do IDE Antigravity | Grupos Gemini e Claude/GPT, 5h + semanal | — | — |
 | **SuperGrok** | OAuth device code | Janela semanal | — | — |
 | **OpenRouter** | Chave de API | Saldo de créditos | — | fonte da tabela |
 | **MiniMax** | Chave de API (global ou China) | 5h + semanal, pior-modelo-vence | — | — |
@@ -173,7 +174,8 @@ Tudo roda localmente no seu Mac.
 - [x] Badges de plano (Pro/Free/Business) nos cards
 - [x] Verificação de atualização (diária, via GitHub Releases — auto-instalação espera a notarização)
 - [x] Localização (inglês + português, segue o idioma do sistema)
-- [ ] Mais provedores zero-config (Gemini CLI, Antigravity, Qwen)
+- [x] Antigravity como provedor zero-config
+- [ ] Mais provedores zero-config (Gemini CLI, Qwen)
 - [ ] Builds notarizadas
 
 ## Licença

@@ -35,7 +35,7 @@ struct PreferencesView: View {
     @State private var statusMessage: String = ""
 
     /// Sidebar order — mirrors the old card order, not registration order.
-    private let providerIds = ["claude", "codex", "supergrok", "cursor", "copilot", "openrouter", "minimax", "opencode", "mimo"]
+    private let providerIds = ["claude", "codex", "supergrok", "cursor", "copilot", "antigravity", "openrouter", "minimax", "opencode", "mimo"]
 
     var body: some View {
         NavigationSplitView {
@@ -123,6 +123,7 @@ struct PreferencesView: View {
         case "supergrok": return superGrokLoggedIn
         case "cursor": return true // reads the Cursor app session automatically
         case "copilot": return CopilotTokenReader().firstToken() != nil
+        case "antigravity": return AntigravityTokenReader().readTokens() != nil
         case "openrouter": return !openRouterAPIKey.isEmpty
         case "minimax": return !minimaxAPIKey.isEmpty
         case "opencode": return !openCodeAPIKey.isEmpty
@@ -142,6 +143,7 @@ struct PreferencesView: View {
         case .provider("supergrok"): superGrokPane
         case .provider("cursor"): cursorPane
         case .provider("copilot"): copilotPane
+        case .provider("antigravity"): antigravityPane
         case .provider("openrouter"):
             keyPane("openrouter", text: $openRouterAPIKey, status: openRouterAPIKey.isEmpty ? L("Sem chave") : L("Chave salva")) {
                 saveSecret("OpenRouter") { try preferencesStore.setOpenRouterAPIKey(openRouterAPIKey) }
@@ -264,6 +266,19 @@ struct PreferencesView: View {
                 active: detected
             )
             Text(L("Nada a configurar — detectado automaticamente a partir do login do Copilot ou do gh CLI neste Mac."))
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var antigravityPane: some View {
+        let detected = AntigravityTokenReader().readTokens() != nil
+        return VStack(alignment: .leading, spacing: 12) {
+            paneHeader(
+                "antigravity",
+                status: detected ? L("Login do IDE Antigravity detectado") : L("Nenhum login do Antigravity encontrado"),
+                active: detected
+            )
+            Text(L("Nada a configurar — detectado automaticamente a partir do login do IDE Antigravity neste Mac."))
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
