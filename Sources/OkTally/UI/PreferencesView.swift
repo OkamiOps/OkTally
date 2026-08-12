@@ -403,7 +403,7 @@ private struct GeneralPane: View {
                                 .padding(.horizontal, 5).padding(.vertical, 2)
                                 .background(RoundedRectangle(cornerRadius: 5)
                                     .fill(ProviderPalette.color(for: pin.providerId).opacity(0.16)))
-                            Text("\(providerName(pin.providerId)) · \(pin.windowLabel)")
+                            Text("\(providerName(pin.providerId)) · \(WindowLabelCatalog.displayLabel(pin.windowLabel))")
                                 .font(.system(size: 12))
                             Spacer()
                             Button { move(index, by: -1) } label: { Image(systemName: "chevron.up") }

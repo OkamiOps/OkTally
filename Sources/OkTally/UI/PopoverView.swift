@@ -181,7 +181,7 @@ private struct HeroCard: View {
                         .foregroundStyle(identity)
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background(RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)))
-                    Text("\(provider.displayName) · \(window.label)")
+                    Text("\(provider.displayName) · \(WindowLabelCatalog.displayLabel(window.label))")
                         .font(.system(size: 12, weight: .semibold))
                 }
                 Text(QuotaPresentation.remainingText(window.shape))
@@ -300,7 +300,7 @@ private struct QuotaLine: View {
         let remaining = QuotaPresentation.remainingFraction(window.shape)
         HStack(spacing: 4) {
             PinButton(isPinned: isPinned, identity: identity, onPin: onPin)
-            Text(window.label)
+            Text(WindowLabelCatalog.displayLabel(window.label))
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
