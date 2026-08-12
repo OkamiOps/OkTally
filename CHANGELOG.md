@@ -4,7 +4,7 @@ All notable changes to OkTally are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.1-beta] — 2026-08-12
 
 ### Added
 
@@ -69,5 +69,6 @@ First public release. Everything below is new.
 - Secrets in the macOS Keychain only (with silent migration from legacy plaintext locations); usage data stays local; no telemetry.
 - Tri-state provider status (connected / needs reauth / not configured) so an expired login is never painted as "broken" or hidden as "fine".
 
+[0.9.1-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.1-beta
 [0.9.0-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.0-beta
 [0.8.0-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.8.0-beta

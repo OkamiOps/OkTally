@@ -9,7 +9,7 @@
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/Lizenz-MIT-blue?style=flat)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/OkamiOps/OkTally?include_prereleases&style=flat&color=orange)](https://github.com/OkamiOps/OkTally/releases)
-[![Tests](https://img.shields.io/badge/Tests-235%20bestanden-brightgreen?style=flat)](#entwicklung)
+[![Tests](https://img.shields.io/badge/Tests-252%20bestanden-brightgreen?style=flat)](#entwicklung)
 [![No telemetry](https://img.shields.io/badge/Telemetrie-keine-success?style=flat)](#datenschutz)
 
 [English](README.md) | **Deutsch** | [Français](README.fr.md) | [Português (BR)](README.pt-BR.md)
@@ -79,6 +79,7 @@ Der **Analyse**-Tab summiert alle Quellen in eine Heatmap + Chips (Gesamt, Tages
 | **Codex** | OAuth | Wöchentlich + Feature-Fenster (z. B. Spark) | ✅ Konto | — |
 | **GitHub Copilot** | **Zero-Config** — liest Copilot/gh-CLI-Login | Chat, Completions, Premium | — | — |
 | **Cursor** | **Zero-Config** — liest lokale Cursor-Session | Guthaben + Zyklus-% | — | — |
+| **Antigravity** | **Zero-Config** — liest den Antigravity-IDE-Login | Gemini- und Claude/GPT-Gruppen, 5h + wöchentlich | — | — |
 | **SuperGrok** | OAuth Device Code | Wochenfenster | — | — |
 | **OpenRouter** | API-Key | Guthaben | — | Preisquelle |
 | **MiniMax** | API-Key (global oder China) | 5h + wöchentlich | — | — |
@@ -91,7 +92,7 @@ Der **Analyse**-Tab summiert alle Quellen in eine Heatmap + Chips (Gesamt, Tages
 
 ### DMG (empfohlen)
 
-1. `OkTally-0.9.0.dmg` von der [Releases-Seite](https://github.com/OkamiOps/OkTally/releases) laden.
+1. `OkTally-0.9.1.dmg` von der [Releases-Seite](https://github.com/OkamiOps/OkTally/releases) laden.
 2. Öffnen und **OkTally** nach Programme ziehen.
 3. Die App ist nicht notarisiert: beim ersten Start Rechtsklick (Ctrl-Klick) auf `OkTally.app` → **Öffnen** → **Öffnen**.
 
@@ -118,7 +119,7 @@ bash Scripts/build_app.sh    # baut .build/OkTally.app
 ## Entwicklung
 
 ```bash
-swift test    # 235 Unit-Tests
+swift test    # 252 Unit-Tests
 ```
 
 Jeder Provider ist ein Plugin hinter einem einzigen `UsageProvider`-Protokoll und normalisiert in ein `QuotaShape`-Modell, damit die UI nie einen Anbieter als Sonderfall behandeln muss. Designdokumente liegen in `docs/superpowers/`.
