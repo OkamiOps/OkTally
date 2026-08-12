@@ -11,6 +11,10 @@ final class AppModel: ObservableObject {
     /// as a real fetch failure.
     @Published private(set) var errorKindByProvider: [String: ProviderErrorPresentation] = [:]
 
+    /// 24h de histórico por provider (worst-window used%), para o sparkline dos cards.
+    /// Recomputado a partir do SQLite no seed inicial e após cada fetch bem-sucedido.
+    @Published private(set) var historyByProvider: [String: [UsageHistoryPoint]] = [:]
+
     /// The quota windows shown in the menu bar, in the order they were pinned. Empty =
     /// automatic (worst window across all providers). Persisted across relaunches.
     @Published var menuBarPins: [MenuBarPin] {
@@ -44,6 +48,7 @@ final class AppModel: ObservableObject {
 
     private let registry: PluginRegistry
     private let scheduler: Scheduler
+    private let storage: StorageManaging?
 
     init(
         registry: PluginRegistry,
@@ -53,6 +58,7 @@ final class AppModel: ObservableObject {
     ) {
         self.registry = registry
         self.scheduler = scheduler
+        self.storage = storage
         self.defaults = defaults
         if let joined = defaults.string(forKey: Self.menuBarPinsKey) {
             self.menuBarPins = joined.split(separator: "\u{2}").compactMap { MenuBarPin(stored: String($0)) }
@@ -70,6 +76,7 @@ final class AppModel: ObservableObject {
                 if let snapshot = try? storage.latestSnapshot(providerId: provider.id), !snapshot.quotas.isEmpty {
                     snapshotsByProvider[provider.id] = snapshot
                 }
+                refreshHistory(providerId: provider.id)
             }
         }
         scheduler.onResult = { [weak self] result in
@@ -108,12 +115,22 @@ final class AppModel: ObservableObject {
 
     var orderedProviders: [UsageProvider] { registry.providers }
 
+    private func refreshHistory(providerId: String, now: Date = Date()) {
+        guard let storage else { return }
+        let since = now.addingTimeInterval(-24 * 3600)
+        guard let snapshots = try? storage.snapshots(providerId: providerId, since: since) else { return }
+        let series = UsageHistory.worstUsedSeries(snapshots)
+        // Só publica séries plotáveis; um ponto único não desenha linha.
+        historyByProvider[providerId] = series.count >= 2 ? series : []
+    }
+
     private func apply(_ result: SchedulerFetchResult) {
         switch result.outcome {
         case .success(let snapshot):
             snapshotsByProvider[result.providerId] = snapshot
             errorsByProvider[result.providerId] = nil
             errorKindByProvider[result.providerId] = nil
+            refreshHistory(providerId: result.providerId)
         case .failure(let error):
             errorsByProvider[result.providerId] = error.localizedDescription
             errorKindByProvider[result.providerId] = ProviderErrorPresentation.classify(error)

@@ -140,6 +140,7 @@ struct PopoverContentView: View {
                     ProviderGaugeCard(
                         provider: entry.provider,
                         snapshot: entry.snapshot,
+                        history: appModel.historyByProvider[entry.provider.id] ?? [],
                         isPinned: { appModel.isPinned(providerId: entry.provider.id, windowLabel: $0) },
                         onPin: { appModel.togglePin(providerId: entry.provider.id, windowLabel: $0) }
                     )
@@ -206,6 +207,7 @@ private struct HeroCard: View {
 private struct ProviderGaugeCard: View {
     let provider: UsageProvider
     let snapshot: ProviderSnapshot
+    let history: [UsageHistoryPoint]
     let isPinned: (String) -> Bool
     let onPin: (String) -> Void
 
@@ -260,6 +262,13 @@ private struct ProviderGaugeCard: View {
                         onPin: { onPin(window.label) }
                     )
                 }
+            }
+            if history.count >= 2 {
+                SparklineView(
+                    points: history.map(\.usedPercent),
+                    color: worst.map { QuotaPresentation.color(remaining: $0.remaining) } ?? identity
+                )
+                .help("Uso nas últimas 24h")
             }
             if let staleness = Self.stalenessText(fetchedAt: snapshot.fetchedAt) {
                 Label(staleness, systemImage: "clock")
