@@ -9,7 +9,7 @@
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/OkamiOps/OkTally?include_prereleases&style=flat&color=orange)](https://github.com/OkamiOps/OkTally/releases)
-[![Tests](https://img.shields.io/badge/tests-235%20passing-brightgreen?style=flat)](#development)
+[![Tests](https://img.shields.io/badge/tests-252%20passing-brightgreen?style=flat)](#development)
 [![No telemetry](https://img.shields.io/badge/telemetry-none-success?style=flat)](#privacy)
 
 **English** | [Deutsch](README.de.md) | [Français](README.fr.md) | [Português (BR)](README.pt-BR.md)
@@ -46,7 +46,7 @@ OkTally is a **native macOS menu bar app** that keeps every one of those quotas 
 | 📊 | **Analytics tab** | Token stats + GitHub-style usage heatmap, aggregated across Codex, Claude Code and OpenCode — streaks, daily peak, today/yesterday/30 days |
 | 🔔 | **Configurable alerts** | Edge-triggered macOS notifications at 70/90/100% (your pick) and a low-balance USD threshold — once per crossing, not once per poll |
 | 💰 | **Cost estimates** | Local token counts × OpenRouter's public price table → "est. cost (30d)" on the card |
-| 🧲 | **Zero-config detection** | Cursor and GitHub Copilot are picked up from the logins already on your Mac — nothing to paste |
+| 🧲 | **Zero-config detection** | Cursor, GitHub Copilot and Antigravity are picked up from the logins already on your Mac — nothing to paste |
 | 🔐 | **Keychain-only secrets** | OAuth tokens and API keys never touch plaintext; everything runs locally |
 
 ## The overview window
@@ -96,8 +96,8 @@ The **Análise** tab sums all sources into one heatmap + stat chips (lifetime, d
 
 ```mermaid
 flowchart LR
-    subgraph Providers["9 provider plugins"]
-        P1["Claude · Codex · Copilot · Cursor<br/>SuperGrok · OpenRouter · MiniMax<br/>OpenCode · MiMo"]
+    subgraph Providers["10 provider plugins"]
+        P1["Claude · Codex · Copilot · Cursor<br/>Antigravity · SuperGrok · OpenRouter<br/>MiniMax · OpenCode · MiMo"]
     end
     P1 -->|"ProviderSnapshot<br/>(QuotaShape)"| S[Scheduler]
     S --> DB[(SQLite history<br/>30-day retention)]
@@ -114,7 +114,7 @@ Every provider is a plugin conforming to a single `UsageProvider` protocol and n
 
 ### DMG (recommended)
 
-1. Download `OkTally-0.9.0.dmg` from the [Releases page](https://github.com/OkamiOps/OkTally/releases).
+1. Download `OkTally-0.9.1.dmg` from the [Releases page](https://github.com/OkamiOps/OkTally/releases).
 2. Open it and drag **OkTally** to Applications.
 3. The app is not notarized: on first launch, right-click (Ctrl-click) `OkTally.app` → **Open** → **Open**.
 
@@ -148,7 +148,7 @@ bash Scripts/make_dmg.sh               # package a drag-to-install DMG
 ## Development
 
 ```bash
-swift test    # 235 unit tests
+swift test    # 252 unit tests
 ```
 
 | Directory | What lives there |
