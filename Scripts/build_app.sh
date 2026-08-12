@@ -12,9 +12,16 @@ cp "$BUILD_DIR/$APP_NAME" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 cp Resources/Info.plist "$APP_BUNDLE/Contents/Info.plist"
 # Ad-hoc signatures change identity every build, which invalidates Keychain ACLs and
 # forces relogin (Claude/Codex/SuperGrok/API keys) after each update. Prefer a stable
-# local identity when one exists.
-IDENTITY="OkTally Dev"
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "$IDENTITY"; then
+# identity: a local self-signed "OkTally Dev" first, then a real Apple Development
+# certificate (present whenever the machine has an Apple Developer account set up).
+IDENTITY=""
+for CANDIDATE in "OkTally Dev" "Apple Development"; do
+  if security find-identity -v -p codesigning 2>/dev/null | grep -q "$CANDIDATE"; then
+    IDENTITY="$CANDIDATE"
+    break
+  fi
+done
+if [ -n "$IDENTITY" ]; then
   codesign --force --deep --sign "$IDENTITY" "$APP_BUNDLE"
   echo "Signed with stable identity '$IDENTITY'."
 else
