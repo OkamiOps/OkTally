@@ -19,6 +19,10 @@ final class AppModel: ObservableObject {
     /// e o `PricingEngine` conhece os modelos. Ausente = sem dados para precificar.
     @Published private(set) var estimatedCostByProvider: [String: Decimal] = [:]
 
+    /// Deep-link das Preferências: setado pelos botões "Reconectar"/"Configurar" do
+    /// popover imediatamente antes de abrir Ajustes; `PreferencesView` consome e zera.
+    @Published var requestedPreferencesPane: String?
+
     /// The quota windows shown in the menu bar, in the order they were pinned. Empty =
     /// automatic (worst window across all providers). Persisted across relaunches.
     @Published var menuBarPins: [MenuBarPin] {
@@ -121,6 +125,15 @@ final class AppModel: ObservableObject {
     }
 
     var orderedProviders: [UsageProvider] { registry.providers }
+
+    /// Série sob demanda com janela arbitrária (a janela principal mostra 7 dias; o
+    /// popover usa o `historyByProvider` de 24h já publicado).
+    func history(providerId: String, hours: Int, now: Date = Date()) -> [UsageHistoryPoint] {
+        guard let storage else { return [] }
+        let since = now.addingTimeInterval(-Double(hours) * 3600)
+        guard let snapshots = try? storage.snapshots(providerId: providerId, since: since) else { return [] }
+        return UsageHistory.worstUsedSeries(snapshots)
+    }
 
     private func refreshHistory(providerId: String, now: Date = Date()) {
         guard let storage else { return }

@@ -16,6 +16,9 @@ struct RingGauge<Content: View>: View {
                 .trim(from: 0, to: max(0.02, min(1, remaining)))
                 .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
+                // Refreshes chegam de 5 em 5 min; sem isso o anel "pisca" para o novo
+                // valor em vez de deslizar (padrão do Quotio: .smooth 0.3s).
+                .animation(.easeInOut(duration: 0.3), value: remaining)
             content()
         }
         .frame(width: size, height: size)

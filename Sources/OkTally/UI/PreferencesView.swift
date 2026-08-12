@@ -62,7 +62,22 @@ struct PreferencesView: View {
             }
         }
         .frame(width: 640, height: 460)
-        .onAppear(perform: load)
+        .onAppear {
+            load()
+            consumeRequestedPane()
+        }
+        .onChange(of: appModel.requestedPreferencesPane) { _ in
+            consumeRequestedPane()
+        }
+    }
+
+    /// Salta para o pane pedido pelo botão "Reconectar"/"Configurar" do popover.
+    private func consumeRequestedPane() {
+        guard let requested = appModel.requestedPreferencesPane else { return }
+        if providerIds.contains(requested) {
+            pane = .provider(requested)
+        }
+        appModel.requestedPreferencesPane = nil
     }
 
     // MARK: - Sidebar
@@ -78,9 +93,23 @@ struct PreferencesView: View {
             Text(providerName(id)).font(.system(size: 12))
             Spacer()
             Circle()
-                .fill(isConfigured(id) ? Color.green : Color.secondary.opacity(0.35))
+                .fill(statusDotColor(id))
                 .frame(width: 7, height: 7)
+                .help(statusDotHelp(id))
         }
+    }
+
+    /// Tri-state (spec do redesign, agora completo): verde conectado, âmbar precisa
+    /// reconectar (token presente mas o último fetch falhou por credencial), cinza não
+    /// configurado.
+    private func statusDotColor(_ id: String) -> Color {
+        if appModel.errorKindByProvider[id] == .needsReauth { return .orange }
+        return isConfigured(id) ? .green : Color.secondary.opacity(0.35)
+    }
+
+    private func statusDotHelp(_ id: String) -> String {
+        if appModel.errorKindByProvider[id] == .needsReauth { return "Credencial expirada — reconecte" }
+        return isConfigured(id) ? "Conectado" : "Não configurado"
     }
 
     private func providerName(_ id: String) -> String {
