@@ -74,6 +74,15 @@ final class SQLiteStorage: StorageManaging {
         }
     }
 
+    func prune(olderThan cutoff: Date) throws {
+        // Same encoding-strategy caveat as `snapshots(providerId:since:)`: compare the
+        // numeric column against the numerically encoded date, not Date's default string.
+        let cutoffValue = cutoff.timeIntervalSinceReferenceDate
+        _ = try dbQueue.write { db in
+            try SnapshotRecord.filter(Column("fetchedAt") < cutoffValue).deleteAll(db)
+        }
+    }
+
     private static func decode(_ record: SnapshotRecord) throws -> ProviderSnapshot {
         let quotas = try JSONDecoder().decode([QuotaWindow].self, from: record.quotasJSON)
         let usageDetail = try record.usageDetailJSON.map { try JSONDecoder().decode([UsageDetail].self, from: $0) }

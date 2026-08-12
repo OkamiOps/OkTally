@@ -66,4 +66,30 @@ final class SQLiteStorageTests: XCTestCase {
         let latest = try storage.latestSnapshot(providerId: "openrouter")
         XCTAssertEqual(latest, snapshot)
     }
+
+    func test_prune_deletesOnlySnapshotsOlderThanCutoff() throws {
+        let storage = try SQLiteStorage(path: ":memory:")
+        let old = ProviderSnapshot(providerId: "claude", fetchedAt: Date(timeIntervalSince1970: 100), quotas: [], usageDetail: nil)
+        let recent = ProviderSnapshot(providerId: "claude", fetchedAt: Date(timeIntervalSince1970: 5000), quotas: [], usageDetail: nil)
+        let otherProviderOld = ProviderSnapshot(providerId: "codex", fetchedAt: Date(timeIntervalSince1970: 200), quotas: [], usageDetail: nil)
+        try storage.save(old)
+        try storage.save(recent)
+        try storage.save(otherProviderOld)
+
+        try storage.prune(olderThan: Date(timeIntervalSince1970: 1000))
+
+        XCTAssertEqual(try storage.snapshots(providerId: "claude", since: .distantPast), [recent])
+        XCTAssertEqual(try storage.snapshots(providerId: "codex", since: .distantPast), [])
+    }
+
+    func test_prune_atExactCutoff_keepsSnapshotAtCutoff() throws {
+        let storage = try SQLiteStorage(path: ":memory:")
+        let cutoff = Date(timeIntervalSince1970: 1000)
+        let atCutoff = ProviderSnapshot(providerId: "claude", fetchedAt: cutoff, quotas: [], usageDetail: nil)
+        try storage.save(atCutoff)
+
+        try storage.prune(olderThan: cutoff)
+
+        XCTAssertEqual(try storage.snapshots(providerId: "claude", since: .distantPast), [atCutoff])
+    }
 }

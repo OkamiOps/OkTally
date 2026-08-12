@@ -29,6 +29,9 @@ final class PreferencesStore {
         static let mimoMonthlyAllowanceCredits = "mimoMonthlyAllowanceCredits"
         static let mimoUsedCredits = "mimoUsedCredits"
         static let minimaxRegionRaw = "minimaxRegionRaw"
+        static let alertsEnabled = "alertsEnabled"
+        static let alertPercentThresholds = "alertPercentThresholds"
+        static let alertLowBalanceThreshold = "alertLowBalanceThreshold"
         static func refreshInterval(_ providerId: String) -> String { "refreshInterval.\(providerId)" }
     }
 
@@ -136,6 +139,36 @@ final class PreferencesStore {
 
     func setOpenCodeAPIKey(_ value: String?) throws {
         try setSecret(value, providerId: SecretProviderId.openCode, legacyKey: Keys.openCodeAPIKey)
+    }
+
+    // MARK: - Alert preferences
+
+    /// Master switch for quota notifications. Defaults to enabled.
+    var alertsEnabled: Bool {
+        get { store.string(forKey: Keys.alertsEnabled) != "false" }
+        set { store.set(newValue ? "true" : "false", forKey: Keys.alertsEnabled) }
+    }
+
+    /// Percentage crossings that trigger a notification, as fractions (0.7 = 70% usado).
+    /// Persisted as a comma-joined string; unset means the historical defaults. An empty
+    /// string is a deliberate "no percentage alerts" choice and round-trips as [].
+    var alertPercentThresholds: [Double] {
+        get {
+            guard let raw = store.string(forKey: Keys.alertPercentThresholds) else {
+                return [0.7, 0.9, 1.0]
+            }
+            return raw.split(separator: ",").compactMap { Double($0) }
+        }
+        set { store.set(newValue.map { String($0) }.joined(separator: ","), forKey: Keys.alertPercentThresholds) }
+    }
+
+    /// Balance (em USD) abaixo do qual providers de saldo disparam alerta.
+    var alertLowBalanceThreshold: Double {
+        get {
+            let stored = store.double(forKey: Keys.alertLowBalanceThreshold)
+            return stored > 0 ? stored : 5.0
+        }
+        set { store.set(newValue, forKey: Keys.alertLowBalanceThreshold) }
     }
 
     func refreshInterval(for providerId: String, default defaultValue: TimeInterval) -> TimeInterval {

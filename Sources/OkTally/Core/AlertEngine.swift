@@ -2,6 +2,22 @@
 import Foundation
 
 struct AlertEngine {
+    /// Closures (not values) so Preferences edits take effect on the next evaluation
+    /// without rebuilding the engine — it's constructed once at app init.
+    private let percentThresholds: () -> [Double]
+    private let lowBalanceLimit: () -> Decimal
+    private let isEnabled: () -> Bool
+
+    init(
+        percentThresholds: @escaping () -> [Double] = { [0.7, 0.9, 1.0] },
+        lowBalanceLimit: @escaping () -> Decimal = { 5 },
+        isEnabled: @escaping () -> Bool = { true }
+    ) {
+        self.percentThresholds = percentThresholds
+        self.lowBalanceLimit = lowBalanceLimit
+        self.isEnabled = isEnabled
+    }
+
     func evaluate(
         providerId: String,
         providerDisplayName: String,
@@ -9,10 +25,11 @@ struct AlertEngine {
         current: ProviderSnapshot,
         thresholds: [String: [AlertThreshold]]
     ) -> [AlertEvent] {
+        guard isEnabled() else { return [] }
         var events: [AlertEvent] = []
         for window in current.quotas {
             let previousWindow = previous?.quotas.first { $0.label == window.label }
-            let windowThresholds = thresholds[window.label] ?? Self.defaultThresholds(for: window.shape)
+            let windowThresholds = thresholds[window.label] ?? defaultThresholds(for: window.shape)
             for threshold in windowThresholds {
                 if let event = evaluateOne(
                     threshold: threshold,
@@ -71,12 +88,12 @@ struct AlertEngine {
         }
     }
 
-    static func defaultThresholds(for shape: QuotaShape) -> [AlertThreshold] {
+    func defaultThresholds(for shape: QuotaShape) -> [AlertThreshold] {
         switch shape {
         case .rollingWindow, .periodicCounter, .estimated:
-            return AlertThreshold.defaultPercentageThresholds
+            return percentThresholds().map { .percentage($0) }
         case .creditBalance:
-            return [AlertThreshold.defaultLowBalanceThreshold]
+            return [.lowBalance(lowBalanceLimit())]
         case .meteredOnly:
             return []
         }

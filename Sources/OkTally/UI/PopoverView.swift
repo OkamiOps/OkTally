@@ -140,6 +140,8 @@ struct PopoverContentView: View {
                     ProviderGaugeCard(
                         provider: entry.provider,
                         snapshot: entry.snapshot,
+                        history: appModel.historyByProvider[entry.provider.id] ?? [],
+                        estimatedCost: appModel.estimatedCostByProvider[entry.provider.id],
                         isPinned: { appModel.isPinned(providerId: entry.provider.id, windowLabel: $0) },
                         onPin: { appModel.togglePin(providerId: entry.provider.id, windowLabel: $0) }
                     )
@@ -181,7 +183,7 @@ private struct HeroCard: View {
                         .foregroundStyle(identity)
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background(RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)))
-                    Text("\(provider.displayName) · \(window.label)")
+                    Text("\(provider.displayName) · \(WindowLabelCatalog.displayLabel(window.label))")
                         .font(.system(size: 12, weight: .semibold))
                 }
                 Text(QuotaPresentation.remainingText(window.shape))
@@ -206,6 +208,8 @@ private struct HeroCard: View {
 private struct ProviderGaugeCard: View {
     let provider: UsageProvider
     let snapshot: ProviderSnapshot
+    let history: [UsageHistoryPoint]
+    let estimatedCost: Decimal?
     let isPinned: (String) -> Bool
     let onPin: (String) -> Void
 
@@ -261,6 +265,19 @@ private struct ProviderGaugeCard: View {
                     )
                 }
             }
+            if history.count >= 2 {
+                SparklineView(
+                    points: history.map(\.usedPercent),
+                    color: worst.map { QuotaPresentation.color(remaining: $0.remaining) } ?? identity
+                )
+                .help("Uso nas últimas 24h")
+            }
+            if let estimatedCost {
+                Label("Custo est.: $\(Self.costText(estimatedCost)) (30d)", systemImage: "dollarsign.circle")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                    .help("Estimativa: tokens locais × tabela de preços do OpenRouter")
+            }
             if let staleness = Self.stalenessText(fetchedAt: snapshot.fetchedAt) {
                 Label(staleness, systemImage: "clock")
                     .font(.system(size: 9))
@@ -272,6 +289,10 @@ private struct ProviderGaugeCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.045)))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.07)))
+    }
+
+    static func costText(_ value: Decimal) -> String {
+        String(format: "%.2f", (value as NSDecimalNumber).doubleValue)
     }
 
     /// "Atualizado há 25min" once the snapshot is older than any provider's normal poll
@@ -300,7 +321,7 @@ private struct QuotaLine: View {
         let remaining = QuotaPresentation.remainingFraction(window.shape)
         HStack(spacing: 4) {
             PinButton(isPinned: isPinned, identity: identity, onPin: onPin)
-            Text(window.label)
+            Text(WindowLabelCatalog.displayLabel(window.label))
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

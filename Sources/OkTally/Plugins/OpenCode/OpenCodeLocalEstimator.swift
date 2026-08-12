@@ -37,6 +37,15 @@ import GRDB
 /// currently open, which matches how a human would eyeball "what have I spent recently."
 protocol OpenCodeLocalEstimating {
     func spentInCurrentWindow(windowHours: Int, now: Date) -> Decimal?
+    /// Per-model token totals inside the window, for cost estimation. `nil` on any DB
+    /// problem (same degradation contract as `spentInCurrentWindow`).
+    func modelTokens(windowHours: Int, now: Date) -> [UsageDetail]?
+}
+
+extension OpenCodeLocalEstimating {
+    /// Default so alternative estimators (and older test stubs) without token data keep
+    /// compiling — "no detail" is always a valid answer.
+    func modelTokens(windowHours: Int, now: Date) -> [UsageDetail]? { nil }
 }
 
 final class OpenCodeLocalEstimator: OpenCodeLocalEstimating {
@@ -67,6 +76,51 @@ final class OpenCodeLocalEstimator: OpenCodeLocalEstimating {
         // `result` is nil if the read itself failed (locked/corrupt/unreadable database);
         // `result` is `.some(nil)` if the read succeeded but found no `session` table.
         // Both collapse to `nil` here — only a successful read with a value is returned.
+        return result.flatMap { $0 }
+    }
+
+    /// The `model` column (added to the schema after the 2026-08-07 pin; re-verified
+    /// 2026-08-12) is a JSON blob `{"id": "...", "providerID": "...", ...}`. Rows whose
+    /// blob can't be parsed are skipped rather than failing the whole aggregation.
+    func modelTokens(windowHours: Int, now: Date) -> [UsageDetail]? {
+        guard FileManager.default.fileExists(atPath: dbPath) else { return nil }
+
+        var config = Configuration()
+        config.readonly = true
+        guard let dbQueue = try? DatabaseQueue(path: dbPath, configuration: config) else { return nil }
+
+        let windowStartMs = Int64((now.addingTimeInterval(-Double(windowHours) * 3600)).timeIntervalSince1970 * 1000)
+
+        let result: [UsageDetail]?? = try? dbQueue.read { db -> [UsageDetail]? in
+            guard try db.tableExists("session"), try db.columns(in: "session").contains(where: { $0.name == "model" }) else {
+                return nil
+            }
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT model, SUM(tokens_input) AS input, SUM(tokens_output) AS output
+                    FROM session
+                    WHERE time_updated >= ? AND model IS NOT NULL
+                    GROUP BY model
+                    """,
+                arguments: [windowStartMs]
+            )
+            var totals: [String: (input: Int, output: Int)] = [:]
+            for row in rows {
+                guard let modelJSON: String = row["model"],
+                      let data = modelJSON.data(using: .utf8),
+                      let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let id = parsed["id"] as? String,
+                      let providerID = parsed["providerID"] as? String
+                else { continue }
+                let key = "\(providerID)/\(id)"
+                let input: Int = row["input"] ?? 0
+                let output: Int = row["output"] ?? 0
+                let existing = totals[key] ?? (0, 0)
+                totals[key] = (existing.input + input, existing.output + output)
+            }
+            return totals.map { UsageDetail(modelId: $0.key, promptTokens: $0.value.input, completionTokens: $0.value.output) }
+        }
         return result.flatMap { $0 }
     }
 }

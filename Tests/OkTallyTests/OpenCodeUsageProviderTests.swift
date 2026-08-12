@@ -82,6 +82,66 @@ final class OpenCodeLocalEstimatorTests: XCTestCase {
     }
 }
 
+final class OpenCodeModelTokensTests: XCTestCase {
+    /// Fixture with the token/model columns the aggregator reads (same real schema pin,
+    /// different column subset from the cost fixture above).
+    private func makeTokenFixtureDB() throws -> (path: String, insert: (_ id: String, _ modelJSON: String?, _ input: Int, _ output: Int, _ timeUpdated: Int64) throws -> Void) {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".db").path
+        let db = try DatabaseQueue(path: path)
+        try db.write { db in
+            try db.execute(sql: """
+                CREATE TABLE session (
+                    id text PRIMARY KEY,
+                    time_created integer NOT NULL,
+                    time_updated integer NOT NULL,
+                    cost real DEFAULT 0 NOT NULL,
+                    model text,
+                    tokens_input integer DEFAULT 0 NOT NULL,
+                    tokens_output integer DEFAULT 0 NOT NULL
+                )
+                """)
+        }
+        let insert: (String, String?, Int, Int, Int64) throws -> Void = { id, modelJSON, input, output, timeUpdated in
+            try db.write { txn in
+                try txn.execute(
+                    sql: "INSERT INTO session (id, time_created, time_updated, model, tokens_input, tokens_output) VALUES (?, ?, ?, ?, ?, ?)",
+                    arguments: [id, timeUpdated, timeUpdated, modelJSON, input, output]
+                )
+            }
+        }
+        return (path, insert)
+    }
+
+    func test_modelTokens_aggregatesByParsedModelId_insideWindow() throws {
+        let (path, insert) = try makeTokenFixtureDB()
+        let now = Date()
+        let nowMs = Int64(now.timeIntervalSince1970 * 1000)
+        let insideWindow = nowMs - 3600 * 1000
+        let outsideWindow = nowMs - 10 * 3600 * 1000
+
+        try insert("s1", #"{"id":"grok-4.5","providerID":"xai","variant":"default"}"#, 100, 40, insideWindow)
+        try insert("s2", #"{"id":"grok-4.5","providerID":"xai"}"#, 50, 10, insideWindow)
+        try insert("s3", #"{"id":"mimo-v2.5","providerID":"mimoxiaomi"}"#, 7, 3, insideWindow)
+        try insert("s4", #"{"id":"grok-4.5","providerID":"xai"}"#, 999, 999, outsideWindow)
+        try insert("s5", nil, 1, 1, insideWindow)
+
+        let estimator = OpenCodeLocalEstimator(dbPath: path)
+        let details = try XCTUnwrap(estimator.modelTokens(windowHours: 5, now: now))
+
+        let byModel = Dictionary(uniqueKeysWithValues: details.map { ($0.modelId, $0) })
+        XCTAssertEqual(byModel.count, 2)
+        XCTAssertEqual(byModel["xai/grok-4.5"]?.promptTokens, 150)
+        XCTAssertEqual(byModel["xai/grok-4.5"]?.completionTokens, 50)
+        XCTAssertEqual(byModel["mimoxiaomi/mimo-v2.5"]?.promptTokens, 7)
+        XCTAssertEqual(byModel["mimoxiaomi/mimo-v2.5"]?.completionTokens, 3)
+    }
+
+    func test_modelTokens_nilWhenFileMissing() {
+        let estimator = OpenCodeLocalEstimator(dbPath: "/nonexistent/path.db")
+        XCTAssertNil(estimator.modelTokens(windowHours: 5, now: Date()))
+    }
+}
+
 final class OpenCodeRateLimitParserTests: XCTestCase {
     func test_parse_extractsLimitNameAndRetryAfter_forGoUsageLimitError() throws {
         let body = Data("""
@@ -128,9 +188,14 @@ final class OpenCodeRateLimitParserTests: XCTestCase {
 
 final class FakeOpenCodeLocalEstimating: OpenCodeLocalEstimating {
     var spentByWindowHours: [Int: Decimal] = [:]
+    var modelTokensToReturn: [UsageDetail]?
 
     func spentInCurrentWindow(windowHours: Int, now: Date) -> Decimal? {
         return spentByWindowHours[windowHours]
+    }
+
+    func modelTokens(windowHours: Int, now: Date) -> [UsageDetail]? {
+        return modelTokensToReturn
     }
 }
 
@@ -175,6 +240,19 @@ final class OpenCodeUsageProviderTests: XCTestCase {
         } catch {
             XCTFail("unexpected error: \(error)")
         }
+    }
+
+    func test_fetchSnapshot_carriesModelTokensAsUsageDetail() async throws {
+        let estimator = FakeOpenCodeLocalEstimating()
+        estimator.spentByWindowHours = [5: 6, 168: 15, 720: 30]
+        estimator.modelTokensToReturn = [
+            UsageDetail(modelId: "xai/grok-4.5", promptTokens: 100, completionTokens: 50)
+        ]
+        let provider = OpenCodeUsageProvider(apiKeyProvider: { "key" }, estimator: estimator, goWindowBudgets: budgets)
+
+        let snapshot = try await provider.fetchSnapshot()
+
+        XCTAssertEqual(snapshot.usageDetail, [UsageDetail(modelId: "xai/grok-4.5", promptTokens: 100, completionTokens: 50)])
     }
 
     func test_fetchSnapshot_buildsThreeEstimatedWindows() async throws {

@@ -204,4 +204,37 @@ final class PreferencesStoreTests: XCTestCase {
         XCTAssertEqual(kv.string(forKey: "openRouterAPIKey"), "sk-or-legacy", "legacy value must survive a failed save")
         XCTAssertNil(secrets.load(providerId: "openrouter"))
     }
+
+    // MARK: - Alert preferences
+
+    func test_alertsEnabled_defaultsTrue_andRoundTrips() {
+        let store = makeStore()
+        XCTAssertTrue(store.alertsEnabled)
+
+        store.alertsEnabled = false
+        XCTAssertFalse(store.alertsEnabled)
+
+        store.alertsEnabled = true
+        XCTAssertTrue(store.alertsEnabled)
+    }
+
+    func test_alertPercentThresholds_defaultAndRoundTrip() {
+        let store = makeStore()
+        XCTAssertEqual(store.alertPercentThresholds, [0.7, 0.9, 1.0])
+
+        store.alertPercentThresholds = [0.9]
+        XCTAssertEqual(store.alertPercentThresholds, [0.9])
+
+        // Empty selection persists as "no thresholds", not "back to defaults".
+        store.alertPercentThresholds = []
+        XCTAssertEqual(store.alertPercentThresholds, [])
+    }
+
+    func test_alertLowBalanceThreshold_defaultAndRoundTrip() {
+        let store = makeStore()
+        XCTAssertEqual(store.alertLowBalanceThreshold, 5.0)
+
+        store.alertLowBalanceThreshold = 12.5
+        XCTAssertEqual(store.alertLowBalanceThreshold, 12.5)
+    }
 }

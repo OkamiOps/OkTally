@@ -95,6 +95,15 @@ final class OpenCodeUsageProvider: UsageProvider {
             windows.append(QuotaWindow(label: window.label, shape: shape))
         }
 
-        return ProviderSnapshot(providerId: id, fetchedAt: now, quotas: windows, usageDetail: nil)
+        // Per-model token totals over the monthly window feed the cost estimate shown in
+        // the popover card. Optional by contract: an empty/absent aggregation must not
+        // fail the quota fetch that succeeded above.
+        let usageDetail = estimator.modelTokens(windowHours: 720, now: now)
+        return ProviderSnapshot(
+            providerId: id,
+            fetchedAt: now,
+            quotas: windows,
+            usageDetail: (usageDetail?.isEmpty == false) ? usageDetail : nil
+        )
     }
 }

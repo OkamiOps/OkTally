@@ -56,4 +56,23 @@ final class AlertEngineTests: XCTestCase {
         XCTAssertEqual(events.count, 1)
         XCTAssertEqual(events.first?.threshold, .percentage(0.5))
     }
+
+    func test_disabledEngine_producesNoEvents() {
+        let disabled = AlertEngine(isEnabled: { false })
+        let events = disabled.evaluate(providerId: "claude", providerDisplayName: "Claude Code", previous: nil, current: snapshot(percent: 100), thresholds: [:])
+        XCTAssertTrue(events.isEmpty)
+    }
+
+    func test_configuredPercentThresholds_replaceDefaults() {
+        let custom = AlertEngine(percentThresholds: { [0.5] })
+        let events = custom.evaluate(providerId: "claude", providerDisplayName: "Claude Code", previous: nil, current: snapshot(percent: 55), thresholds: [:])
+        XCTAssertEqual(events.map(\.threshold), [.percentage(0.5)])
+    }
+
+    func test_configuredLowBalanceLimit_replacesDefault() {
+        let custom = AlertEngine(lowBalanceLimit: { 20 })
+        let current = ProviderSnapshot(providerId: "openrouter", fetchedAt: Date(), quotas: [QuotaWindow(label: "balance", shape: .creditBalance(remaining: 15, currency: "USD"))], usageDetail: nil)
+        let events = custom.evaluate(providerId: "openrouter", providerDisplayName: "OpenRouter", previous: nil, current: current, thresholds: [:])
+        XCTAssertEqual(events.count, 1)
+    }
 }

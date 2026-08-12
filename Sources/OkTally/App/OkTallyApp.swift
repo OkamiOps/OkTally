@@ -19,7 +19,14 @@ struct OkTallyApp: App {
         let registry = PluginRegistry()
         let preferencesStore = PreferencesStore()
         let storage = Self.openStorage(at: appSupportDir + "/usage.sqlite")
-        let alertEngine = AlertEngine()
+        // Retention: the snapshots table grows on every poll (~2.3k rows/dia com 8
+        // providers); 30 dias cobrem qualquer janela de cota exibida com folga.
+        try? storage.prune(olderThan: Date().addingTimeInterval(-30 * 24 * 3600))
+        let alertEngine = AlertEngine(
+            percentThresholds: { preferencesStore.alertPercentThresholds },
+            lowBalanceLimit: { Decimal(preferencesStore.alertLowBalanceThreshold) },
+            isEnabled: { preferencesStore.alertsEnabled }
+        )
         let notificationSender = UNNotificationSender()
         let alertDispatcher = AlertDispatcher(sender: notificationSender)
         let scheduler = Scheduler(
@@ -52,6 +59,7 @@ struct OkTallyApp: App {
             region: { preferencesStore.minimaxRegionRaw == "china" ? .china : .global }
         ))
         registry.register(CursorUsageProvider())
+        registry.register(CopilotUsageProvider())
         registry.register(OpenCodeUsageProvider(apiKeyProvider: { preferencesStore.openCodeAPIKey }))
         registry.register(MiMoUsageProvider(
             sessionStore: mimoSessionStore,
@@ -61,7 +69,8 @@ struct OkTallyApp: App {
         ))
         registry.register(SuperGrokUsageProvider(oauthManager: oauthManager, tokenStore: tokenStore))
 
-        let model = AppModel(registry: registry, scheduler: scheduler, storage: storage)
+        let pricingEngine = PricingEngine(source: OpenRouterPricingSource())
+        let model = AppModel(registry: registry, scheduler: scheduler, storage: storage, pricingEngine: pricingEngine)
         _appModel = StateObject(wrappedValue: model)
 
         Task { await notificationSender.requestAuthorizationIfNeeded() }
