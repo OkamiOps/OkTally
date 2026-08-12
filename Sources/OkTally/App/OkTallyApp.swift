@@ -72,12 +72,26 @@ struct OkTallyApp: App {
         let pricingEngine = PricingEngine(source: OpenRouterPricingSource())
         let model = AppModel(registry: registry, scheduler: scheduler, storage: storage, pricingEngine: pricingEngine)
         let codexAnalyticsFetcher = CodexAnalyticsFetcher()
-        model.codexAnalyticsLoader = {
+        model.analyticsLoaders["codex"] = {
             guard let accessToken = try? await oauthManager.validAccessToken(providerId: "codex", config: CodexOAuth.config) else {
                 return nil
             }
             let accountId = tokenStore.load(providerId: "codex")?.extra["account_id"]
             return try? await codexAnalyticsFetcher.fetch(accessToken: accessToken, accountId: accountId)
+        }
+        // Fontes locais: leitura de disco potencialmente pesada (o corpus do Claude Code
+        // passa de centenas de MB no primeiro parse) — sempre fora da main thread.
+        let claudeScanner = ClaudeLocalUsageScanner()
+        model.analyticsLoaders["claude"] = {
+            await Task.detached(priority: .utility) { claudeScanner.analytics() }.value
+        }
+        let openCodeAnalyticsEstimator = OpenCodeLocalEstimator()
+        model.analyticsLoaders["opencode"] = {
+            await Task.detached(priority: .utility) {
+                openCodeAnalyticsEstimator.dailyTokens(windowDays: 365, now: Date()).flatMap { buckets in
+                    buckets.isEmpty ? nil : TokenAnalytics(dailyBuckets: buckets)
+                }
+            }.value
         }
         _appModel = StateObject(wrappedValue: model)
 

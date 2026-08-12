@@ -140,6 +140,37 @@ final class OpenCodeModelTokensTests: XCTestCase {
         let estimator = OpenCodeLocalEstimator(dbPath: "/nonexistent/path.db")
         XCTAssertNil(estimator.modelTokens(windowHours: 5, now: Date()))
     }
+
+    func test_dailyTokens_groupsByLocalDay() throws {
+        let (path, _) = try makeTokenFixtureDB()
+        let db = try GRDB.DatabaseQueue(path: path)
+        // Colunas extras exigidas pela soma diária (reasoning/cache).
+        try db.write { txn in
+            try txn.execute(sql: "ALTER TABLE session ADD COLUMN tokens_reasoning integer DEFAULT 0 NOT NULL")
+            try txn.execute(sql: "ALTER TABLE session ADD COLUMN tokens_cache_read integer DEFAULT 0 NOT NULL")
+            try txn.execute(sql: "ALTER TABLE session ADD COLUMN tokens_cache_write integer DEFAULT 0 NOT NULL")
+        }
+        let calendar = Calendar(identifier: .gregorian)
+        let now = Date()
+        let todayNoonMs = Int64(calendar.date(bySettingHour: 12, minute: 0, second: 0, of: now)!.timeIntervalSince1970 * 1000)
+        let yesterdayNoonMs = todayNoonMs - 24 * 3600 * 1000
+        try db.write { txn in
+            try txn.execute(sql: "INSERT INTO session (id, time_created, time_updated, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write) VALUES ('a', ?, ?, 10, 5, 1, 2, 2)", arguments: [todayNoonMs, todayNoonMs])
+            try txn.execute(sql: "INSERT INTO session (id, time_created, time_updated, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, tokens_cache_write) VALUES ('b', ?, ?, 100, 0, 0, 0, 0)", arguments: [yesterdayNoonMs, yesterdayNoonMs])
+        }
+
+        let estimator = OpenCodeLocalEstimator(dbPath: path)
+        let buckets = try XCTUnwrap(estimator.dailyTokens(windowDays: 7, now: now))
+
+        let byDay = Dictionary(uniqueKeysWithValues: buckets.map { ($0.day, $0.tokens) })
+        XCTAssertEqual(byDay[TokenAnalytics.dayKey(now)], 20)
+        XCTAssertEqual(byDay[TokenAnalytics.dayKey(now.addingTimeInterval(-24 * 3600))], 100)
+    }
+
+    func test_dailyTokens_nilWhenFileMissing() {
+        let estimator = OpenCodeLocalEstimator(dbPath: "/nonexistent/path.db")
+        XCTAssertNil(estimator.dailyTokens(windowDays: 7, now: Date()))
+    }
 }
 
 final class OpenCodeRateLimitParserTests: XCTestCase {

@@ -19,7 +19,7 @@ final class CodexAnalyticsTests: XCTestCase {
             }
         }
         """
-        let analytics = try XCTUnwrap(CodexAnalytics(profileJSON: Data(json.utf8)))
+        let analytics = try XCTUnwrap(TokenAnalytics(codexProfileJSON: Data(json.utf8)))
 
         XCTAssertEqual(analytics.lifetimeTokens, 2_200_000_000)
         XCTAssertEqual(analytics.peakDailyTokens, 385_400_000)
@@ -27,8 +27,8 @@ final class CodexAnalyticsTests: XCTestCase {
         XCTAssertEqual(analytics.longestStreakDays, 8)
         XCTAssertEqual(analytics.longestRunningTurnSeconds, 2673)
         XCTAssertEqual(analytics.dailyBuckets, [
-            CodexDailyTokens(day: "2026-08-10", tokens: 1000),
-            CodexDailyTokens(day: "2026-08-11", tokens: 79_900_000),
+            DailyTokens(day: "2026-08-10", tokens: 1000),
+            DailyTokens(day: "2026-08-11", tokens: 79_900_000),
         ])
         XCTAssertEqual(analytics.tokens(onDay: "2026-08-11"), 79_900_000)
     }
@@ -43,32 +43,32 @@ final class CodexAnalyticsTests: XCTestCase {
             }
         }
         """
-        let analytics = try XCTUnwrap(CodexAnalytics(profileJSON: Data(json.utf8)))
-        XCTAssertEqual(analytics.dailyBuckets, [CodexDailyTokens(day: "2026-08-09", tokens: 1000)])
+        let analytics = try XCTUnwrap(TokenAnalytics(codexProfileJSON: Data(json.utf8)))
+        XCTAssertEqual(analytics.dailyBuckets, [DailyTokens(day: "2026-08-09", tokens: 1000)])
     }
 
     func test_parse_missingStats_returnsNil() {
-        XCTAssertNil(CodexAnalytics(profileJSON: Data("{}".utf8)))
-        XCTAssertNil(CodexAnalytics(profileJSON: Data(#"{"stats": {}}"#.utf8)))
+        XCTAssertNil(TokenAnalytics(codexProfileJSON: Data("{}".utf8)))
+        XCTAssertNil(TokenAnalytics(codexProfileJSON: Data(#"{"stats": {}}"#.utf8)))
     }
 
     func test_compactTokens() {
-        XCTAssertEqual(CodexAnalytics.compactTokens(950), "950")
-        XCTAssertEqual(CodexAnalytics.compactTokens(1200), "1.2K")
-        XCTAssertEqual(CodexAnalytics.compactTokens(3_400_000), "3.4M")
-        XCTAssertEqual(CodexAnalytics.compactTokens(2_200_000_000), "2.2B")
-        XCTAssertEqual(CodexAnalytics.compactTokens(2_000_000), "2M")
+        XCTAssertEqual(TokenAnalytics.compactTokens(950), "950")
+        XCTAssertEqual(TokenAnalytics.compactTokens(1200), "1.2K")
+        XCTAssertEqual(TokenAnalytics.compactTokens(3_400_000), "3.4M")
+        XCTAssertEqual(TokenAnalytics.compactTokens(2_200_000_000), "2.2B")
+        XCTAssertEqual(TokenAnalytics.compactTokens(2_000_000), "2M")
     }
 
     func test_durationLabel() {
-        XCTAssertEqual(CodexAnalytics.durationLabel(2673), "44m 33s")
-        XCTAssertEqual(CodexAnalytics.durationLabel(3700), "1h 1m")
-        XCTAssertEqual(CodexAnalytics.durationLabel(42), "42s")
+        XCTAssertEqual(TokenAnalytics.durationLabel(2673), "44m 33s")
+        XCTAssertEqual(TokenAnalytics.durationLabel(3700), "1h 1m")
+        XCTAssertEqual(TokenAnalytics.durationLabel(42), "42s")
     }
 
     func test_tokensLast30Days_sumsMostRecentBuckets() {
-        let buckets = (1...40).map { CodexDailyTokens(day: String(format: "2026-07-%02d", $0), tokens: 10) }
-        let analytics = CodexAnalytics(
+        let buckets = (1...40).map { DailyTokens(day: String(format: "2026-07-%02d", $0), tokens: 10) }
+        let analytics = TokenAnalytics(
             lifetimeTokens: nil, peakDailyTokens: nil, currentStreakDays: nil,
             longestStreakDays: nil, longestRunningTurnSeconds: nil, dailyBuckets: buckets
         )
@@ -77,13 +77,13 @@ final class CodexAnalyticsTests: XCTestCase {
 
     func test_heatLevels_quartileBands_zeroOmitted() {
         let buckets = [
-            CodexDailyTokens(day: "d0", tokens: 0),
-            CodexDailyTokens(day: "d1", tokens: 10),
-            CodexDailyTokens(day: "d2", tokens: 20),
-            CodexDailyTokens(day: "d3", tokens: 30),
-            CodexDailyTokens(day: "d4", tokens: 40),
+            DailyTokens(day: "d0", tokens: 0),
+            DailyTokens(day: "d1", tokens: 10),
+            DailyTokens(day: "d2", tokens: 20),
+            DailyTokens(day: "d3", tokens: 30),
+            DailyTokens(day: "d4", tokens: 40),
         ]
-        let analytics = CodexAnalytics(
+        let analytics = TokenAnalytics(
             lifetimeTokens: nil, peakDailyTokens: nil, currentStreakDays: nil,
             longestStreakDays: nil, longestRunningTurnSeconds: nil, dailyBuckets: buckets
         )
