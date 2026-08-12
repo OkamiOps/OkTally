@@ -170,10 +170,11 @@ Everything runs locally on your Mac.
 
 ## Roadmap
 
-- [ ] Plan badges (Pro/Free) on provider cards
-- [ ] Sparkle auto-updates
-- [ ] Localization (UI currently in Portuguese)
+- [x] Plan badges (Pro/Free/Business) on provider cards
+- [x] Update check (daily, against GitHub Releases — auto-install waits for notarization)
+- [x] Localization (English + Portuguese, follows the system language)
 - [ ] More zero-config providers (Gemini CLI, Antigravity, Qwen)
+- [ ] Notarized builds
 
 ## License
 

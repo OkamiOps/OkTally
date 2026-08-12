@@ -38,7 +38,7 @@ extension ClaudeUsageError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .badResponse(let statusCode):
-            return "Claude respondeu com erro (código \(statusCode.map(String.init) ?? "desconhecido"))."
+            return LF("Claude respondeu com erro (código %@).", statusCode.map(String.init) ?? L("desconhecido"))
         }
     }
 }

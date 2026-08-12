@@ -40,9 +40,9 @@ struct PreferencesView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $pane) {
-                Label("Geral", systemImage: "slider.horizontal.3")
+                Label(L("Geral"), systemImage: "slider.horizontal.3")
                     .tag(PreferencesPane.general)
-                Section("Contas") {
+                Section(L("Contas")) {
                     ForEach(providerIds, id: \.self) { id in
                         sidebarRow(id).tag(PreferencesPane.provider(id))
                     }
@@ -108,8 +108,8 @@ struct PreferencesView: View {
     }
 
     private func statusDotHelp(_ id: String) -> String {
-        if appModel.errorKindByProvider[id] == .needsReauth { return "Credencial expirada — reconecte" }
-        return isConfigured(id) ? "Conectado" : "Não configurado"
+        if appModel.errorKindByProvider[id] == .needsReauth { return L("Credencial expirada — reconecte") }
+        return isConfigured(id) ? L("Conectado") : L("Não configurado")
     }
 
     private func providerName(_ id: String) -> String {
@@ -143,12 +143,12 @@ struct PreferencesView: View {
         case .provider("cursor"): cursorPane
         case .provider("copilot"): copilotPane
         case .provider("openrouter"):
-            keyPane("openrouter", text: $openRouterAPIKey, status: openRouterAPIKey.isEmpty ? "Sem chave" : "Chave salva") {
+            keyPane("openrouter", text: $openRouterAPIKey, status: openRouterAPIKey.isEmpty ? L("Sem chave") : L("Chave salva")) {
                 saveSecret("OpenRouter") { try preferencesStore.setOpenRouterAPIKey(openRouterAPIKey) }
             }
         case .provider("minimax"): minimaxPane
         case .provider("opencode"):
-            keyPane("opencode", text: $openCodeAPIKey, status: openCodeAPIKey.isEmpty ? "Sem chave" : "Chave salva") {
+            keyPane("opencode", text: $openCodeAPIKey, status: openCodeAPIKey.isEmpty ? L("Sem chave") : L("Chave salva")) {
                 saveSecret("OpenCode") { try preferencesStore.setOpenCodeAPIKey(openCodeAPIKey) }
             }
         case .provider("mimo"): mimoPane
@@ -177,16 +177,16 @@ struct PreferencesView: View {
 
     private var claudePane: some View {
         VStack(alignment: .leading, spacing: 12) {
-            paneHeader("claude", status: claudeLoggedIn ? "Conectado" : "Não conectado", active: claudeLoggedIn)
+            paneHeader("claude", status: claudeLoggedIn ? L("Conectado") : L("Não conectado"), active: claudeLoggedIn)
             HStack {
                 if claudeLoggedIn {
-                    Button("Sair") { logout(providerId: "claude", flag: $claudeLoggedIn); claudeSession = nil }
+                    Button(L("Sair")) { logout(providerId: "claude", flag: $claudeLoggedIn); claudeSession = nil }
                         .buttonStyle(.bordered)
                 } else {
-                    Button("Entrar…") { beginClaudeLogin() }
+                    Button(L("Entrar…")) { beginClaudeLogin() }
                         .buttonStyle(.borderedProminent)
-                    Button("Importar do Claude Code") {
-                        statusMessage = onImportClaudeLegacy() ? "Login importado." : "Nenhum login do Claude Code encontrado."
+                    Button(L("Importar do Claude Code")) {
+                        statusMessage = onImportClaudeLegacy() ? L("Login importado.") : L("Nenhum login do Claude Code encontrado.")
                         claudeLoggedIn = tokenStore.load(providerId: "claude") != nil
                     }
                     .buttonStyle(.bordered)
@@ -195,14 +195,14 @@ struct PreferencesView: View {
             }
             if claudeSession != nil {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Autorize no navegador, copie o código e cole abaixo:")
+                    Text(L("Autorize no navegador, copie o código e cole abaixo:"))
                         .font(.caption).foregroundStyle(.secondary)
                     TextField("CÓDIGO#STATE", text: $claudePastedCode).textFieldStyle(.roundedBorder)
                     HStack {
-                        Button("Concluir") { completeClaudeLogin() }
+                        Button(L("Concluir")) { completeClaudeLogin() }
                             .buttonStyle(.borderedProminent)
                             .disabled(claudePastedCode.trimmingCharacters(in: .whitespaces).isEmpty)
-                        Button("Cancelar") { claudeSession = nil; claudePastedCode = ""; statusMessage = "" }
+                        Button(L("Cancelar")) { claudeSession = nil; claudePastedCode = ""; statusMessage = "" }
                             .buttonStyle(.bordered)
                     }
                 }
@@ -212,12 +212,12 @@ struct PreferencesView: View {
 
     private var codexPane: some View {
         VStack(alignment: .leading, spacing: 12) {
-            paneHeader("codex", status: codexLoggedIn ? "Conectado" : "Não conectado", active: codexLoggedIn)
+            paneHeader("codex", status: codexLoggedIn ? L("Conectado") : L("Não conectado"), active: codexLoggedIn)
             HStack {
                 if codexLoggedIn {
-                    Button("Sair") { logout(providerId: "codex", flag: $codexLoggedIn) }.buttonStyle(.bordered)
+                    Button(L("Sair")) { logout(providerId: "codex", flag: $codexLoggedIn) }.buttonStyle(.bordered)
                 } else {
-                    Button("Entrar…") { login(config: CodexOAuth.config, flag: $codexLoggedIn) }
+                    Button(L("Entrar…")) { login(config: CodexOAuth.config, flag: $codexLoggedIn) }
                         .buttonStyle(.borderedProminent)
                 }
                 Spacer()
@@ -227,19 +227,19 @@ struct PreferencesView: View {
 
     private var superGrokPane: some View {
         VStack(alignment: .leading, spacing: 12) {
-            paneHeader("supergrok", status: superGrokLoggedIn ? "Conectado" : "Não conectado", active: superGrokLoggedIn)
+            paneHeader("supergrok", status: superGrokLoggedIn ? L("Conectado") : L("Não conectado"), active: superGrokLoggedIn)
             HStack {
                 if superGrokLoggedIn {
-                    Button("Sair") { logout(providerId: SuperGrokOAuth.providerId, flag: $superGrokLoggedIn) }
+                    Button(L("Sair")) { logout(providerId: SuperGrokOAuth.providerId, flag: $superGrokLoggedIn) }
                         .buttonStyle(.bordered)
                 } else {
-                    Button("Entrar…") { loginSuperGrok() }.buttonStyle(.borderedProminent)
+                    Button(L("Entrar…")) { loginSuperGrok() }.buttonStyle(.borderedProminent)
                 }
                 Spacer()
             }
             if let info = superGrokDeviceCode {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Abra \(info.verificationURL.absoluteString) e digite:")
+                    Text(LF("Abra %@ e digite:", info.verificationURL.absoluteString))
                         .font(.caption).foregroundStyle(.secondary)
                     Text(info.userCode).font(.title3.monospaced()).textSelection(.enabled)
                 }
@@ -249,8 +249,8 @@ struct PreferencesView: View {
 
     private var cursorPane: some View {
         VStack(alignment: .leading, spacing: 12) {
-            paneHeader("cursor", status: "Lê a sessão do app Cursor automaticamente", active: true)
-            Text("Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho.")
+            paneHeader("cursor", status: L("Lê a sessão do app Cursor automaticamente"), active: true)
+            Text(L("Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho."))
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -260,10 +260,10 @@ struct PreferencesView: View {
         return VStack(alignment: .leading, spacing: 12) {
             paneHeader(
                 "copilot",
-                status: detected ? "Login do Copilot/gh CLI detectado" : "Nenhum login do Copilot/gh CLI encontrado",
+                status: detected ? L("Login do Copilot/gh CLI detectado") : L("Nenhum login do Copilot/gh CLI encontrado"),
                 active: detected
             )
-            Text("Nada a configurar — detectado automaticamente a partir do login do Copilot ou do gh CLI neste Mac.")
+            Text(L("Nada a configurar — detectado automaticamente a partir do login do Copilot ou do gh CLI neste Mac."))
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -272,18 +272,18 @@ struct PreferencesView: View {
         VStack(alignment: .leading, spacing: 12) {
             paneHeader(id, status: status, active: !text.wrappedValue.isEmpty)
             SecureField("API Key", text: text).textFieldStyle(.roundedBorder).frame(maxWidth: 380)
-            HStack { Button("Salvar", action: save).buttonStyle(.borderedProminent); Spacer() }
+            HStack { Button(L("Salvar"), action: save).buttonStyle(.borderedProminent); Spacer() }
         }
     }
 
     private var minimaxPane: some View {
         VStack(alignment: .leading, spacing: 12) {
-            paneHeader("minimax", status: minimaxAPIKey.isEmpty ? "Sem chave" : "Chave salva", active: !minimaxAPIKey.isEmpty)
+            paneHeader("minimax", status: minimaxAPIKey.isEmpty ? L("Sem chave") : L("Chave salva"), active: !minimaxAPIKey.isEmpty)
             SecureField("API Key", text: $minimaxAPIKey).textFieldStyle(.roundedBorder).frame(maxWidth: 380)
-            Toggle("Região China (minimaxi.com)", isOn: $minimaxRegionIsChina)
+            Toggle(L("Região China (minimaxi.com)"), isOn: $minimaxRegionIsChina)
                 .toggleStyle(.switch).controlSize(.small)
             HStack {
-                Button("Salvar") {
+                Button(L("Salvar")) {
                     saveSecret("MiniMax") { try preferencesStore.setMinimaxAPIKey(minimaxAPIKey) }
                     preferencesStore.minimaxRegionRaw = minimaxRegionIsChina ? "china" : "global"
                 }
@@ -296,21 +296,21 @@ struct PreferencesView: View {
     private var mimoPane: some View {
         VStack(alignment: .leading, spacing: 12) {
             paneHeader("mimo",
-                       status: mimoLoggedIn ? "Sessão ativa — uso automático" : "Sem sessão (usa estimativa manual)",
+                       status: mimoLoggedIn ? L("Sessão ativa — uso automático") : L("Sem sessão (usa estimativa manual)"),
                        active: mimoLoggedIn)
             HStack {
                 if mimoLoggedIn {
-                    Button("Sair") {
+                    Button(L("Sair")) {
                         mimoSessionStore.isLoggedIn = false; mimoLoggedIn = false
-                        statusMessage = "Sessão do MiMo removida."
+                        statusMessage = L("Sessão do MiMo removida.")
                     }
                     .buttonStyle(.bordered)
                 } else {
-                    Button("Entrar no MiMo…") {
+                    Button(L("Entrar no MiMo…")) {
                         MiMoWebSession.shared.presentLogin {
                             mimoSessionStore.isLoggedIn = true
                             mimoLoggedIn = true
-                            statusMessage = "Sessão do MiMo ativa — uso automático."
+                            statusMessage = L("Sessão do MiMo ativa — uso automático.")
                         }
                     }
                     .buttonStyle(.borderedProminent)
@@ -318,15 +318,15 @@ struct PreferencesView: View {
                 Spacer()
             }
             if mimoLoggedIn {
-                Text("A sessão sobrevive a reinícios e se renova sozinha quando o console expira — só pede login de novo se a conta Xiaomi deslogar de verdade.")
+                Text(L("A sessão sobrevive a reinícios e se renova sozinha quando o console expira — só pede login de novo se a conta Xiaomi deslogar de verdade."))
                     .font(.caption).foregroundStyle(.secondary)
             } else {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Estimativa manual (sem sessão):").font(.caption).foregroundStyle(.secondary)
+                    Text(L("Estimativa manual (sem sessão):")).font(.caption).foregroundStyle(.secondary)
                     HStack(spacing: 8) {
-                        TextField("Franquia (Credits)", text: $mimoAllowance).textFieldStyle(.roundedBorder)
-                        TextField("Usados", text: $mimoUsed).textFieldStyle(.roundedBorder)
-                        Button("Salvar") {
+                        TextField(L("Franquia (Credits)"), text: $mimoAllowance).textFieldStyle(.roundedBorder)
+                        TextField(L("Usados"), text: $mimoUsed).textFieldStyle(.roundedBorder)
+                        Button(L("Salvar")) {
                             preferencesStore.mimoMonthlyAllowanceCredits = Double(mimoAllowance)
                             preferencesStore.mimoUsedCredits = Double(mimoUsed) ?? 0
                         }
@@ -356,11 +356,11 @@ struct PreferencesView: View {
     // MARK: - Login flows (unchanged)
 
     private func login(config: OAuthConfig, flag: Binding<Bool>) {
-        statusMessage = "Abrindo o navegador…"
+        statusMessage = L("Abrindo o navegador…")
         Task {
             do {
                 _ = try await browserFlow.login(config: config)
-                await MainActor.run { flag.wrappedValue = true; statusMessage = "Conectado." }
+                await MainActor.run { flag.wrappedValue = true; statusMessage = L("Conectado.") }
             } catch {
                 await MainActor.run { statusMessage = error.localizedDescription }
             }
@@ -370,18 +370,18 @@ struct PreferencesView: View {
     private func beginClaudeLogin() {
         claudePastedCode = ""
         claudeSession = manualFlow.begin(config: ClaudeOAuth.config)
-        statusMessage = "Abrindo o navegador — copie o código e cole aqui."
+        statusMessage = L("Abrindo o navegador — copie o código e cole aqui.")
     }
 
     private func completeClaudeLogin() {
         guard let session = claudeSession else { return }
         let pasted = claudePastedCode
-        statusMessage = "Validando código…"
+        statusMessage = L("Validando código…")
         Task {
             do {
                 _ = try await manualFlow.complete(pasted: pasted, session: session)
                 await MainActor.run {
-                    claudeLoggedIn = true; claudeSession = nil; claudePastedCode = ""; statusMessage = "Conectado."
+                    claudeLoggedIn = true; claudeSession = nil; claudePastedCode = ""; statusMessage = L("Conectado.")
                 }
             } catch {
                 await MainActor.run { statusMessage = error.localizedDescription }
@@ -390,17 +390,17 @@ struct PreferencesView: View {
     }
 
     private func loginSuperGrok() {
-        statusMessage = "Solicitando código de dispositivo…"
+        statusMessage = L("Solicitando código de dispositivo…")
         Task {
             do {
                 let request = try await deviceCodeFlow.requestDeviceCode(config: SuperGrokOAuth.config)
                 await MainActor.run {
                     superGrokDeviceCode = request.info
-                    statusMessage = "Digite o código no navegador para continuar."
+                    statusMessage = L("Digite o código no navegador para continuar.")
                     NSWorkspace.shared.open(request.info.verificationURL)
                 }
                 _ = try await deviceCodeFlow.poll(request, config: SuperGrokOAuth.config)
-                await MainActor.run { superGrokLoggedIn = true; superGrokDeviceCode = nil; statusMessage = "Conectado." }
+                await MainActor.run { superGrokLoggedIn = true; superGrokDeviceCode = nil; statusMessage = L("Conectado.") }
             } catch {
                 await MainActor.run { superGrokDeviceCode = nil; statusMessage = error.localizedDescription }
             }
@@ -410,16 +410,16 @@ struct PreferencesView: View {
     private func saveSecret(_ label: String, _ save: () throws -> Void) {
         do {
             try save()
-            statusMessage = "\(label): chave salva."
+            statusMessage = LF("%@: chave salva.", label)
         } catch {
-            statusMessage = "\(label): falha ao salvar chave — \(error.localizedDescription)"
+            statusMessage = LF("%@: falha ao salvar chave — %@", label, error.localizedDescription)
         }
     }
 
     private func logout(providerId: String, flag: Binding<Bool>) {
         try? tokenStore.delete(providerId: providerId)
         flag.wrappedValue = false
-        statusMessage = "Desconectado."
+        statusMessage = L("Desconectado.")
     }
 }
 
@@ -442,9 +442,9 @@ private struct GeneralPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Barra de menu").font(.system(size: 16, weight: .bold))
+            Text(L("Barra de menu")).font(.system(size: 16, weight: .bold))
             if appModel.menuBarPins.isEmpty {
-                Text("Nada fixado — a barra mostra automaticamente a janela mais próxima do limite.")
+                Text(L("Nada fixado — a barra mostra automaticamente a janela mais próxima do limite."))
                     .font(.caption).foregroundStyle(.secondary)
             } else {
                 VStack(spacing: 6) {
@@ -474,19 +474,19 @@ private struct GeneralPane: View {
                 }
                 .frame(maxWidth: 420)
             }
-            Text("Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra.")
+            Text(L("Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra."))
                 .font(.caption).foregroundStyle(.secondary)
 
             Divider().padding(.vertical, 4)
 
-            Text("Alertas").font(.system(size: 16, weight: .bold))
-            Toggle("Notificações de cota", isOn: $alertsEnabled)
+            Text(L("Alertas")).font(.system(size: 16, weight: .bold))
+            Toggle(L("Notificações de cota"), isOn: $alertsEnabled)
                 .toggleStyle(.switch).controlSize(.small)
                 .onChange(of: alertsEnabled) { newValue in
                     preferencesStore.alertsEnabled = newValue
                 }
             VStack(alignment: .leading, spacing: 6) {
-                Text("Avisar quando o uso cruzar:").font(.caption).foregroundStyle(.secondary)
+                Text(L("Avisar quando o uso cruzar:")).font(.caption).foregroundStyle(.secondary)
                 HStack(spacing: 14) {
                     ForEach(Self.percentOptions, id: \.self) { step in
                         Toggle("\(Int(step * 100))%", isOn: percentBinding(step))
@@ -494,12 +494,12 @@ private struct GeneralPane: View {
                     }
                 }
                 HStack(spacing: 6) {
-                    Text("Saldo baixo (USD):").font(.caption).foregroundStyle(.secondary)
+                    Text(L("Saldo baixo (USD):")).font(.caption).foregroundStyle(.secondary)
                     TextField("5.00", text: $lowBalanceText)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 70)
                         .onSubmit(saveLowBalance)
-                    Button("Salvar", action: saveLowBalance)
+                    Button(L("Salvar"), action: saveLowBalance)
                         .controlSize(.small)
                 }
             }

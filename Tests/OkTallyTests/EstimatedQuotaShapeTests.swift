@@ -43,6 +43,6 @@ final class EstimatedQuotaShapeTests: XCTestCase {
     func test_alertFormatter_estimatedEvent_prefixesBody() {
         let event = AlertEvent(providerId: "mimo", providerDisplayName: "MiMo", windowLabel: "mensal", threshold: .percentage(0.9), currentPercent: 91, currentRemaining: nil, resetAt: nil, isEstimated: true)
         let (_, body) = AlertNotificationFormatter.format(event)
-        XCTAssertTrue(body.hasPrefix("Estimado: "))
+        XCTAssertTrue(body.hasPrefix(L("Estimado: ")))
     }
 }

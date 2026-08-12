@@ -15,13 +15,13 @@ enum QuotaPresentation {
         if let used = shape.usedPercent {
             let left = Int((100 - used).rounded())
             let prefix = shape.isEstimated ? "~" : ""
-            return "\(prefix)\(left)% restante"
+            return prefix + LF("%d%% restante", left)
         }
         switch shape {
         case .creditBalance(let remaining, let currency):
             return "\(format(remaining)) \(currency)"
         case .meteredOnly(let cost):
-            return "$\(format(cost)) usado"
+            return LF("$%@ usado", format(cost))
         default:
             return ""
         }
@@ -35,7 +35,7 @@ enum QuotaPresentation {
         fmt.allowedUnits = [.day, .hour, .minute]
         fmt.maximumUnitCount = 2
         guard let s = fmt.string(from: now, to: reset) else { return nil }
-        return "Reseta em \(s)"
+        return LF("Reseta em %@", s)
     }
 
     /// Green when plenty remains, amber mid, red when nearly exhausted.

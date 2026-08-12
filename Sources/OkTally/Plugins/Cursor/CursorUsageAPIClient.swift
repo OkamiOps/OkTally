@@ -38,9 +38,9 @@ extension CursorUsageError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notDetected:
-            return "Cursor não detectado — instale/entre no Cursor para acompanhar o uso."
+            return L("Cursor não detectado — instale/entre no Cursor para acompanhar o uso.")
         case .badResponse(let statusCode):
-            return "Cursor respondeu com erro (código \(statusCode.map(String.init) ?? "desconhecido"))."
+            return LF("Cursor respondeu com erro (código %@).", statusCode.map(String.init) ?? L("desconhecido"))
         }
     }
 }

@@ -89,7 +89,7 @@ enum CodexUsageError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .badResponse(let code):
-            return "Codex respondeu com erro (código \(code.map(String.init) ?? "desconhecido"))."
+            return LF("Codex respondeu com erro (código %@).", code.map(String.init) ?? L("desconhecido"))
         }
     }
 }

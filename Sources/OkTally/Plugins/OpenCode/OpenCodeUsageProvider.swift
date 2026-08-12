@@ -9,7 +9,7 @@ extension OpenCodeError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notDetected:
-            return "OpenCode não detectado — o banco local de uso (opencode.db) não foi encontrado."
+            return L("OpenCode não detectado — o banco local de uso (opencode.db) não foi encontrado.")
         }
     }
 }

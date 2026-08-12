@@ -16,7 +16,7 @@ enum SchedulerError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notConfigured:
-            return "Não configurado — adicione suas credenciais nas Preferências."
+            return L("Não configurado — adicione suas credenciais nas Preferências.")
         }
     }
 }

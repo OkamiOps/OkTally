@@ -6,17 +6,17 @@ enum AlertNotificationFormatter {
         let title = "\(event.providerDisplayName) — \(event.windowLabel)"
         var body: String
         if let percent = event.currentPercent {
-            body = "\(Int(percent.rounded()))% da janela \(event.windowLabel)"
+            body = LF("%d%% da janela %@", Int(percent.rounded()), event.windowLabel)
             if let resetAt = event.resetAt {
-                body += " — reseta \(relativeDateString(resetAt))"
+                body += LF(" — reseta %@", relativeDateString(resetAt))
             }
         } else if let remaining = event.currentRemaining {
-            body = "Saldo restante: \(remaining)"
+            body = LF("Saldo restante: %@", "\(remaining)")
         } else {
             body = ""
         }
         if event.isEstimated {
-            body = "Estimado: " + body
+            body = L("Estimado: ") + body
         }
         return (title, body)
     }

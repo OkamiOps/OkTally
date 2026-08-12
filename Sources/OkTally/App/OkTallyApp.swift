@@ -108,7 +108,7 @@ struct OkTallyApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("OkTally — Visão geral", id: "main") {
+        Window(L("OkTally — Visão geral"), id: "main") {
             MainWindowView(appModel: appModel)
         }
         .defaultSize(width: 860, height: 560)

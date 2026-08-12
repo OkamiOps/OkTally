@@ -28,13 +28,13 @@ enum DeviceCodeError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .requestFailed(let code):
-            return "Falha ao iniciar login por código de dispositivo (código \(code.map(String.init) ?? "desconhecido"))."
+            return LF("Falha ao iniciar login por código de dispositivo (código %@).", code.map(String.init) ?? L("desconhecido"))
         case .accessDenied:
-            return "Login negado pelo usuário."
+            return L("Login negado pelo usuário.")
         case .expired:
-            return "Código de dispositivo expirou — tente novamente."
+            return L("Código de dispositivo expirou — tente novamente.")
         case .invalidResponse:
-            return "Resposta inválida do servidor de autenticação."
+            return L("Resposta inválida do servidor de autenticação.")
         }
     }
 }

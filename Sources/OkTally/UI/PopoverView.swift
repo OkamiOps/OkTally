@@ -28,14 +28,14 @@ struct PopoverView: View {
                 Button {
                     NSWorkspace.shared.open(update.url)
                 } label: {
-                    Label("\(update.version) disponível", systemImage: "arrow.down.circle.fill")
+                    Label(LF("%@ disponível", update.version), systemImage: "arrow.down.circle.fill")
                         .font(.system(size: 10, weight: .semibold))
                         .padding(.horizontal, 7).padding(.vertical, 2)
                         .background(Capsule().fill(Color.orange.opacity(0.15)))
                         .foregroundStyle(.orange)
                 }
                 .buttonStyle(.plain)
-                .help("Abrir a página da nova versão no GitHub")
+                .help(L("Abrir a página da nova versão no GitHub"))
             }
             Spacer()
             Text(pinnedHint).font(.caption).foregroundStyle(.secondary)
@@ -47,30 +47,30 @@ struct PopoverView: View {
     private var pinnedHint: String {
         let count = appModel.menuBarPins.count
         switch count {
-        case 0: return "Barra: automático"
-        case 1: return "Barra: 1 fixado"
-        default: return "Barra: \(count) fixados"
+        case 0: return L("Barra: automático")
+        case 1: return L("Barra: 1 fixado")
+        default: return LF("Barra: %d fixados", count)
         }
     }
 
     private var footer: some View {
         HStack(spacing: 14) {
-            Button("Atualizar") { Task { await appModel.refreshNow() } }
-            Button("Visão geral") {
+            Button(L("Atualizar")) { Task { await appModel.refreshNow() } }
+            Button(L("Visão geral")) {
                 openWindow(id: "main")
                 NSApp.activate(ignoringOtherApps: true)
             }
             Spacer()
             if #available(macOS 14.0, *) {
-                SettingsLink { Text("Preferências") }
+                SettingsLink { Text(L("Preferências")) }
                     .simultaneousGesture(TapGesture().onEnded { NSApp.activate(ignoringOtherApps: true) })
             } else {
-                Button("Preferências") {
+                Button(L("Preferências")) {
                     NSApp.activate(ignoringOtherApps: true)
                     DispatchQueue.main.async { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) }
                 }
             }
-            Button("Sair") { NSApplication.shared.terminate(nil) }
+            Button(L("Encerrar")) { NSApplication.shared.terminate(nil) }
         }
         .buttonStyle(.plain)
         .font(.caption)
@@ -112,10 +112,10 @@ struct PopoverContentView: View {
                 return (provider, message, appModel.errorKindByProvider[provider.id])
             }
             if appModel.snapshotsByProvider[provider.id] == nil {
-                return (provider, "Carregando…", nil)
+                return (provider, L("Carregando…"), nil)
             }
             if appModel.snapshotsByProvider[provider.id]?.quotas.isEmpty == true {
-                return (provider, "Sem dados de cota", nil)
+                return (provider, L("Sem dados de cota"), nil)
             }
             return nil
         }
@@ -224,7 +224,7 @@ private struct HeroCard: View {
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 12).fill(danger.opacity(0.07)))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(danger.opacity(0.25)))
-        .help(window.shape.isEstimated ? "Estimativa local, não confirmada pelo provedor" : "")
+        .help(window.shape.isEstimated ? L("Estimativa local, não confirmada pelo provedor") : "")
     }
 }
 
@@ -300,19 +300,19 @@ private struct ProviderGaugeCard: View {
                     points: history.map(\.usedPercent),
                     color: worst.map { QuotaPresentation.color(remaining: $0.remaining) } ?? identity
                 )
-                .help("Uso nas últimas 24h")
+                .help(L("Uso nas últimas 24h"))
             }
             if let estimatedCost {
-                Label("Custo est.: $\(Self.costText(estimatedCost)) (30d)", systemImage: "dollarsign.circle")
+                Label(LF("Custo est.: $%@ (30d)", Self.costText(estimatedCost)), systemImage: "dollarsign.circle")
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
-                    .help("Estimativa: tokens locais × tabela de preços do OpenRouter")
+                    .help(L("Estimativa: tokens locais × tabela de preços do OpenRouter"))
             }
             if let staleness = Self.stalenessText(fetchedAt: snapshot.fetchedAt) {
                 Label(staleness, systemImage: "clock")
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
-                    .help("Última atualização bem-sucedida — a busca mais recente falhou ou ainda não rodou")
+                    .help(L("Última atualização bem-sucedida — a busca mais recente falhou ou ainda não rodou"))
             }
         }
         .padding(10)
@@ -336,7 +336,7 @@ private struct ProviderGaugeCard: View {
         fmt.allowedUnits = [.day, .hour, .minute]
         fmt.maximumUnitCount = 2
         guard let s = fmt.string(from: age) else { return nil }
-        return "Atualizado há \(s)"
+        return LF("Atualizado há %@", s)
     }
 }
 
@@ -367,7 +367,7 @@ private struct QuotaLine: View {
                 }
             }
         }
-        .help(window.shape.isEstimated ? "Estimativa local, não confirmada pelo provedor" : "")
+        .help(window.shape.isEstimated ? L("Estimativa local, não confirmada pelo provedor") : "")
     }
 }
 
@@ -383,7 +383,7 @@ private struct PinButton: View {
                 .foregroundStyle(isPinned ? identity : Color.secondary.opacity(0.45))
         }
         .buttonStyle(.plain)
-        .help(isPinned ? "Remover da barra de menu" : "Fixar esta janela na barra de menu")
+        .help(isPinned ? L("Remover da barra de menu") : L("Fixar esta janela na barra de menu"))
     }
 }
 
@@ -433,8 +433,8 @@ private struct ProblemsSection: View {
     /// (rede, HTTP 500) não tem botão porque não há nada para o dono clicar lá.
     private func actionTitle(for kind: ProviderErrorPresentation?) -> String? {
         switch kind {
-        case .needsReauth: return "Reconectar"
-        case .notConfigured: return "Configurar"
+        case .needsReauth: return L("Reconectar")
+        case .notConfigured: return L("Configurar")
         default: return nil
         }
     }
@@ -462,14 +462,14 @@ private struct OnboardingEmptyState: View {
                     .font(.system(size: 24))
                     .foregroundStyle(Color.accentColor)
             }
-            Text("Conecte seu primeiro provedor")
+            Text(L("Conecte seu primeiro provedor"))
                 .font(.system(size: 13, weight: .semibold))
-            Text("Claude, Codex, Cursor, Copilot e outros — cotas e saldos num lugar só.")
+            Text(L("Claude, Codex, Cursor, Copilot e outros — cotas e saldos num lugar só."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             OpenSettingsButton(beforeOpen: {}) {
-                Text("Abrir Preferências")
+                Text(L("Abrir Preferências"))
                     .font(.system(size: 11, weight: .semibold))
                     .padding(.horizontal, 12).padding(.vertical, 5)
                     .background(Capsule().fill(Color.accentColor))

@@ -26,9 +26,9 @@ extension OpenRouterError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingAPIKey:
-            return "Configure sua chave de API do OpenRouter nas Preferências."
+            return L("Configure sua chave de API do OpenRouter nas Preferências.")
         case .badResponse(let statusCode):
-            return "OpenRouter respondeu com erro (código \(statusCode.map(String.init) ?? "desconhecido"))."
+            return LF("OpenRouter respondeu com erro (código %@).", statusCode.map(String.init) ?? L("desconhecido"))
         }
     }
 }

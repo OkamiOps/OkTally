@@ -13,11 +13,11 @@ extension CopilotError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notDetected:
-            return "Copilot não detectado — nenhum login do Copilot ou gh CLI neste Mac."
+            return L("Copilot não detectado — nenhum login do Copilot ou gh CLI neste Mac.")
         case .tokenRejected:
-            return "Token do GitHub recusado — faça login no Copilot ou gh novamente."
+            return L("Token do GitHub recusado — faça login no Copilot ou gh novamente.")
         case .badResponse(let status):
-            return "GitHub respondeu HTTP \(status)."
+            return LF("GitHub respondeu HTTP %d.", status)
         }
     }
 }

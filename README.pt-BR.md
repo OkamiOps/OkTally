@@ -170,10 +170,11 @@ Tudo roda localmente no seu Mac.
 
 ## Roadmap
 
-- [ ] Badges de plano (Pro/Free) nos cards
-- [ ] Auto-update via Sparkle
-- [ ] Localização (a UI hoje é em português)
+- [x] Badges de plano (Pro/Free/Business) nos cards
+- [x] Verificação de atualização (diária, via GitHub Releases — auto-instalação espera a notarização)
+- [x] Localização (inglês + português, segue o idioma do sistema)
 - [ ] Mais provedores zero-config (Gemini CLI, Antigravity, Qwen)
+- [ ] Builds notarizadas
 
 ## Licença
 
