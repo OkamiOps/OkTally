@@ -94,7 +94,7 @@ struct MainWindowView: View {
 
 // MARK: - Visão geral
 
-private struct OverviewScreen: View {
+struct OverviewScreen: View {
     @ObservedObject var appModel: AppModel
     let entries: [(provider: UsageProvider, snapshot: ProviderSnapshot)]
     let onSelect: (String) -> Void
