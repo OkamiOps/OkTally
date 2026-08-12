@@ -343,6 +343,20 @@ private struct ProviderDetailScreen: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            if provider.id == "codex" {
+                if let analytics = appModel.codexAnalytics {
+                    CodexAnalyticsSection(analytics: analytics)
+                } else {
+                    Text("Carregando estatísticas da conta…")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .task {
+            if provider.id == "codex" {
+                await appModel.loadCodexAnalyticsIfStale()
+            }
         }
     }
 

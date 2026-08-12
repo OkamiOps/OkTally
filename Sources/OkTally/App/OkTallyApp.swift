@@ -71,6 +71,14 @@ struct OkTallyApp: App {
 
         let pricingEngine = PricingEngine(source: OpenRouterPricingSource())
         let model = AppModel(registry: registry, scheduler: scheduler, storage: storage, pricingEngine: pricingEngine)
+        let codexAnalyticsFetcher = CodexAnalyticsFetcher()
+        model.codexAnalyticsLoader = {
+            guard let accessToken = try? await oauthManager.validAccessToken(providerId: "codex", config: CodexOAuth.config) else {
+                return nil
+            }
+            let accountId = tokenStore.load(providerId: "codex")?.extra["account_id"]
+            return try? await codexAnalyticsFetcher.fetch(accessToken: accessToken, accountId: accountId)
+        }
         _appModel = StateObject(wrappedValue: model)
 
         Task { await notificationSender.requestAuthorizationIfNeeded() }

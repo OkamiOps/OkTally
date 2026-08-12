@@ -23,6 +23,22 @@ final class AppModel: ObservableObject {
     /// popover imediatamente antes de abrir Ajustes; `PreferencesView` consome e zera.
     @Published var requestedPreferencesPane: String?
 
+    /// Estatísticas de conta do Codex (heatmap/streaks), carregadas sob demanda quando a
+    /// página do Codex na janela abre. `nil` = ainda não carregado ou indisponível.
+    @Published private(set) var codexAnalytics: CodexAnalytics?
+    private var codexAnalyticsLoadedAt: Date?
+    /// Injetado pelo app (precisa de OAuthManager/TokenStore, que o modelo não conhece).
+    var codexAnalyticsLoader: (() async -> CodexAnalytics?)?
+
+    func loadCodexAnalyticsIfStale(maxAge: TimeInterval = 300) async {
+        if let loadedAt = codexAnalyticsLoadedAt, Date().timeIntervalSince(loadedAt) < maxAge { return }
+        guard let codexAnalyticsLoader else { return }
+        if let analytics = await codexAnalyticsLoader() {
+            codexAnalytics = analytics
+            codexAnalyticsLoadedAt = Date()
+        }
+    }
+
     /// The quota windows shown in the menu bar, in the order they were pinned. Empty =
     /// automatic (worst window across all providers). Persisted across relaunches.
     @Published var menuBarPins: [MenuBarPin] {
