@@ -24,13 +24,13 @@ enum WindowLabelCatalog {
     ]
 
     static func displayLabel(_ raw: String) -> String {
-        if let mapped = table[raw] { return mapped }
+        if let mapped = table[raw] { return L(mapped) }
         // Codex emits dynamic labels like "GPT-5.3-Codex-Spark (weekly)" — keep the model
         // name, translate only the parenthesized window kind.
         if raw.hasSuffix(")"), let open = raw.lastIndex(of: "("), open > raw.startIndex {
             let inner = String(raw[raw.index(after: open)..<raw.index(before: raw.endIndex)])
             if let mapped = table[inner] {
-                return "\(raw[..<open])(\(mapped))"
+                return "\(raw[..<open])(\(L(mapped)))"
             }
         }
         return raw

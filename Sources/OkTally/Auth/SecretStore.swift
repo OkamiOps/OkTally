@@ -21,9 +21,9 @@ enum SecretStoreError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .keychainWriteFailed(let status):
-            return "Falha ao gravar chave de API no Keychain (status \(status))."
+            return LF("Falha ao gravar chave de API no Keychain (status %d).", status)
         case .keychainDeleteFailed(let status):
-            return "Falha ao remover chave de API do Keychain (status \(status))."
+            return LF("Falha ao remover chave de API do Keychain (status %d).", status)
         }
     }
 }

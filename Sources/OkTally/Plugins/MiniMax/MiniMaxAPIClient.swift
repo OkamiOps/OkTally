@@ -70,9 +70,9 @@ extension MiniMaxError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingAPIKey:
-            return "Configure sua chave de API do MiniMax nas Preferências."
+            return L("Configure sua chave de API do MiniMax nas Preferências.")
         case .badResponse(let statusCode):
-            return "MiniMax respondeu com erro (código \(statusCode.map(String.init) ?? "desconhecido"))."
+            return LF("MiniMax respondeu com erro (código %@).", statusCode.map(String.init) ?? L("desconhecido"))
         }
     }
 }

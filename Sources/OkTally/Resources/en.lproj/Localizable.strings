@@ -1,0 +1,183 @@
+/* OkTally — English translations. Keys are the original Portuguese strings (base language). */
+
+/* App */
+"OkTally — Visão geral" = "OkTally — Overview";
+
+/* Popover header/footer */
+"%@ disponível" = "%@ available";
+"Abrir a página da nova versão no GitHub" = "Open the new release page on GitHub";
+"Barra: automático" = "Menu bar: automatic";
+"Barra: 1 fixado" = "Menu bar: 1 pinned";
+"Barra: %d fixados" = "Menu bar: %d pinned";
+"Atualizar" = "Refresh";
+"Visão geral" = "Overview";
+"Preferências" = "Preferences";
+"Encerrar" = "Quit";
+
+/* Popover content */
+"Carregando…" = "Loading…";
+"Sem dados de cota" = "No quota data";
+"Estimativa local, não confirmada pelo provedor" = "Local estimate, not confirmed by the provider";
+"Uso nas últimas 24h" = "Usage over the last 24h";
+"Custo est.: $%@ (30d)" = "Est. cost: $%@ (30d)";
+"Estimativa: tokens locais × tabela de preços do OpenRouter" = "Estimate: local tokens × OpenRouter price table";
+"Última atualização bem-sucedida — a busca mais recente falhou ou ainda não rodou" = "Last successful update — the latest fetch failed or hasn't run yet";
+"Atualizado há %@" = "Updated %@ ago";
+"Remover da barra de menu" = "Remove from the menu bar";
+"Fixar esta janela na barra de menu" = "Pin this window to the menu bar";
+"Reconectar" = "Reconnect";
+"Configurar" = "Set up";
+"Conecte seu primeiro provedor" = "Connect your first provider";
+"Claude, Codex, Cursor, Copilot e outros — cotas e saldos num lugar só." = "Claude, Codex, Cursor, Copilot and more — quotas and balances in one place.";
+"Abrir Preferências" = "Open Preferences";
+
+/* Quota presentation */
+"%d%% restante" = "%d%% left";
+"$%@ usado" = "$%@ used";
+"Reseta em %@" = "Resets in %@";
+
+/* Window labels */
+"Sessão 5h" = "5h session";
+"Semanal" = "Weekly";
+"Opus semanal" = "Weekly Opus";
+"Uso" = "Usage";
+"Saldo" = "Balance";
+"Ciclo" = "Cycle";
+"Mensal" = "Monthly";
+"Plano" = "Plan";
+"Chat" = "Chat";
+"Autocomplete" = "Autocomplete";
+"Premium" = "Premium";
+
+/* Main window */
+"Análise" = "Analytics";
+"Provedores" = "Providers";
+"Sem dados para este provedor." = "No data for this provider.";
+"Atualizar todos os provedores" = "Refresh all providers";
+"Nenhum provedor com dados ainda — conecte contas nas Preferências." = "No provider has data yet — connect accounts in Preferences.";
+"com dados" = "with data";
+"Gargalo" = "Bottleneck";
+"Custo estimado" = "Estimated cost";
+"últimos 30 dias" = "last 30 days";
+"Uso nos últimos 7 dias" = "Usage over the last 7 days";
+"TODOS OS PROVEDORES" = "ALL PROVIDERS";
+"Nenhuma fonte de análise disponível — conecte Codex, Claude Code ou OpenCode." = "No analytics source available — connect Codex, Claude Code, or OpenCode.";
+"Carregando estatísticas de uso…" = "Loading usage statistics…";
+"POR PROVEDOR" = "BY PROVIDER";
+"· %@ em 30d" = "· %@ in 30d";
+"Sem dados" = "No data";
+"Codex: estatísticas da conta (API). Claude Code e OpenCode: estimativa local dos transcritos/banco desta máquina, incluindo tokens de cache." = "Codex: account statistics (API). Claude Code and OpenCode: local estimate from this machine's transcripts/database, including cache tokens.";
+"Atualizado %@" = "Updated %@";
+"USO — 7 DIAS" = "USAGE — 7 DAYS";
+"Custo estimado: $%@ nos últimos 30 dias" = "Estimated cost: $%@ over the last 30 days";
+
+/* Analytics */
+"TENDÊNCIA DE USO" = "USAGE TREND";
+"Tokens totais" = "Total tokens";
+"Pico diário" = "Daily peak";
+"Tarefa mais longa" = "Longest task";
+"%d dias" = "%d days";
+"Streak atual" = "Current streak";
+"Maior streak" = "Longest streak";
+"%@ tokens" = "%@ tokens";
+"Hoje" = "Today";
+"Ontem" = "Yesterday";
+"Últimos 30 dias" = "Last 30 days";
+"%@: sem uso" = "%@: no usage";
+"%@: %@ tokens" = "%@: %@ tokens";
+
+/* Preferences */
+"Geral" = "General";
+"Contas" = "Accounts";
+"Credencial expirada — reconecte" = "Credential expired — reconnect";
+"Conectado" = "Connected";
+"Não configurado" = "Not configured";
+"Não conectado" = "Not connected";
+"Sem chave" = "No key";
+"Chave salva" = "Key saved";
+"Sair" = "Sign out";
+"Entrar…" = "Sign in…";
+"Importar do Claude Code" = "Import from Claude Code";
+"Login importado." = "Login imported.";
+"Nenhum login do Claude Code encontrado." = "No Claude Code login found.";
+"Autorize no navegador, copie o código e cole abaixo:" = "Authorize in the browser, copy the code, and paste it below:";
+"Concluir" = "Done";
+"Cancelar" = "Cancel";
+"Abra %@ e digite:" = "Open %@ and enter:";
+"Lê a sessão do app Cursor automaticamente" = "Reads the Cursor app session automatically";
+"Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho." = "Nothing to configure — if the Cursor app is signed in on this machine, usage shows up on its own.";
+"Login do Copilot/gh CLI detectado" = "Copilot/gh CLI login detected";
+"Nenhum login do Copilot/gh CLI encontrado" = "No Copilot/gh CLI login found";
+"Nada a configurar — detectado automaticamente a partir do login do Copilot ou do gh CLI neste Mac." = "Nothing to configure — detected automatically from the Copilot or gh CLI login on this Mac.";
+"Salvar" = "Save";
+"Região China (minimaxi.com)" = "China region (minimaxi.com)";
+"Sessão ativa — uso automático" = "Session active — automatic usage";
+"Sem sessão (usa estimativa manual)" = "No session (uses manual estimate)";
+"Sessão do MiMo removida." = "MiMo session removed.";
+"Entrar no MiMo…" = "Sign in to MiMo…";
+"Sessão do MiMo ativa — uso automático." = "MiMo session active — automatic usage.";
+"A sessão sobrevive a reinícios e se renova sozinha quando o console expira — só pede login de novo se a conta Xiaomi deslogar de verdade." = "The session survives restarts and renews itself when the console expires — it only asks you to sign in again if the Xiaomi account truly signs out.";
+"Estimativa manual (sem sessão):" = "Manual estimate (no session):";
+"Franquia (Credits)" = "Allowance (Credits)";
+"Usados" = "Used";
+"Abrindo o navegador…" = "Opening the browser…";
+"Conectado." = "Connected.";
+"Abrindo o navegador — copie o código e cole aqui." = "Opening the browser — copy the code and paste it here.";
+"Validando código…" = "Validating code…";
+"Solicitando código de dispositivo…" = "Requesting device code…";
+"Digite o código no navegador para continuar." = "Enter the code in the browser to continue.";
+"%@: chave salva." = "%@: key saved.";
+"%@: falha ao salvar chave — %@" = "%@: failed to save key — %@";
+"Desconectado." = "Signed out.";
+"Barra de menu" = "Menu bar";
+"Nada fixado — a barra mostra automaticamente a janela mais próxima do limite." = "Nothing pinned — the bar automatically shows the window closest to its limit.";
+"Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra." = "Pin windows with the pin icon in the OkTally menu — each becomes a colored number in the bar.";
+"Alertas" = "Alerts";
+"Notificações de cota" = "Quota notifications";
+"Avisar quando o uso cruzar:" = "Warn when usage crosses:";
+"Saldo baixo (USD):" = "Low balance (USD):";
+
+/* Notifications */
+"%d%% da janela %@" = "%d%% of the %@ window";
+" — reseta %@" = " — resets %@";
+"Saldo restante: %@" = "Remaining balance: %@";
+"Estimado: " = "Estimated: ";
+
+/* Scheduler */
+"Não configurado — adicione suas credenciais nas Preferências." = "Not configured — add your credentials in Preferences.";
+
+/* Auth */
+"desconhecido" = "unknown";
+"Falha na troca do código OAuth (código %@)." = "OAuth code exchange failed (code %@).";
+"Sessão expirada e sem refresh token — entre novamente." = "Session expired with no refresh token — sign in again.";
+"Falha ao renovar a sessão (código %@) — entre novamente." = "Failed to renew the session (code %@) — sign in again.";
+"Login expirou — tente novamente." = "Login timed out — try again.";
+"A porta %d está em uso — feche o outro app que faz login e tente de novo." = "Port %d is in use — close the other app performing a login and try again.";
+"Falha ao iniciar login por código de dispositivo (código %@)." = "Failed to start device-code login (code %@).";
+"Login negado pelo usuário." = "Login denied by the user.";
+"Código de dispositivo expirou — tente novamente." = "Device code expired — try again.";
+"Resposta inválida do servidor de autenticação." = "Invalid response from the authentication server.";
+"Falha ao gravar chave de API no Keychain (status %d)." = "Failed to save the API key to the Keychain (status %d).";
+"Falha ao remover chave de API do Keychain (status %d)." = "Failed to remove the API key from the Keychain (status %d).";
+
+/* Providers */
+"Sessão do MiMo expirada — entre novamente." = "MiMo session expired — sign in again.";
+"MiMo ainda não retornou o uso — abra o painel do plano e aguarde." = "MiMo hasn't returned usage yet — open the plan dashboard and wait.";
+"Faça login e abra o painel do plano; depois clique em Concluir." = "Sign in and open the plan dashboard, then click Done.";
+"Entrar no MiMo" = "Sign in to MiMo";
+"Configure sua chave de API do OpenRouter nas Preferências." = "Set your OpenRouter API key in Preferences.";
+"OpenRouter respondeu com erro (código %@)." = "OpenRouter returned an error (code %@).";
+"Cursor não detectado — instale/entre no Cursor para acompanhar o uso." = "Cursor not detected — install or sign in to Cursor to track usage.";
+"Cursor respondeu com erro (código %@)." = "Cursor returned an error (code %@).";
+"Copilot não detectado — nenhum login do Copilot ou gh CLI neste Mac." = "Copilot not detected — no Copilot or gh CLI login on this Mac.";
+"Token do GitHub recusado — faça login no Copilot ou gh novamente." = "GitHub token rejected — sign in to Copilot or gh again.";
+"GitHub respondeu HTTP %d." = "GitHub returned HTTP %d.";
+"Credenciais do Claude Code não encontradas — faça login com `claude login` no terminal." = "Claude Code credentials not found — sign in with `claude login` in the terminal.";
+"Credenciais do Claude Code em formato inesperado." = "Claude Code credentials are in an unexpected format.";
+"Claude respondeu com erro (código %@)." = "Claude returned an error (code %@).";
+"Configure sua chave de API do MiniMax nas Preferências." = "Set your MiniMax API key in Preferences.";
+"MiniMax respondeu com erro (código %@)." = "MiniMax returned an error (code %@).";
+"Codex respondeu com erro (código %@)." = "Codex returned an error (code %@).";
+"OpenCode não detectado — o banco local de uso (opencode.db) não foi encontrado." = "OpenCode not detected — the local usage database (opencode.db) was not found.";
+"SuperGrok respondeu com erro (código %@)." = "SuperGrok returned an error (code %@).";
+"Não foi possível confirmar a identidade da conta SuperGrok." = "Could not confirm the SuperGrok account identity.";

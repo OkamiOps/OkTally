@@ -11,6 +11,7 @@ private struct SnapshotRecord: Codable, FetchableRecord, MutablePersistableRecor
     var fetchedAt: Date
     var quotasJSON: Data
     var usageDetailJSON: Data?
+    var planLabel: String?
 
     mutating func didInsert(_ inserted: InsertionSuccess) {
         id = inserted.rowID
@@ -29,6 +30,14 @@ final class SQLiteStorage: StorageManaging {
                 t.column("fetchedAt", .double).notNull().indexed()
                 t.column("quotasJSON", .blob).notNull()
                 t.column("usageDetailJSON", .blob)
+                t.column("planLabel", .text)
+            }
+            // Migração leve para bancos criados antes da coluna existir — `ifNotExists`
+            // acima não altera tabelas já criadas.
+            if try !db.columns(in: "snapshots").contains(where: { $0.name == "planLabel" }) {
+                try db.alter(table: "snapshots") { t in
+                    t.add(column: "planLabel", .text)
+                }
             }
         }
     }
@@ -41,7 +50,8 @@ final class SQLiteStorage: StorageManaging {
             providerId: snapshot.providerId,
             fetchedAt: snapshot.fetchedAt,
             quotasJSON: quotasJSON,
-            usageDetailJSON: usageDetailJSON
+            usageDetailJSON: usageDetailJSON,
+            planLabel: snapshot.planLabel
         )
         try dbQueue.write { db in
             try record.insert(db)
@@ -86,6 +96,12 @@ final class SQLiteStorage: StorageManaging {
     private static func decode(_ record: SnapshotRecord) throws -> ProviderSnapshot {
         let quotas = try JSONDecoder().decode([QuotaWindow].self, from: record.quotasJSON)
         let usageDetail = try record.usageDetailJSON.map { try JSONDecoder().decode([UsageDetail].self, from: $0) }
-        return ProviderSnapshot(providerId: record.providerId, fetchedAt: record.fetchedAt, quotas: quotas, usageDetail: usageDetail)
+        return ProviderSnapshot(
+            providerId: record.providerId,
+            fetchedAt: record.fetchedAt,
+            quotas: quotas,
+            usageDetail: usageDetail,
+            planLabel: record.planLabel
+        )
     }
 }

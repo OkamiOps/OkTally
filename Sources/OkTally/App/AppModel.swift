@@ -23,6 +23,18 @@ final class AppModel: ObservableObject {
     /// popover imediatamente antes de abrir Ajustes; `PreferencesView` consome e zera.
     @Published var requestedPreferencesPane: String?
 
+    /// Release do GitHub mais nova que a versão instalada, quando existe. Checado ao
+    /// iniciar e a cada 24h; falha de rede deixa como está.
+    @Published private(set) var availableUpdate: UpdateInfo?
+    var updateFetcher: LatestReleaseFetching?
+    var currentVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+
+    func checkForUpdates() async {
+        guard let updateFetcher else { return }
+        guard let remote = try? await updateFetcher.fetchLatestRelease() else { return }
+        availableUpdate = UpdateChecker.availableUpdate(remote: remote, currentVersion: currentVersion)
+    }
+
     /// Estatísticas de uso em tokens por provider (heatmap/streaks), carregadas sob
     /// demanda quando as páginas de análise abrem. Fontes registradas em
     /// `analyticsLoaders` pelo app (Codex via OAuth; Claude/OpenCode lendo disco local).
@@ -141,6 +153,12 @@ final class AppModel: ObservableObject {
 
     func start() {
         scheduler.startPeriodicLoop()
+        Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.checkForUpdates()
+                try? await Task.sleep(nanoseconds: 24 * 3600 * 1_000_000_000)
+            }
+        }
     }
 
     func refreshNow() async {

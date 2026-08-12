@@ -4,6 +4,14 @@ All notable changes to OkTally are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Plan badges** (Pro/Free/Business/Enterprise) on provider cards, overview cards and detail pages — populated by Codex (`plan_type`) and GitHub Copilot (SKU-based tier rules).
+- **Update check**: OkTally checks GitHub Releases once a day and shows an orange "vX available" chip in the popover header linking to the release page. (Chosen over Sparkle deliberately: without notarization, auto-install would hit Gatekeeper anyway.)
+- **English localization** (158 strings): the UI now follows the system language — English or Portuguese; dates and month labels localize too.
+
 ## [0.9.0-beta] — 2026-08-12
 
 ### Changed

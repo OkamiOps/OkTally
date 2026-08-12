@@ -71,6 +71,7 @@ struct OkTallyApp: App {
 
         let pricingEngine = PricingEngine(source: OpenRouterPricingSource())
         let model = AppModel(registry: registry, scheduler: scheduler, storage: storage, pricingEngine: pricingEngine)
+        model.updateFetcher = GitHubLatestReleaseFetcher()
         let codexAnalyticsFetcher = CodexAnalyticsFetcher()
         model.analyticsLoaders["codex"] = {
             guard let accessToken = try? await oauthManager.validAccessToken(providerId: "codex", config: CodexOAuth.config) else {
@@ -107,7 +108,7 @@ struct OkTallyApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("OkTally — Visão geral", id: "main") {
+        Window(L("OkTally — Visão geral"), id: "main") {
             MainWindowView(appModel: appModel)
         }
         .defaultSize(width: 860, height: 560)

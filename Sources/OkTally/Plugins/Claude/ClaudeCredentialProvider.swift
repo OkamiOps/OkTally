@@ -10,9 +10,9 @@ extension ClaudeCredentialError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notFound:
-            return "Credenciais do Claude Code não encontradas — faça login com `claude login` no terminal."
+            return L("Credenciais do Claude Code não encontradas — faça login com `claude login` no terminal.")
         case .malformed:
-            return "Credenciais do Claude Code em formato inesperado."
+            return L("Credenciais do Claude Code em formato inesperado.")
         }
     }
 }

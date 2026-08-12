@@ -28,11 +28,11 @@ struct MainWindowView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $pane) {
-                Label("Visão geral", systemImage: "square.grid.2x2")
+                Label(L("Visão geral"), systemImage: "square.grid.2x2")
                     .tag(Pane.overview)
-                Label("Análise", systemImage: "chart.bar.xaxis")
+                Label(L("Análise"), systemImage: "chart.bar.xaxis")
                     .tag(Pane.analytics)
-                Section("Provedores") {
+                Section(L("Provedores")) {
                     ForEach(providersWithData, id: \.provider.id) { entry in
                         sidebarRow(entry.provider, snapshot: entry.snapshot)
                             .tag(Pane.provider(entry.provider.id))
@@ -54,7 +54,7 @@ struct MainWindowView: View {
                         if let entry = providersWithData.first(where: { $0.provider.id == id }) {
                             ProviderDetailScreen(appModel: appModel, provider: entry.provider, snapshot: entry.snapshot)
                         } else {
-                            Text("Sem dados para este provedor.")
+                            Text(L("Sem dados para este provedor."))
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -68,7 +68,7 @@ struct MainWindowView: View {
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .help("Atualizar todos os provedores")
+                .help(L("Atualizar todos os provedores"))
             }
         }
         .navigationTitle("OkTally")
@@ -120,7 +120,7 @@ struct OverviewScreen: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             if entries.isEmpty {
-                Text("Nenhum provedor com dados ainda — conecte contas nas Preferências.")
+                Text(L("Nenhum provedor com dados ainda — conecte contas nas Preferências."))
                     .foregroundStyle(.secondary)
             } else {
                 kpiRow
@@ -141,10 +141,10 @@ struct OverviewScreen: View {
 
     private var kpiRow: some View {
         HStack(spacing: 14) {
-            KPICard(title: "Provedores", value: "\(entries.count)", caption: "com dados", color: .accentColor)
+            KPICard(title: L("Provedores"), value: "\(entries.count)", caption: L("com dados"), color: .accentColor)
             if let worst = worstOverall {
                 KPICard(
-                    title: "Gargalo",
+                    title: L("Gargalo"),
                     value: "\(Int((worst.remaining * 100).rounded()))%",
                     caption: "\(worst.provider.displayName) · \(WindowLabelCatalog.displayLabel(worst.window.label))",
                     color: QuotaPresentation.color(remaining: worst.remaining)
@@ -152,9 +152,9 @@ struct OverviewScreen: View {
             }
             if let cost = totalEstimatedCost {
                 KPICard(
-                    title: "Custo estimado",
+                    title: L("Custo estimado"),
                     value: "$" + String(format: "%.2f", (cost as NSDecimalNumber).doubleValue),
-                    caption: "últimos 30 dias",
+                    caption: L("últimos 30 dias"),
                     color: .secondary
                 )
             }
@@ -220,6 +220,9 @@ private struct ProviderOverviewCard: View {
                     .padding(.horizontal, 5).padding(.vertical, 2)
                     .background(RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)))
                 Text(provider.displayName).font(.system(size: 13, weight: .semibold))
+                if let plan = snapshot.planLabel {
+                    PlanBadge(label: plan)
+                }
                 Spacer(minLength: 0)
             }
             if let worst {
@@ -237,10 +240,10 @@ private struct ProviderOverviewCard: View {
                     points: history.map(\.usedPercent),
                     color: worst.map { QuotaPresentation.color(remaining: $0.remaining) } ?? identity
                 )
-                .help("Uso nos últimos 7 dias")
+                .help(L("Uso nos últimos 7 dias"))
             }
             if let estimatedCost {
-                Label("Custo est.: $" + String(format: "%.2f", (estimatedCost as NSDecimalNumber).doubleValue) + " (30d)",
+                Label(LF("Custo est.: $%@ (30d)", String(format: "%.2f", (estimatedCost as NSDecimalNumber).doubleValue)),
                       systemImage: "dollarsign.circle")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
@@ -307,17 +310,17 @@ private struct AnalyticsScreen: View {
         VStack(alignment: .leading, spacing: 20) {
             if let aggregated = appModel.aggregatedAnalytics {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("TODOS OS PROVEDORES")
+                    Text(L("TODOS OS PROVEDORES"))
                         .font(.system(size: 9, weight: .semibold)).tracking(0.5)
                         .foregroundStyle(.secondary)
                     AnalyticsSection(analytics: aggregated)
                 }
                 breakdown
             } else if appModel.analyticsProviderIds.isEmpty {
-                Text("Nenhuma fonte de análise disponível — conecte Codex, Claude Code ou OpenCode.")
+                Text(L("Nenhuma fonte de análise disponível — conecte Codex, Claude Code ou OpenCode."))
                     .foregroundStyle(.secondary)
             } else {
-                Text("Carregando estatísticas de uso…")
+                Text(L("Carregando estatísticas de uso…"))
                     .foregroundStyle(.secondary)
             }
         }
@@ -328,7 +331,7 @@ private struct AnalyticsScreen: View {
 
     private var breakdown: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("POR PROVEDOR")
+            Text(L("POR PROVEDOR"))
                 .font(.system(size: 9, weight: .semibold)).tracking(0.5)
                 .foregroundStyle(.secondary)
             ForEach(appModel.analyticsProviderIds, id: \.self) { providerId in
@@ -348,12 +351,12 @@ private struct AnalyticsScreen: View {
                                 .font(.system(size: 12, weight: .bold, design: .rounded))
                                 .monospacedDigit()
                         }
-                        Text("· \(TokenAnalytics.compactTokens(analytics.tokensLast30Days)) em 30d")
+                        Text(LF("· %@ em 30d", TokenAnalytics.compactTokens(analytics.tokensLast30Days)))
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
                     } else {
-                        Text("Sem dados")
+                        Text(L("Sem dados"))
                             .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
                     }
@@ -361,7 +364,7 @@ private struct AnalyticsScreen: View {
                 .padding(.horizontal, 12).padding(.vertical, 8)
                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.045)))
             }
-            Text("Codex: estatísticas da conta (API). Claude Code e OpenCode: estimativa local dos transcritos/banco desta máquina, incluindo tokens de cache.")
+            Text(L("Codex: estatísticas da conta (API). Claude Code e OpenCode: estimativa local dos transcritos/banco desta máquina, incluindo tokens de cache."))
                 .font(.system(size: 9))
                 .foregroundStyle(.tertiary)
         }
@@ -390,8 +393,13 @@ private struct ProviderDetailScreen: View {
                         .font(.system(size: 16, weight: .heavy)).foregroundStyle(identity)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(provider.displayName).font(.system(size: 16, weight: .bold))
-                    Text("Atualizado \(Self.relative(snapshot.fetchedAt))")
+                    HStack(spacing: 6) {
+                        Text(provider.displayName).font(.system(size: 16, weight: .bold))
+                        if let plan = snapshot.planLabel {
+                            PlanBadge(label: plan)
+                        }
+                    }
+                    Text(LF("Atualizado %@", Self.relative(snapshot.fetchedAt)))
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -409,7 +417,7 @@ private struct ProviderDetailScreen: View {
             let history = appModel.history(providerId: provider.id, hours: 7 * 24)
             if history.count >= 2 {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("USO — 7 DIAS")
+                    Text(L("USO — 7 DIAS"))
                         .font(.system(size: 9, weight: .semibold)).tracking(0.5)
                         .foregroundStyle(.secondary)
                     SparklineView(points: history.map(\.usedPercent), color: identity)
@@ -420,7 +428,7 @@ private struct ProviderDetailScreen: View {
                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.045)))
             }
             if let cost = appModel.estimatedCostByProvider[provider.id] {
-                Label("Custo estimado: $" + String(format: "%.2f", (cost as NSDecimalNumber).doubleValue) + " nos últimos 30 dias",
+                Label(LF("Custo estimado: $%@ nos últimos 30 dias", String(format: "%.2f", (cost as NSDecimalNumber).doubleValue)),
                       systemImage: "dollarsign.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -429,7 +437,7 @@ private struct ProviderDetailScreen: View {
                 if let analytics = appModel.analyticsByProvider[provider.id] {
                     AnalyticsSection(analytics: analytics)
                 } else {
-                    Text("Carregando estatísticas de uso…")
+                    Text(L("Carregando estatísticas de uso…"))
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
@@ -462,7 +470,7 @@ private struct ProviderDetailScreen: View {
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.045)))
-        .help(window.shape.isEstimated ? "Estimativa local, não confirmada pelo provedor" : "")
+        .help(window.shape.isEstimated ? L("Estimativa local, não confirmada pelo provedor") : "")
     }
 
     private static func relative(_ date: Date) -> String {

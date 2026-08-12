@@ -20,8 +20,8 @@ enum MiMoConsoleError: Error, LocalizedError {
     case noData
     var errorDescription: String? {
         switch self {
-        case .notLoggedIn: return "Sessão do MiMo expirada — entre novamente."
-        case .noData: return "MiMo ainda não retornou o uso — abra o painel do plano e aguarde."
+        case .notLoggedIn: return L("Sessão do MiMo expirada — entre novamente.")
+        case .noData: return L("MiMo ainda não retornou o uso — abra o painel do plano e aguarde.")
         }
     }
 }
@@ -57,9 +57,9 @@ final class MiMoWebSession: NSObject, MiMoUsageFetching {
 
     func presentLogin(onDone: @escaping () -> Void) {
         NSApp.activate(ignoringOtherApps: true)
-        let done = NSButton(title: "Concluir", target: self, action: #selector(doneTapped))
+        let done = NSButton(title: L("Concluir"), target: self, action: #selector(doneTapped))
         done.bezelStyle = .rounded
-        let hint = NSTextField(labelWithString: "Faça login e abra o painel do plano; depois clique em Concluir.")
+        let hint = NSTextField(labelWithString: L("Faça login e abra o painel do plano; depois clique em Concluir."))
         hint.font = .systemFont(ofSize: 11); hint.textColor = .secondaryLabelColor
         let bar = NSStackView(views: [hint, NSView(), done])
         bar.orientation = .horizontal
@@ -69,7 +69,7 @@ final class MiMoWebSession: NSObject, MiMoUsageFetching {
         stack.translatesAutoresizingMaskIntoConstraints = false
         let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 780),
                            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        win.title = "Entrar no MiMo"; win.isReleasedWhenClosed = false; win.center()
+        win.title = L("Entrar no MiMo"); win.isReleasedWhenClosed = false; win.center()
         let content = NSView(frame: win.frame); content.addSubview(stack)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),

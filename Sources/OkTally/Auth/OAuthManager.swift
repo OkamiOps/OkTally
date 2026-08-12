@@ -24,15 +24,15 @@ enum OAuthError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .tokenExchangeFailed(let code):
-            return "Falha na troca do código OAuth (código \(code.map(String.init) ?? "desconhecido"))."
+            return LF("Falha na troca do código OAuth (código %@).", code.map(String.init) ?? L("desconhecido"))
         case .noRefreshToken:
-            return "Sessão expirada e sem refresh token — entre novamente."
+            return L("Sessão expirada e sem refresh token — entre novamente.")
         case .refreshFailed(let code):
-            return "Falha ao renovar a sessão (código \(code.map(String.init) ?? "desconhecido")) — entre novamente."
+            return LF("Falha ao renovar a sessão (código %@) — entre novamente.", code.map(String.init) ?? L("desconhecido"))
         case .loginTimeout:
-            return "Login expirou — tente novamente."
+            return L("Login expirou — tente novamente.")
         case .portInUse(let port):
-            return "A porta \(port) está em uso — feche o outro app que faz login e tente de novo."
+            return LF("A porta %d está em uso — feche o outro app que faz login e tente de novo.", port)
         }
     }
 }

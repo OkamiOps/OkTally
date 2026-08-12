@@ -12,7 +12,7 @@ struct AnalyticsSection: View {
             statChips
             if !analytics.dailyBuckets.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("TENDÊNCIA DE USO")
+                    Text(L("TENDÊNCIA DE USO"))
                         .font(.system(size: 9, weight: .semibold)).tracking(0.5)
                         .foregroundStyle(.secondary)
                     TokenHeatmapView(analytics: analytics)
@@ -29,28 +29,28 @@ struct AnalyticsSection: View {
         let yesterday = Self.dayKey(Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
         var chips: [(String, String)] = []
         if let lifetime = analytics.effectiveLifetimeTokens {
-            chips.append((TokenAnalytics.compactTokens(lifetime), "Tokens totais"))
+            chips.append((TokenAnalytics.compactTokens(lifetime), L("Tokens totais")))
         }
         if let peak = analytics.effectivePeakDailyTokens {
-            chips.append((TokenAnalytics.compactTokens(peak), "Pico diário"))
+            chips.append((TokenAnalytics.compactTokens(peak), L("Pico diário")))
         }
         if let longest = analytics.longestRunningTurnSeconds {
-            chips.append((TokenAnalytics.durationLabel(longest), "Tarefa mais longa"))
+            chips.append((TokenAnalytics.durationLabel(longest), L("Tarefa mais longa")))
         }
         if let streak = analytics.effectiveCurrentStreakDays() {
-            chips.append(("\(streak) dias", "Streak atual"))
+            chips.append((LF("%d dias", streak), L("Streak atual")))
         }
         if let longestStreak = analytics.effectiveLongestStreakDays {
-            chips.append(("\(longestStreak) dias", "Maior streak"))
+            chips.append((LF("%d dias", longestStreak), L("Maior streak")))
         }
         let dayValue: (String) -> String = { key in
-            guard let tokens = analytics.tokens(onDay: key), tokens > 0 else { return "Sem dados" }
-            return TokenAnalytics.compactTokens(tokens) + " tokens"
+            guard let tokens = analytics.tokens(onDay: key), tokens > 0 else { return L("Sem dados") }
+            return LF("%@ tokens", TokenAnalytics.compactTokens(tokens))
         }
-        chips.append((dayValue(today), "Hoje"))
-        chips.append((dayValue(yesterday), "Ontem"))
+        chips.append((dayValue(today), L("Hoje")))
+        chips.append((dayValue(yesterday), L("Ontem")))
         if analytics.tokensLast30Days > 0 {
-            chips.append((TokenAnalytics.compactTokens(analytics.tokensLast30Days) + " tokens", "Últimos 30 dias"))
+            chips.append((LF("%@ tokens", TokenAnalytics.compactTokens(analytics.tokensLast30Days)), L("Últimos 30 dias")))
         }
         return LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 8)], alignment: .leading, spacing: 8) {
             ForEach(chips, id: \.1) { value, caption in
@@ -116,8 +116,8 @@ struct TokenHeatmapView: View {
 
     private func monthLabels(_ columns: [[Day]]) -> some View {
         let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: "pt_BR")
-        fmt.dateFormat = "MMM"
+        fmt.locale = Locale.current
+        fmt.setLocalizedDateFormatFromTemplate("MMM")
         let calendar = Calendar(identifier: .gregorian)
         var previousMonth = -1
         var labels: [String] = []
@@ -182,10 +182,10 @@ struct TokenHeatmapView: View {
 
     private func tooltip(_ day: Day) -> String {
         let fmt = DateFormatter()
-        fmt.locale = Locale(identifier: "pt_BR")
-        fmt.dateFormat = "d 'de' MMM"
+        fmt.locale = Locale.current
+        fmt.setLocalizedDateFormatFromTemplate("d MMM")
         let dateLabel = fmt.string(from: day.date)
-        guard let tokens = day.tokens, tokens > 0 else { return "\(dateLabel): sem uso" }
-        return "\(dateLabel): \(TokenAnalytics.compactTokens(tokens)) tokens"
+        guard let tokens = day.tokens, tokens > 0 else { return LF("%@: sem uso", dateLabel) }
+        return LF("%@: %@ tokens", dateLabel, TokenAnalytics.compactTokens(tokens))
     }
 }

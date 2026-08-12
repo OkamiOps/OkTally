@@ -18,9 +18,9 @@ enum SuperGrokUsageError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .badResponse(let code):
-            return "SuperGrok respondeu com erro (código \(code.map(String.init) ?? "desconhecido"))."
+            return LF("SuperGrok respondeu com erro (código %@).", code.map(String.init) ?? L("desconhecido"))
         case .invalidIdentity:
-            return "Não foi possível confirmar a identidade da conta SuperGrok."
+            return L("Não foi possível confirmar a identidade da conta SuperGrok.")
         }
     }
 }

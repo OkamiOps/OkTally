@@ -171,6 +171,37 @@ final class CopilotUsageProviderTests: XCTestCase {
         }
     }
 
+    func test_fetchSnapshot_mapsPlanLabel() async throws {
+        let json = """
+        {
+            "access_type_sku": "copilot_pro_monthly",
+            "copilot_plan": "pro",
+            "quota_snapshots": {"premium_interactions": {"percent_remaining": 50.0, "unlimited": false}},
+            "quota_reset_date": "2026-09-01"
+        }
+        """
+        URLProtocolStub.stubResponses = [entitlementURL: (Data(json.utf8), 200)]
+        let provider = CopilotUsageProvider(tokenReader: FixedTokenReader(token: "t"), session: makeSession())
+
+        let snapshot = try await provider.fetchSnapshot()
+
+        XCTAssertEqual(snapshot.planLabel, "Pro")
+    }
+
+    func test_planDisplayName_tiers() throws {
+        func entitlement(sku: String?, plan: String?) throws -> CopilotUsageProvider.Entitlement {
+            let json: [String: Any?] = ["access_type_sku": sku, "copilot_plan": plan]
+            let data = try JSONSerialization.data(withJSONObject: json.compactMapValues { $0 })
+            return try JSONDecoder().decode(CopilotUsageProvider.Entitlement.self, from: data)
+        }
+        XCTAssertEqual(try entitlement(sku: "copilot_enterprise_seat", plan: nil).planDisplayName, "Enterprise")
+        XCTAssertEqual(try entitlement(sku: "copilot_for_business_seat", plan: "business").planDisplayName, "Business")
+        XCTAssertEqual(try entitlement(sku: "free_educational", plan: "individual").planDisplayName, "Pro")
+        XCTAssertEqual(try entitlement(sku: "monthly_subscriber", plan: "individual").planDisplayName, "Pro")
+        XCTAssertEqual(try entitlement(sku: "free_limited_copilot", plan: "individual").planDisplayName, "Free")
+        XCTAssertNil(try entitlement(sku: nil, plan: nil).planDisplayName)
+    }
+
     func test_classification_notDetectedIsNotConfigured_tokenRejectedIsReauth() {
         XCTAssertEqual(ProviderErrorPresentation.classify(CopilotError.notDetected), .notConfigured)
         XCTAssertEqual(ProviderErrorPresentation.classify(CopilotError.tokenRejected), .needsReauth)
