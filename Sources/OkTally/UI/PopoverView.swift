@@ -3,6 +3,7 @@ import SwiftUI
 
 struct PopoverView: View {
     @ObservedObject var appModel: AppModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,6 +43,10 @@ struct PopoverView: View {
     private var footer: some View {
         HStack(spacing: 14) {
             Button("Atualizar") { Task { await appModel.refreshNow() } }
+            Button("Visão geral") {
+                openWindow(id: "main")
+                NSApp.activate(ignoringOtherApps: true)
+            }
             Spacer()
             if #available(macOS 14.0, *) {
                 SettingsLink { Text("Preferências") }
@@ -125,6 +130,9 @@ struct PopoverContentView: View {
 
     var body: some View {
         VStack(spacing: 10) {
+            if withData.isEmpty && !problems.isEmpty && problems.allSatisfy({ $0.kind == .notConfigured || $0.kind == nil }) {
+                OnboardingEmptyState()
+            }
             if let hero {
                 HeroCard(
                     provider: hero.provider,
@@ -148,7 +156,9 @@ struct PopoverContentView: View {
                 }
             }
             if !problems.isEmpty {
-                ProblemsSection(problems: problems)
+                ProblemsSection(problems: problems, onOpenPreferences: { providerId in
+                    appModel.requestedPreferencesPane = providerId
+                })
             }
         }
         .padding(12)
@@ -174,6 +184,7 @@ private struct HeroCard: View {
             RingGauge(remaining: remaining, size: 56, color: danger, lineWidth: 6) {
                 Text("\(Int((remaining * 100).rounded()))")
                     .font(.system(size: 17, weight: .bold, design: .rounded))
+                    .monospacedDigit()
                     .foregroundStyle(danger)
             }
             VStack(alignment: .leading, spacing: 3) {
@@ -188,6 +199,7 @@ private struct HeroCard: View {
                 }
                 Text(QuotaPresentation.remainingText(window.shape))
                     .font(.system(size: 15, weight: .bold))
+                    .monospacedDigit()
                     .foregroundStyle(danger)
                 if let reset = QuotaPresentation.resetText(window.shape) {
                     Text(reset).font(.caption).foregroundStyle(.secondary)
@@ -245,11 +257,13 @@ private struct ProviderGaugeCard: View {
                               lineWidth: 5) {
                         Text("\(Int((worst.remaining * 100).rounded()))")
                             .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .monospacedDigit()
                             .foregroundStyle(QuotaPresentation.color(remaining: worst.remaining))
                     }
                 } else if let balance = snapshot.quotas.first {
                     Text(QuotaPresentation.remainingText(balance.shape))
                         .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .monospacedDigit()
                         .foregroundStyle(.primary)
                         .frame(height: 44)
                 }
@@ -329,6 +343,7 @@ private struct QuotaLine: View {
             VStack(alignment: .trailing, spacing: 0) {
                 Text(QuotaPresentation.remainingText(window.shape))
                     .font(.system(size: 10, weight: .semibold))
+                    .monospacedDigit()
                     .foregroundStyle(remaining != nil ? QuotaPresentation.color(remaining: remaining) : .primary)
                     .lineLimit(1)
                 if let reset = QuotaPresentation.resetText(window.shape) {
@@ -360,6 +375,7 @@ private struct PinButton: View {
 
 private struct ProblemsSection: View {
     let problems: [(provider: UsageProvider, message: String, kind: ProviderErrorPresentation?)]
+    let onOpenPreferences: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -380,6 +396,15 @@ private struct ProblemsSection: View {
                         .lineLimit(2)
                         .help(entry.message)
                     Spacer(minLength: 0)
+                    if let action = actionTitle(for: entry.kind) {
+                        OpenSettingsButton(beforeOpen: { onOpenPreferences(entry.provider.id) }) {
+                            Text(action)
+                                .font(.system(size: 9, weight: .semibold))
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Capsule().fill(color(for: entry.kind).opacity(0.14)))
+                                .foregroundStyle(color(for: entry.kind))
+                        }
+                    }
                 }
             }
         }
@@ -388,12 +413,79 @@ private struct ProblemsSection: View {
         .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.03)))
     }
 
+    /// Reconexão e configuração inicial têm remédio nas Preferências; erro genérico
+    /// (rede, HTTP 500) não tem botão porque não há nada para o dono clicar lá.
+    private func actionTitle(for kind: ProviderErrorPresentation?) -> String? {
+        switch kind {
+        case .needsReauth: return "Reconectar"
+        case .notConfigured: return "Configurar"
+        default: return nil
+        }
+    }
+
     private func color(for kind: ProviderErrorPresentation?) -> Color {
         switch kind {
         case .notConfigured: return .secondary
         case .needsReauth: return .orange
         case .error: return .red
         case nil: return .secondary
+        }
+    }
+}
+
+// MARK: - Empty state
+
+/// Cold start com nada configurado: em vez de 8 linhas cinzas, uma chamada única para a
+/// primeira conexão (padrão Quotio: ícone + headline + CTA).
+private struct OnboardingEmptyState: View {
+    var body: some View {
+        VStack(spacing: 10) {
+            ZStack {
+                Circle().fill(Color.accentColor.opacity(0.12)).frame(width: 56, height: 56)
+                Image(systemName: "gauge.with.needle")
+                    .font(.system(size: 24))
+                    .foregroundStyle(Color.accentColor)
+            }
+            Text("Conecte seu primeiro provedor")
+                .font(.system(size: 13, weight: .semibold))
+            Text("Claude, Codex, Cursor, Copilot e outros — cotas e saldos num lugar só.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            OpenSettingsButton(beforeOpen: {}) {
+                Text("Abrir Preferências")
+                    .font(.system(size: 11, weight: .semibold))
+                    .padding(.horizontal, 12).padding(.vertical, 5)
+                    .background(Capsule().fill(Color.accentColor))
+                    .foregroundStyle(.white)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 18)
+    }
+}
+
+/// Botão reutilizável que abre a janela de Ajustes (SettingsLink no macOS 14+, seletor
+/// legado antes disso), executando `beforeOpen` primeiro — usado para deep-link do pane.
+private struct OpenSettingsButton<L: View>: View {
+    let beforeOpen: () -> Void
+    @ViewBuilder let label: () -> L
+
+    var body: some View {
+        if #available(macOS 14.0, *) {
+            SettingsLink { label() }
+                .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture().onEnded {
+                    beforeOpen()
+                    NSApp.activate(ignoringOtherApps: true)
+                })
+        } else {
+            Button {
+                beforeOpen()
+                NSApp.activate(ignoringOtherApps: true)
+                DispatchQueue.main.async { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) }
+            } label: { label() }
+                .buttonStyle(.plain)
         }
     }
 }

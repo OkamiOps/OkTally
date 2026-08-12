@@ -47,6 +47,34 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.errorKindByProvider["openrouter"], .notConfigured)
     }
 
+    func test_history_readsWorstSeriesFromStorageWindow() throws {
+        let provider = FakeUsageProvider(id: "claude", displayName: "Claude Code")
+        let registry = PluginRegistry()
+        registry.register(provider)
+        let storage = FakeStorage()
+        let now = Date()
+        let window = { (used: Double) in
+            [QuotaWindow(label: "5h", shape: .rollingWindow(used: used, limit: 100, windowStart: now, resetAt: now.addingTimeInterval(3600)))]
+        }
+        try storage.save(ProviderSnapshot(providerId: "claude", fetchedAt: now.addingTimeInterval(-8 * 24 * 3600), quotas: window(99), usageDetail: nil))
+        try storage.save(ProviderSnapshot(providerId: "claude", fetchedAt: now.addingTimeInterval(-3600), quotas: window(20), usageDetail: nil))
+        try storage.save(ProviderSnapshot(providerId: "claude", fetchedAt: now, quotas: window(35), usageDetail: nil))
+        let scheduler = Scheduler(
+            registry: registry,
+            storage: storage,
+            alertEngine: AlertEngine(),
+            alertDispatcher: AlertDispatcher(sender: FakeNotificationSender())
+        )
+        let model = AppModel(registry: registry, scheduler: scheduler, storage: storage)
+
+        let series = model.history(providerId: "claude", hours: 7 * 24, now: now)
+
+        // O ponto de 8 dias atrás fica fora da janela de 7 dias.
+        XCTAssertEqual(series.count, 2)
+        XCTAssertEqual(series[0].usedPercent, 20, accuracy: 0.0001)
+        XCTAssertEqual(series[1].usedPercent, 35, accuracy: 0.0001)
+    }
+
     private func makeModel(defaults: UserDefaults) -> AppModel {
         let registry = PluginRegistry()
         let scheduler = Scheduler(

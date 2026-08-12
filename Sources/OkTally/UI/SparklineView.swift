@@ -19,6 +19,7 @@ struct SparklineView: View {
                     linePath(normalized)
                         .stroke(color.opacity(0.75), style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round))
                 }
+                .animation(.easeInOut(duration: 0.3), value: points)
             }
         }
         .frame(height: 20)
