@@ -91,7 +91,7 @@ Der **Analyse**-Tab summiert alle Quellen in eine Heatmap + Chips (Gesamt, Tages
 
 ### DMG (empfohlen)
 
-1. `OkTally-0.8.0.dmg` von der [Releases-Seite](https://github.com/OkamiOps/OkTally/releases) laden.
+1. `OkTally-0.9.0.dmg` von der [Releases-Seite](https://github.com/OkamiOps/OkTally/releases) laden.
 2. Öffnen und **OkTally** nach Programme ziehen.
 3. Die App ist nicht notarisiert: beim ersten Start Rechtsklick (Ctrl-Klick) auf `OkTally.app` → **Öffnen** → **Öffnen**.
 
