@@ -15,6 +15,10 @@ final class AppModel: ObservableObject {
     /// Recomputado a partir do SQLite no seed inicial e após cada fetch bem-sucedido.
     @Published private(set) var historyByProvider: [String: [UsageHistoryPoint]] = [:]
 
+    /// Custo estimado (USD) por provider, calculado quando um snapshot traz `usageDetail`
+    /// e o `PricingEngine` conhece os modelos. Ausente = sem dados para precificar.
+    @Published private(set) var estimatedCostByProvider: [String: Decimal] = [:]
+
     /// The quota windows shown in the menu bar, in the order they were pinned. Empty =
     /// automatic (worst window across all providers). Persisted across relaunches.
     @Published var menuBarPins: [MenuBarPin] {
@@ -49,16 +53,19 @@ final class AppModel: ObservableObject {
     private let registry: PluginRegistry
     private let scheduler: Scheduler
     private let storage: StorageManaging?
+    private let pricingEngine: PricingEngine?
 
     init(
         registry: PluginRegistry,
         scheduler: Scheduler,
         storage: StorageManaging? = nil,
+        pricingEngine: PricingEngine? = nil,
         defaults: UserDefaults = .standard
     ) {
         self.registry = registry
         self.scheduler = scheduler
         self.storage = storage
+        self.pricingEngine = pricingEngine
         self.defaults = defaults
         if let joined = defaults.string(forKey: Self.menuBarPinsKey) {
             self.menuBarPins = joined.split(separator: "\u{2}").compactMap { MenuBarPin(stored: String($0)) }
@@ -124,6 +131,20 @@ final class AppModel: ObservableObject {
         historyByProvider[providerId] = series.count >= 2 ? series : []
     }
 
+    private func refreshEstimatedCost(for snapshot: ProviderSnapshot) {
+        guard let pricingEngine, let details = snapshot.usageDetail, !details.isEmpty else { return }
+        let providerId = snapshot.providerId
+        Task { [weak self] in
+            // Falha de rede na tabela de preços não é erro do provider — só deixa o
+            // custo ausente até a próxima tentativa.
+            try? await pricingEngine.refreshIfStale()
+            let cost = await pricingEngine.estimatedCost(for: details)
+            await MainActor.run { [weak self] in
+                self?.estimatedCostByProvider[providerId] = cost
+            }
+        }
+    }
+
     private func apply(_ result: SchedulerFetchResult) {
         switch result.outcome {
         case .success(let snapshot):
@@ -131,6 +152,7 @@ final class AppModel: ObservableObject {
             errorsByProvider[result.providerId] = nil
             errorKindByProvider[result.providerId] = nil
             refreshHistory(providerId: result.providerId)
+            refreshEstimatedCost(for: snapshot)
         case .failure(let error):
             errorsByProvider[result.providerId] = error.localizedDescription
             errorKindByProvider[result.providerId] = ProviderErrorPresentation.classify(error)

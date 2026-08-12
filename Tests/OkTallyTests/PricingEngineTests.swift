@@ -45,6 +45,54 @@ final class PricingEngineTests: XCTestCase {
         XCTAssertNil(cost)
     }
 
+    func test_estimatedCostForDetails_sumsMatchedModels() async throws {
+        let source = FakePricingSource()
+        source.pricingToReturn = [
+            ModelPricing(modelId: "m1", promptPricePerToken: 0.000003, completionPricePerToken: 0.000015),
+            ModelPricing(modelId: "m2", promptPricePerToken: 0.000001, completionPricePerToken: 0.000002),
+        ]
+        let engine = PricingEngine(source: source)
+        try await engine.refreshIfStale()
+
+        let cost = await engine.estimatedCost(for: [
+            UsageDetail(modelId: "m1", promptTokens: 1000, completionTokens: 0),
+            UsageDetail(modelId: "m2", promptTokens: 1000, completionTokens: 1000),
+        ])
+
+        XCTAssertEqual(cost, Decimal(0.003) + Decimal(0.001) + Decimal(0.002))
+    }
+
+    func test_estimatedCostForDetails_fallsBackToSuffixMatch() async throws {
+        let source = FakePricingSource()
+        source.pricingToReturn = [
+            ModelPricing(modelId: "x-ai/grok-4.5", promptPricePerToken: 0.000001, completionPricePerToken: 0.000001)
+        ]
+        let engine = PricingEngine(source: source)
+        try await engine.refreshIfStale()
+
+        // "xai/grok-4.5" não bate exato, mas o id após a última barra ("grok-4.5") bate.
+        let cost = await engine.estimatedCost(for: [
+            UsageDetail(modelId: "xai/grok-4.5", promptTokens: 1000, completionTokens: 1000)
+        ])
+
+        XCTAssertEqual(cost, Decimal(0.001) + Decimal(0.001))
+    }
+
+    func test_estimatedCostForDetails_allMiss_returnsNil() async throws {
+        let source = FakePricingSource()
+        source.pricingToReturn = [
+            ModelPricing(modelId: "m1", promptPricePerToken: 0.000003, completionPricePerToken: 0.000015)
+        ]
+        let engine = PricingEngine(source: source)
+        try await engine.refreshIfStale()
+
+        let cost = await engine.estimatedCost(for: [
+            UsageDetail(modelId: "desconhecido/modelo", promptTokens: 10, completionTokens: 10)
+        ])
+
+        XCTAssertNil(cost)
+    }
+
     func test_openRouterPricingSource_decodesFixture() async throws {
         let fixtureURL = Bundle.module.url(forResource: "openrouter_models_response", withExtension: "json", subdirectory: "Fixtures")!
         let data = try Data(contentsOf: fixtureURL)

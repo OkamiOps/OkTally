@@ -68,7 +68,8 @@ struct OkTallyApp: App {
         ))
         registry.register(SuperGrokUsageProvider(oauthManager: oauthManager, tokenStore: tokenStore))
 
-        let model = AppModel(registry: registry, scheduler: scheduler, storage: storage)
+        let pricingEngine = PricingEngine(source: OpenRouterPricingSource())
+        let model = AppModel(registry: registry, scheduler: scheduler, storage: storage, pricingEngine: pricingEngine)
         _appModel = StateObject(wrappedValue: model)
 
         Task { await notificationSender.requestAuthorizationIfNeeded() }
