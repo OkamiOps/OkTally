@@ -2,7 +2,7 @@
 import Foundation
 
 protocol CodexAnalyticsFetching {
-    func fetch(accessToken: String, accountId: String?) async throws -> CodexAnalytics?
+    func fetch(accessToken: String, accountId: String?) async throws -> TokenAnalytics?
 }
 
 /// Busca as estatísticas de conta no endpoint de perfil do ChatGPT usando o mesmo token
@@ -16,7 +16,7 @@ final class CodexAnalyticsFetcher: CodexAnalyticsFetching {
         self.session = session
     }
 
-    func fetch(accessToken: String, accountId: String?) async throws -> CodexAnalytics? {
+    func fetch(accessToken: String, accountId: String?) async throws -> TokenAnalytics? {
         var request = URLRequest(url: Self.profileURL)
         request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.addValue("application/json", forHTTPHeaderField: "Accept")
@@ -31,6 +31,6 @@ final class CodexAnalyticsFetcher: CodexAnalyticsFetching {
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             return nil
         }
-        return CodexAnalytics(profileJSON: data)
+        return TokenAnalytics(codexProfileJSON: data)
     }
 }

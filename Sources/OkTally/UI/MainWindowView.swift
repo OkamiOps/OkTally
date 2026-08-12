@@ -9,6 +9,7 @@ struct MainWindowView: View {
 
     private enum Pane: Hashable {
         case overview
+        case analytics
         case provider(String)
     }
 
@@ -29,6 +30,8 @@ struct MainWindowView: View {
             List(selection: $pane) {
                 Label("Visão geral", systemImage: "square.grid.2x2")
                     .tag(Pane.overview)
+                Label("Análise", systemImage: "chart.bar.xaxis")
+                    .tag(Pane.analytics)
                 Section("Provedores") {
                     ForEach(providersWithData, id: \.provider.id) { entry in
                         sidebarRow(entry.provider, snapshot: entry.snapshot)
@@ -45,6 +48,8 @@ struct MainWindowView: View {
                         OverviewScreen(appModel: appModel, entries: providersWithData) { providerId in
                             pane = .provider(providerId)
                         }
+                    case .analytics:
+                        AnalyticsScreen(appModel: appModel)
                     case .provider(let id):
                         if let entry = providersWithData.first(where: { $0.provider.id == id }) {
                             ProviderDetailScreen(appModel: appModel, provider: entry.provider, snapshot: entry.snapshot)
@@ -290,6 +295,83 @@ private struct ProviderOverviewCard: View {
     }
 }
 
+// MARK: - Análise agregada
+
+/// Aba "Análise": soma o uso em tokens de todas as fontes disponíveis (Codex via API,
+/// Claude Code e OpenCode via dados locais) num painel único, com o recorte por
+/// provedor logo abaixo.
+private struct AnalyticsScreen: View {
+    @ObservedObject var appModel: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            if let aggregated = appModel.aggregatedAnalytics {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("TODOS OS PROVEDORES")
+                        .font(.system(size: 9, weight: .semibold)).tracking(0.5)
+                        .foregroundStyle(.secondary)
+                    AnalyticsSection(analytics: aggregated)
+                }
+                breakdown
+            } else if appModel.analyticsProviderIds.isEmpty {
+                Text("Nenhuma fonte de análise disponível — conecte Codex, Claude Code ou OpenCode.")
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Carregando estatísticas de uso…")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .task {
+            await appModel.loadAllAnalyticsIfStale()
+        }
+    }
+
+    private var breakdown: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("POR PROVEDOR")
+                .font(.system(size: 9, weight: .semibold)).tracking(0.5)
+                .foregroundStyle(.secondary)
+            ForEach(appModel.analyticsProviderIds, id: \.self) { providerId in
+                let identity = ProviderPalette.color(for: providerId)
+                HStack(spacing: 8) {
+                    Text(ProviderPalette.glyph(forId: providerId))
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(identity)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)))
+                    Text(providerName(providerId))
+                        .font(.system(size: 12, weight: .medium))
+                    Spacer()
+                    if let analytics = appModel.analyticsByProvider[providerId] {
+                        if let lifetime = analytics.effectiveLifetimeTokens {
+                            Text(TokenAnalytics.compactTokens(lifetime))
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .monospacedDigit()
+                        }
+                        Text("· \(TokenAnalytics.compactTokens(analytics.tokensLast30Days)) em 30d")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    } else {
+                        Text("Sem dados")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.045)))
+            }
+            Text("Codex: estatísticas da conta (API). Claude Code e OpenCode: estimativa local dos transcritos/banco desta máquina, incluindo tokens de cache.")
+                .font(.system(size: 9))
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private func providerName(_ id: String) -> String {
+        appModel.orderedProviders.first { $0.id == id }?.displayName ?? id
+    }
+}
+
 // MARK: - Detalhe por provedor
 
 private struct ProviderDetailScreen: View {
@@ -343,20 +425,18 @@ private struct ProviderDetailScreen: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if provider.id == "codex" {
-                if let analytics = appModel.codexAnalytics {
-                    CodexAnalyticsSection(analytics: analytics)
+            if appModel.analyticsLoaders[provider.id] != nil {
+                if let analytics = appModel.analyticsByProvider[provider.id] {
+                    AnalyticsSection(analytics: analytics)
                 } else {
-                    Text("Carregando estatísticas da conta…")
+                    Text("Carregando estatísticas de uso…")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
             }
         }
-        .task {
-            if provider.id == "codex" {
-                await appModel.loadCodexAnalyticsIfStale()
-            }
+        .task(id: provider.id) {
+            await appModel.loadAnalyticsIfStale(providerId: provider.id)
         }
     }
 

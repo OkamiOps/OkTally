@@ -1,11 +1,11 @@
-// Sources/OkTally/UI/CodexAnalyticsSection.swift
+// Sources/OkTally/UI/AnalyticsSection.swift
 import SwiftUI
 
-/// Painel de estatísticas de conta do Codex (referência: painel de analytics do Quotio):
+/// Painel de estatísticas de uso (referência: painel de analytics do Quotio):
 /// linha de chips (lifetime, pico, tarefa mais longa, streaks, hoje/ontem/30d) + heatmap
 /// de uso diário estilo GitHub contributions.
-struct CodexAnalyticsSection: View {
-    let analytics: CodexAnalytics
+struct AnalyticsSection: View {
+    let analytics: TokenAnalytics
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -28,29 +28,29 @@ struct CodexAnalyticsSection: View {
         let today = Self.dayKey(Date())
         let yesterday = Self.dayKey(Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date())
         var chips: [(String, String)] = []
-        if let lifetime = analytics.lifetimeTokens {
-            chips.append((CodexAnalytics.compactTokens(lifetime), "Tokens totais"))
+        if let lifetime = analytics.effectiveLifetimeTokens {
+            chips.append((TokenAnalytics.compactTokens(lifetime), "Tokens totais"))
         }
-        if let peak = analytics.peakDailyTokens {
-            chips.append((CodexAnalytics.compactTokens(peak), "Pico diário"))
+        if let peak = analytics.effectivePeakDailyTokens {
+            chips.append((TokenAnalytics.compactTokens(peak), "Pico diário"))
         }
         if let longest = analytics.longestRunningTurnSeconds {
-            chips.append((CodexAnalytics.durationLabel(longest), "Tarefa mais longa"))
+            chips.append((TokenAnalytics.durationLabel(longest), "Tarefa mais longa"))
         }
-        if let streak = analytics.currentStreakDays {
+        if let streak = analytics.effectiveCurrentStreakDays() {
             chips.append(("\(streak) dias", "Streak atual"))
         }
-        if let longestStreak = analytics.longestStreakDays {
+        if let longestStreak = analytics.effectiveLongestStreakDays {
             chips.append(("\(longestStreak) dias", "Maior streak"))
         }
         let dayValue: (String) -> String = { key in
             guard let tokens = analytics.tokens(onDay: key), tokens > 0 else { return "Sem dados" }
-            return CodexAnalytics.compactTokens(tokens) + " tokens"
+            return TokenAnalytics.compactTokens(tokens) + " tokens"
         }
         chips.append((dayValue(today), "Hoje"))
         chips.append((dayValue(yesterday), "Ontem"))
         if analytics.tokensLast30Days > 0 {
-            chips.append((CodexAnalytics.compactTokens(analytics.tokensLast30Days) + " tokens", "Últimos 30 dias"))
+            chips.append((TokenAnalytics.compactTokens(analytics.tokensLast30Days) + " tokens", "Últimos 30 dias"))
         }
         return LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 8)], alignment: .leading, spacing: 8) {
             ForEach(chips, id: \.1) { value, caption in
@@ -80,9 +80,9 @@ struct CodexAnalyticsSection: View {
 }
 
 /// Heatmap de contribuições: colunas = semanas (dom–sáb), intensidade por quartil dos
-/// dias ativos (`CodexAnalytics.heatLevels`). Tooltip por célula com o valor exato.
+/// dias ativos (`TokenAnalytics.heatLevels`). Tooltip por célula com o valor exato.
 struct TokenHeatmapView: View {
-    let analytics: CodexAnalytics
+    let analytics: TokenAnalytics
     var weeks: Int = 26
 
     private static let cell: CGFloat = 10
@@ -162,7 +162,7 @@ struct TokenHeatmapView: View {
             for weekday in 0..<7 {
                 guard let date = calendar.date(byAdding: .day, value: week * 7 + weekday, to: firstCell),
                       date <= today else { continue }
-                let key = CodexAnalyticsSection.dayKey(date)
+                let key = AnalyticsSection.dayKey(date)
                 column.append(Day(id: key, date: date, tokens: tokensByDay[key], level: levels[key] ?? 0))
             }
             if !column.isEmpty { columns.append(column) }
@@ -186,6 +186,6 @@ struct TokenHeatmapView: View {
         fmt.dateFormat = "d 'de' MMM"
         let dateLabel = fmt.string(from: day.date)
         guard let tokens = day.tokens, tokens > 0 else { return "\(dateLabel): sem uso" }
-        return "\(dateLabel): \(CodexAnalytics.compactTokens(tokens)) tokens"
+        return "\(dateLabel): \(TokenAnalytics.compactTokens(tokens)) tokens"
     }
 }

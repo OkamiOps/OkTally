@@ -23,19 +23,34 @@ final class AppModel: ObservableObject {
     /// popover imediatamente antes de abrir Ajustes; `PreferencesView` consome e zera.
     @Published var requestedPreferencesPane: String?
 
-    /// Estatísticas de conta do Codex (heatmap/streaks), carregadas sob demanda quando a
-    /// página do Codex na janela abre. `nil` = ainda não carregado ou indisponível.
-    @Published private(set) var codexAnalytics: CodexAnalytics?
-    private var codexAnalyticsLoadedAt: Date?
-    /// Injetado pelo app (precisa de OAuthManager/TokenStore, que o modelo não conhece).
-    var codexAnalyticsLoader: (() async -> CodexAnalytics?)?
+    /// Estatísticas de uso em tokens por provider (heatmap/streaks), carregadas sob
+    /// demanda quando as páginas de análise abrem. Fontes registradas em
+    /// `analyticsLoaders` pelo app (Codex via OAuth; Claude/OpenCode lendo disco local).
+    @Published private(set) var analyticsByProvider: [String: TokenAnalytics] = [:]
+    private var analyticsLoadedAt: [String: Date] = [:]
+    var analyticsLoaders: [String: () async -> TokenAnalytics?] = [:]
 
-    func loadCodexAnalyticsIfStale(maxAge: TimeInterval = 300) async {
-        if let loadedAt = codexAnalyticsLoadedAt, Date().timeIntervalSince(loadedAt) < maxAge { return }
-        guard let codexAnalyticsLoader else { return }
-        if let analytics = await codexAnalyticsLoader() {
-            codexAnalytics = analytics
-            codexAnalyticsLoadedAt = Date()
+    /// Providers com fonte de analytics, na ordem do registry (para a aba "Análise").
+    var analyticsProviderIds: [String] {
+        orderedProviders.map(\.id).filter { analyticsLoaders[$0] != nil }
+    }
+
+    var aggregatedAnalytics: TokenAnalytics? {
+        TokenAnalytics.aggregate(analyticsProviderIds.compactMap { analyticsByProvider[$0] })
+    }
+
+    func loadAnalyticsIfStale(providerId: String, maxAge: TimeInterval = 300) async {
+        if let loadedAt = analyticsLoadedAt[providerId], Date().timeIntervalSince(loadedAt) < maxAge { return }
+        guard let loader = analyticsLoaders[providerId] else { return }
+        if let analytics = await loader() {
+            analyticsByProvider[providerId] = analytics
+            analyticsLoadedAt[providerId] = Date()
+        }
+    }
+
+    func loadAllAnalyticsIfStale() async {
+        for providerId in analyticsProviderIds {
+            await loadAnalyticsIfStale(providerId: providerId)
         }
     }
 

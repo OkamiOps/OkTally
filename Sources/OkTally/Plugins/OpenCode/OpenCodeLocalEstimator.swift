@@ -40,12 +40,15 @@ protocol OpenCodeLocalEstimating {
     /// Per-model token totals inside the window, for cost estimation. `nil` on any DB
     /// problem (same degradation contract as `spentInCurrentWindow`).
     func modelTokens(windowHours: Int, now: Date) -> [UsageDetail]?
+    /// Total de tokens por dia (para o painel de análise). `nil` on any DB problem.
+    func dailyTokens(windowDays: Int, now: Date) -> [DailyTokens]?
 }
 
 extension OpenCodeLocalEstimating {
-    /// Default so alternative estimators (and older test stubs) without token data keep
-    /// compiling — "no detail" is always a valid answer.
+    /// Defaults so alternative estimators (and older test stubs) without token data keep
+    /// compiling — "no data" is always a valid answer.
     func modelTokens(windowHours: Int, now: Date) -> [UsageDetail]? { nil }
+    func dailyTokens(windowDays: Int, now: Date) -> [DailyTokens]? { nil }
 }
 
 final class OpenCodeLocalEstimator: OpenCodeLocalEstimating {
@@ -120,6 +123,42 @@ final class OpenCodeLocalEstimator: OpenCodeLocalEstimating {
                 totals[key] = (existing.input + input, existing.output + output)
             }
             return totals.map { UsageDetail(modelId: $0.key, promptTokens: $0.value.input, completionTokens: $0.value.output) }
+        }
+        return result.flatMap { $0 }
+    }
+
+    /// Tokens processados por dia local (input + output + reasoning + cache), agrupados
+    /// direto no SQLite pela data de `time_updated`.
+    func dailyTokens(windowDays: Int, now: Date) -> [DailyTokens]? {
+        guard FileManager.default.fileExists(atPath: dbPath) else { return nil }
+
+        var config = Configuration()
+        config.readonly = true
+        guard let dbQueue = try? DatabaseQueue(path: dbPath, configuration: config) else { return nil }
+
+        let windowStartMs = Int64((now.addingTimeInterval(-Double(windowDays) * 24 * 3600)).timeIntervalSince1970 * 1000)
+
+        let result: [DailyTokens]?? = try? dbQueue.read { db -> [DailyTokens]? in
+            guard try db.tableExists("session"), try db.columns(in: "session").contains(where: { $0.name == "tokens_input" }) else {
+                return nil
+            }
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT date(time_updated / 1000, 'unixepoch', 'localtime') AS day,
+                           SUM(tokens_input + tokens_output + tokens_reasoning + tokens_cache_read + tokens_cache_write) AS total
+                    FROM session
+                    WHERE time_updated >= ?
+                    GROUP BY day
+                    ORDER BY day ASC
+                    """,
+                arguments: [windowStartMs]
+            )
+            return rows.compactMap { row in
+                guard let day: String = row["day"] else { return nil }
+                let total: Int = row["total"] ?? 0
+                return total > 0 ? DailyTokens(day: day, tokens: total) : nil
+            }
         }
         return result.flatMap { $0 }
     }
