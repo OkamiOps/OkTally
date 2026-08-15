@@ -27,15 +27,34 @@ enum QuotaPresentation {
         }
     }
 
+    /// Just the value, without the "restante"/"left" word: "26%", "~62%", "19.82 USD".
+    /// Exists so a layout can print the number once and label it separately (the popover
+    /// hero prints a 36pt "26%" over the word "restante" — `remainingText` would repeat
+    /// the number that the rest of the block already carries).
+    static func remainingValueText(_ shape: QuotaShape) -> String {
+        if let used = shape.usedPercent {
+            let left = Int((100 - used).rounded())
+            return (shape.isEstimated ? "~" : "") + "\(left)%"
+        }
+        return remainingText(shape)
+    }
+
     /// Reset countdown like "Reseta em 3h 24m"; nil when there's no meaningful future reset.
     static func resetText(_ shape: QuotaShape, now: Date = Date()) -> String? {
+        guard let s = resetCompactText(shape, now: now) else { return nil }
+        return LF("Reseta em %@", s)
+    }
+
+    /// Bare countdown ("15h 23m", "1d 17h", "11d") for dense rows where the column
+    /// position already says what the number means. The full sentence truncated to
+    /// "Resets in 2h 4…" in a 360pt popover; this never does.
+    static func resetCompactText(_ shape: QuotaShape, now: Date = Date()) -> String? {
         guard let reset = shape.resetAt, reset.timeIntervalSince(now) > 60 else { return nil }
         let fmt = DateComponentsFormatter()
         fmt.unitsStyle = .abbreviated
         fmt.allowedUnits = [.day, .hour, .minute]
         fmt.maximumUnitCount = 2
-        guard let s = fmt.string(from: now, to: reset) else { return nil }
-        return LF("Reseta em %@", s)
+        return fmt.string(from: now, to: reset)
     }
 
     /// Green when plenty remains, amber mid, red when nearly exhausted.
