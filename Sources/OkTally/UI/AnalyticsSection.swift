@@ -83,9 +83,7 @@ struct AnalyticsSection: View {
 /// dias ativos (`TokenAnalytics.heatLevels`). Tooltip por célula com o valor exato.
 struct TokenHeatmapView: View {
     let analytics: TokenAnalytics
-    var weeks: Int = 26
 
-    private static let cell: CGFloat = 10
     private static let gap: CGFloat = 2
 
     private struct Day: Identifiable {
@@ -96,25 +94,51 @@ struct TokenHeatmapView: View {
     }
 
     var body: some View {
-        let columns = makeColumns()
-        VStack(alignment: .leading, spacing: 3) {
-            monthLabels(columns)
-            HStack(alignment: .top, spacing: Self.gap) {
-                ForEach(Array(columns.enumerated()), id: \.offset) { _, column in
-                    VStack(spacing: Self.gap) {
-                        ForEach(column) { day in
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(color(level: day.level))
-                                .frame(width: Self.cell, height: Self.cell)
-                                .help(tooltip(day))
+        GeometryReader { geo in
+            let metrics = HeatmapLayout.metrics(availableWidth: geo.size.width)
+            let columns = makeColumns(weeks: metrics.weeks)
+            // Em larguras muito grandes, semanas (53) e célula (maxCell) travam no limite
+            // do calendário e sobra espaço de novo — aí centralizamos em vez de grudar
+            // o grid à esquerda com um vão vazio.
+            let gridWidth = CGFloat(metrics.weeks) * metrics.cell + CGFloat(max(0, metrics.weeks - 1)) * Self.gap
+            let leadingInset = max(0, (geo.size.width - gridWidth) / 2)
+            VStack(alignment: .leading, spacing: 3) {
+                monthLabels(columns, cell: metrics.cell)
+                    .padding(.leading, leadingInset)
+                HStack(alignment: .top, spacing: Self.gap) {
+                    ForEach(Array(columns.enumerated()), id: \.offset) { _, column in
+                        VStack(spacing: Self.gap) {
+                            ForEach(column) { day in
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(color(level: day.level))
+                                    .frame(width: metrics.cell, height: metrics.cell)
+                                    .help(tooltip(day))
+                            }
                         }
                     }
                 }
+                .padding(.leading, leadingInset)
+                legend
             }
+        }
+        .frame(height: 132)
+    }
+
+    /// Legenda "menos → mais", ausente na versão antiga.
+    private var legend: some View {
+        HStack(spacing: Theme.Space.xs) {
+            Spacer()
+            Text(L("menos")).font(.system(size: 8)).foregroundStyle(.tertiary)
+            ForEach(0...4, id: \.self) { level in
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(color(level: level))
+                    .frame(width: 8, height: 8)
+            }
+            Text(L("mais")).font(.system(size: 8)).foregroundStyle(.tertiary)
         }
     }
 
-    private func monthLabels(_ columns: [[Day]]) -> some View {
+    private func monthLabels(_ columns: [[Day]], cell: CGFloat) -> some View {
         let fmt = DateFormatter()
         fmt.locale = Locale.current
         fmt.setLocalizedDateFormatFromTemplate("MMM")
@@ -140,13 +164,13 @@ struct TokenHeatmapView: View {
                         .font(.system(size: 8))
                         .foregroundStyle(.tertiary)
                         .fixedSize()
-                        .offset(x: CGFloat(index) * (Self.cell + Self.gap))
+                        .offset(x: CGFloat(index) * (cell + Self.gap))
                 }
             }
         }
     }
 
-    private func makeColumns() -> [[Day]] {
+    private func makeColumns(weeks: Int) -> [[Day]] {
         let calendar = Calendar(identifier: .gregorian)
         let today = calendar.startOfDay(for: Date())
         let weekdayIndex = calendar.component(.weekday, from: today) - 1 // 0 = domingo

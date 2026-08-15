@@ -85,6 +85,8 @@
 "Últimos 30 dias" = "Last 30 days";
 "%@: sem uso" = "%@: no usage";
 "%@: %@ tokens" = "%@: %@ tokens";
+"menos" = "less";
+"mais" = "more";
 
 /* Charts */
 "Dia" = "Day";
