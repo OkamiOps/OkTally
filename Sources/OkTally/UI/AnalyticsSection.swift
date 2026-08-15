@@ -81,47 +81,62 @@ struct AnalyticsSection: View {
 
 /// Heatmap de contribuições: colunas = semanas (dom–sáb), intensidade por quartil dos
 /// dias ativos (`TokenAnalytics.heatLevels`). Tooltip por célula com o valor exato.
+///
+/// Fix round 1 (revisão de qualidade): a versão anterior usava `GeometryReader` +
+/// `.frame(height: 132)` fixo. `GeometryReader` não tem tamanho intrínseco — ele adota
+/// o que for proposto — então o `132` era um número inventado para não colapsar a zero,
+/// e não batia com a altura real do conteúdo (que varia com `metrics.cell`, entre ~97pt
+/// e ~153pt conforme a largura). Agora o heatmap usa dois `Layout` customizados
+/// (`HeatmapMonthLabelsLayout` e `HeatmapGridLayout`) que calculam a própria altura a
+/// partir de `HeatmapLayout.metrics`, sem nenhum valor fixo — a altura do `VStack` vira a
+/// soma natural das alturas dos filhos.
 struct TokenHeatmapView: View {
     let analytics: TokenAnalytics
 
     private static let gap: CGFloat = 2
+    /// Mesmo teto do `maxWeeks` default de `HeatmapLayout.metrics` — gera o calendário
+    /// completo uma vez; os Layouts decidem quantas colunas finais (mais recentes) cabem
+    /// na largura disponível.
+    private static let totalWeeks = 53
 
     private struct Day: Identifiable {
         let id: String
         let date: Date
         let tokens: Int?
         let level: Int
+        let column: Int
+        let row: Int
+    }
+
+    private struct MonthLabelEntry: Identifiable {
+        let id: Int
+        let column: Int
+        let label: String
     }
 
     var body: some View {
-        GeometryReader { geo in
-            let metrics = HeatmapLayout.metrics(availableWidth: geo.size.width)
-            let columns = makeColumns(weeks: metrics.weeks)
-            // Em larguras muito grandes, semanas (53) e célula (maxCell) travam no limite
-            // do calendário e sobra espaço de novo — aí centralizamos em vez de grudar
-            // o grid à esquerda com um vão vazio.
-            let gridWidth = CGFloat(metrics.weeks) * metrics.cell + CGFloat(max(0, metrics.weeks - 1)) * Self.gap
-            let leadingInset = max(0, (geo.size.width - gridWidth) / 2)
-            VStack(alignment: .leading, spacing: 3) {
-                monthLabels(columns, cell: metrics.cell)
-                    .padding(.leading, leadingInset)
-                HStack(alignment: .top, spacing: Self.gap) {
-                    ForEach(Array(columns.enumerated()), id: \.offset) { _, column in
-                        VStack(spacing: Self.gap) {
-                            ForEach(column) { day in
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(color(level: day.level))
-                                    .frame(width: metrics.cell, height: metrics.cell)
-                                    .help(tooltip(day))
-                            }
-                        }
-                    }
+        let days = makeAllDays()
+        let totalColumns = (days.map(\.column).max() ?? -1) + 1
+        VStack(alignment: .leading, spacing: 3) {
+            HeatmapMonthLabelsLayout(gap: Self.gap, totalColumns: totalColumns) {
+                ForEach(monthLabelEntries(days: days, totalColumns: totalColumns)) { entry in
+                    Text(entry.label)
+                        .font(.system(size: 8))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize()
+                        .layoutValue(key: HeatmapColumnKey.self, value: entry.column)
                 }
-                .padding(.leading, leadingInset)
-                legend
             }
+            HeatmapGridLayout(gap: Self.gap, totalColumns: totalColumns) {
+                ForEach(days) { day in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(color(level: day.level))
+                        .help(tooltip(day))
+                        .layoutValue(key: HeatmapColumnRowKey.self, value: (day.column, day.row))
+                }
+            }
+            legend
         }
-        .frame(height: 132)
     }
 
     /// Legenda "menos → mais", ausente na versão antiga.
@@ -138,60 +153,64 @@ struct TokenHeatmapView: View {
         }
     }
 
-    private func monthLabels(_ columns: [[Day]], cell: CGFloat) -> some View {
+    /// Um rótulo por coluna (vazio quando o mês não mudou em relação à coluna anterior),
+    /// calculado sobre a sequência completa de `totalColumns`. Como a decisão de quantas
+    /// colunas finais aparecem é feita dentro do `Layout` (que só conhece a largura em
+    /// tempo de posicionamento), não dá para "reiniciar" a detecção de mudança de mês só
+    /// para a primeira coluna visível — o texto já precisa existir antes disso. Efeito
+    /// colateral aceito: em larguras que cortam bem no meio de um mês, a primeira coluna
+    /// visível pode não ter rótulo (o mês já teria sido anunciado numa coluna oculta).
+    private func monthLabelEntries(days: [Day], totalColumns: Int) -> [MonthLabelEntry] {
         let fmt = DateFormatter()
         fmt.locale = Locale.current
         fmt.setLocalizedDateFormatFromTemplate("MMM")
         let calendar = Calendar(identifier: .gregorian)
+        var firstDateByColumn: [Int: Date] = [:]
+        for day in days where firstDateByColumn[day.column] == nil {
+            firstDateByColumn[day.column] = day.date
+        }
         var previousMonth = -1
-        var labels: [String] = []
-        for column in columns {
-            let month = column.first.map { calendar.component(.month, from: $0.date) } ?? -1
-            if month != previousMonth, let first = column.first {
-                labels.append(fmt.string(from: first.date))
+        var entries: [MonthLabelEntry] = []
+        for column in 0..<max(0, totalColumns) {
+            guard let date = firstDateByColumn[column] else {
+                entries.append(MonthLabelEntry(id: column, column: column, label: ""))
+                continue
+            }
+            let month = calendar.component(.month, from: date)
+            if month != previousMonth {
+                entries.append(MonthLabelEntry(id: column, column: column, label: fmt.string(from: date)))
                 previousMonth = month
             } else {
-                labels.append("")
+                entries.append(MonthLabelEntry(id: column, column: column, label: ""))
             }
         }
-        // ZStack com offsets absolutos: um frame por coluna truncaria o nome do mês na
-        // largura da célula (10 pt).
-        return ZStack(alignment: .topLeading) {
-            Color.clear.frame(height: 10)
-            ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
-                if !label.isEmpty {
-                    Text(label)
-                        .font(.system(size: 8))
-                        .foregroundStyle(.tertiary)
-                        .fixedSize()
-                        .offset(x: CGFloat(index) * (cell + Self.gap))
-                }
-            }
-        }
+        return entries
     }
 
-    private func makeColumns(weeks: Int) -> [[Day]] {
+    /// Gera o calendário completo (`totalWeeks` semanas, dom–sáb), com `column`/`row` já
+    /// atribuídos — `column` cresce do passado (0) para o presente, `row` é o dia da
+    /// semana (0 = domingo). Os `Layout`s decidem depois quantas colunas finais mostrar.
+    private func makeAllDays() -> [Day] {
         let calendar = Calendar(identifier: .gregorian)
         let today = calendar.startOfDay(for: Date())
         let weekdayIndex = calendar.component(.weekday, from: today) - 1 // 0 = domingo
+        let weeks = Self.totalWeeks
         guard let firstCell = calendar.date(byAdding: .day, value: -((weeks - 1) * 7 + weekdayIndex), to: today) else {
             return []
         }
         let levels = analytics.heatLevels()
         let tokensByDay = Dictionary(uniqueKeysWithValues: analytics.dailyBuckets.map { ($0.day, $0.tokens) })
 
-        var columns: [[Day]] = []
+        var days: [Day] = []
         for week in 0..<weeks {
-            var column: [Day] = []
             for weekday in 0..<7 {
                 guard let date = calendar.date(byAdding: .day, value: week * 7 + weekday, to: firstCell),
                       date <= today else { continue }
                 let key = AnalyticsSection.dayKey(date)
-                column.append(Day(id: key, date: date, tokens: tokensByDay[key], level: levels[key] ?? 0))
+                days.append(Day(id: key, date: date, tokens: tokensByDay[key], level: levels[key] ?? 0, column: week, row: weekday))
             }
-            if !column.isEmpty { columns.append(column) }
         }
-        return columns
+        return days
     }
 
     private func color(level: Int) -> Color {
@@ -211,5 +230,103 @@ struct TokenHeatmapView: View {
         let dateLabel = fmt.string(from: day.date)
         guard let tokens = day.tokens, tokens > 0 else { return LF("%@: sem uso", dateLabel) }
         return LF("%@: %@ tokens", dateLabel, TokenAnalytics.compactTokens(tokens))
+    }
+}
+
+/// Chaves de `layoutValue` usadas pelos `Layout`s do heatmap para saber em qual
+/// coluna/linha cada subview lógica deve ser posicionada — a alternativa a embutir
+/// `.frame(width:height:)`/offsets fixos em cada célula.
+private struct HeatmapColumnKey: LayoutValueKey {
+    static let defaultValue: Int = 0
+}
+
+private struct HeatmapColumnRowKey: LayoutValueKey {
+    static let defaultValue: (column: Int, row: Int) = (0, 0)
+}
+
+/// Posiciona um rótulo de mês por coluna, nas mesmas coordenadas X do `HeatmapGridLayout`
+/// correspondente. Sem altura fixa: a altura vem do tamanho natural do texto
+/// (`sizeThatFits`). A largura reportada é a proposta pelo pai (para não encolher o
+/// `VStack` quando o grid não preenche tudo); internamente as colunas ficam centralizadas
+/// se `HeatmapLayout.metrics` travar nos tetos de célula/semanas antes de consumir toda a
+/// largura (larguras muito grandes).
+private struct HeatmapMonthLabelsLayout: Layout {
+    let gap: CGFloat
+    let totalColumns: Int
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard totalColumns > 0 else { return .zero }
+        let metrics = HeatmapLayout.metrics(availableWidth: proposal.width ?? 0, gap: gap)
+        let shown = min(metrics.weeks, totalColumns)
+        let gridWidth = CGFloat(shown) * metrics.cell + CGFloat(max(0, shown - 1)) * gap
+        let width = proposal.width ?? gridWidth
+        let height = subviews.map { $0.sizeThatFits(.unspecified).height }.max() ?? 0
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard totalColumns > 0, !subviews.isEmpty else { return }
+        let metrics = HeatmapLayout.metrics(availableWidth: proposal.width ?? 0, gap: gap)
+        let shown = min(metrics.weeks, totalColumns)
+        let hidden = totalColumns - shown
+        let gridWidth = CGFloat(shown) * metrics.cell + CGFloat(max(0, shown - 1)) * gap
+        let leadingInset = max(0, (bounds.width - gridWidth) / 2)
+        for subview in subviews {
+            let column = subview[HeatmapColumnKey.self]
+            guard column >= hidden else {
+                // `.fixedSize()` no rótulo ignora o `proposal: .zero` e desenha no tamanho
+                // natural mesmo assim — por isso não basta propor zero, é preciso tirar a
+                // subview de cena (senão o rótulo de uma coluna oculta sobrepõe o da
+                // primeira coluna visível).
+                subview.place(at: CGPoint(x: bounds.minX - 10_000, y: bounds.minY), proposal: .zero)
+                continue
+            }
+            let visibleColumn = column - hidden
+            let x = bounds.minX + leadingInset + CGFloat(visibleColumn) * (metrics.cell + gap)
+            subview.place(at: CGPoint(x: x, y: bounds.minY), anchor: .topLeading, proposal: .unspecified)
+        }
+    }
+}
+
+/// Posiciona as células do grid por (coluna, linha), forçando `cell × cell` em cada uma
+/// via o `proposal` passado a `place(...)` — não há `.frame(width:height:)` fixo em
+/// nenhuma célula. Altura sempre `7 × cell + 6 × gap` (7 dias da semana), calculada a
+/// partir de `metrics.cell`; nunca um valor fixo. Mesma centralização de
+/// `HeatmapMonthLabelsLayout` para o caso de largura muito grande.
+private struct HeatmapGridLayout: Layout {
+    let gap: CGFloat
+    let totalColumns: Int
+    private let rows = 7
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard totalColumns > 0 else { return .zero }
+        let metrics = HeatmapLayout.metrics(availableWidth: proposal.width ?? 0, gap: gap)
+        let shown = min(metrics.weeks, totalColumns)
+        let gridWidth = CGFloat(shown) * metrics.cell + CGFloat(max(0, shown - 1)) * gap
+        let width = proposal.width ?? gridWidth
+        let height = CGFloat(rows) * metrics.cell + CGFloat(rows - 1) * gap
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard totalColumns > 0, !subviews.isEmpty else { return }
+        let metrics = HeatmapLayout.metrics(availableWidth: proposal.width ?? 0, gap: gap)
+        let shown = min(metrics.weeks, totalColumns)
+        let hidden = totalColumns - shown
+        let gridWidth = CGFloat(shown) * metrics.cell + CGFloat(max(0, shown - 1)) * gap
+        let leadingInset = max(0, (bounds.width - gridWidth) / 2)
+        for subview in subviews {
+            let (column, row) = subview[HeatmapColumnRowKey.self]
+            guard column >= hidden else {
+                // Mesmo cuidado do HeatmapMonthLabelsLayout: tira a subview de cena em vez
+                // de confiar só no proposal zero.
+                subview.place(at: CGPoint(x: bounds.minX - 10_000, y: bounds.minY), proposal: .zero)
+                continue
+            }
+            let visibleColumn = column - hidden
+            let x = bounds.minX + leadingInset + CGFloat(visibleColumn) * (metrics.cell + gap)
+            let y = bounds.minY + CGFloat(row) * (metrics.cell + gap)
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(width: metrics.cell, height: metrics.cell))
+        }
     }
 }
