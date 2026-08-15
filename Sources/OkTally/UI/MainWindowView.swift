@@ -49,7 +49,7 @@ struct MainWindowView: View {
                             pane = .provider(providerId)
                         }
                     case .analytics:
-                        AnalyticsScreen(appModel: appModel)
+                        AnalyticsDashboardView(appModel: appModel)
                     case .provider(let id):
                         if let entry = providersWithData.first(where: { $0.provider.id == id }) {
                             ProviderDetailScreen(appModel: appModel, provider: entry.provider, snapshot: entry.snapshot)
@@ -295,83 +295,6 @@ private struct ProviderOverviewCard: View {
                 .monospacedDigit()
                 .foregroundStyle(remaining != nil ? QuotaPresentation.color(remaining: remaining) : .primary)
         }
-    }
-}
-
-// MARK: - Análise agregada
-
-/// Aba "Análise": soma o uso em tokens de todas as fontes disponíveis (Codex via API,
-/// Claude Code e OpenCode via dados locais) num painel único, com o recorte por
-/// provedor logo abaixo.
-private struct AnalyticsScreen: View {
-    @ObservedObject var appModel: AppModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            if let aggregated = appModel.aggregatedAnalytics {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(L("TODOS OS PROVEDORES"))
-                        .font(.system(size: 9, weight: .semibold)).tracking(0.5)
-                        .foregroundStyle(.secondary)
-                    AnalyticsSection(analytics: aggregated)
-                }
-                breakdown
-            } else if appModel.analyticsProviderIds.isEmpty {
-                Text(L("Nenhuma fonte de análise disponível — conecte Codex, Claude Code ou OpenCode."))
-                    .foregroundStyle(.secondary)
-            } else {
-                Text(L("Carregando estatísticas de uso…"))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .task {
-            await appModel.loadAllAnalyticsIfStale()
-        }
-    }
-
-    private var breakdown: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(L("POR PROVEDOR"))
-                .font(.system(size: 9, weight: .semibold)).tracking(0.5)
-                .foregroundStyle(.secondary)
-            ForEach(appModel.analyticsProviderIds, id: \.self) { providerId in
-                let identity = ProviderPalette.color(for: providerId)
-                HStack(spacing: 8) {
-                    Text(ProviderPalette.glyph(forId: providerId))
-                        .font(.system(size: 10, weight: .heavy))
-                        .foregroundStyle(identity)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)))
-                    Text(providerName(providerId))
-                        .font(.system(size: 12, weight: .medium))
-                    Spacer()
-                    if let analytics = appModel.analyticsByProvider[providerId] {
-                        if let lifetime = analytics.effectiveLifetimeTokens {
-                            Text(TokenAnalytics.compactTokens(lifetime))
-                                .font(.system(size: 12, weight: .bold, design: .rounded))
-                                .monospacedDigit()
-                        }
-                        Text(LF("· %@ em 30d", TokenAnalytics.compactTokens(analytics.tokensLast30Days)))
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    } else {
-                        Text(L("Sem dados"))
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.045)))
-            }
-            Text(L("Codex: estatísticas da conta (API). Claude Code e OpenCode: estimativa local dos transcritos/banco desta máquina, incluindo tokens de cache."))
-                .font(.system(size: 9))
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    private func providerName(_ id: String) -> String {
-        appModel.orderedProviders.first { $0.id == id }?.displayName ?? id
     }
 }
 
