@@ -63,8 +63,10 @@ Gráficos em Swift Charts (`import Charts`), um arquivo por gráfico:
 - `StackedProviderBarChart` — barras diárias empilhadas por provider.
 - `ProviderShareDonut` — participação nos últimos 30 dias.
 
-`SparklineView` e `QuotaCapsuleBar` **permanecem** — são usados no renderer da barra de
-menu, onde `ImageRenderer` precisa de views triviais e determinísticas.
+`SparklineView` e `QuotaCapsuleBar` **permanecem**, porque plotam outro dado:
+`SparklineView` recebe *percentual de cota usado* (`UsageHistoryPoint.usedPercent`),
+enquanto os gráficos novos plotam *tokens por dia*. Os dois convivem — cota e volume são
+séries diferentes e não devem ser fundidas.
 
 ## 2. Aba Análise — grade bento
 
@@ -96,8 +98,9 @@ O rodapé explicativo das fontes de dados (API do Codex vs estimativa local) é 
 
 Reconstruídos sobre os mesmos componentes. `KPICard` e o estilo inline de
 `ProviderOverviewCard` passam a usar `StatTile`/`DashboardCard`; o KPI de gargalo vira
-`.hero` tingido enquanto os demais ficam regulares. As sparklines dos cards de provider
-passam a `DailyTokensAreaChart`. A hierarquia bottleneck-first é preservada.
+`.hero` tingido enquanto os demais ficam regulares. As sparklines de cota dos cards de provider continuam sendo
+`SparklineView` (é percentual de cota), mas ganham o preenchimento com gradiente do novo
+tema para casar com os gráficos de token. A hierarquia bottleneck-first é preservada.
 
 ## 4. Popover (360 pt)
 
