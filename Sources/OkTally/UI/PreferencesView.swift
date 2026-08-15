@@ -622,17 +622,23 @@ private struct GeneralPane: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
+            // O toggle mestre vive numa `Section` PRÓPRIA, sozinho. Não é estilo: é a
+            // garantia estrutural de que ele nunca cai dentro de uma subárvore
+            // desabilitada. `.disabled(true)` propaga para os descendentes e nenhum filho
+            // pode revertê-lo — quando este toggle dividia a seção com os detalhes, um
+            // `.disabled` na seção o desligava junto e não havia como religar as
+            // notificações pela UI (só por `defaults write`). Enquanto ele estiver sozinho
+            // aqui, esse bug não pode voltar, e é por isso que as duas seções não devem
+            // ser reunidas de novo.
             Section(L("Alertas")) {
                 Toggle(L("Notificações de cota"), isOn: $alertsEnabled)
                     .toggleStyle(.switch)
                     .onChange(of: alertsEnabled) { _, newValue in
                         preferencesStore.alertsEnabled = newValue
                     }
-                // O `.disabled` vale SÓ para os detalhes. Aplicado na `Section` inteira ele
-                // engloba o próprio toggle mestre acima, e `.disabled(true)` propaga para
-                // os descendentes sem que um filho possa revertê-lo: desligar as
-                // notificações apagaria o switch e não haveria como religá-lo pela UI.
-                // O `Group` mantém cada linha como uma linha independente do `Form`.
+            }
+
+            Section {
                 Group {
                     VStack(alignment: .leading, spacing: Theme.Space.sm) {
                         Text(L("Avisar quando o uso cruzar:")).font(.caption).foregroundStyle(.secondary)
@@ -716,10 +722,12 @@ private struct GeneralPane: View {
             .help(L("Remover da barra de menu"))
         }
         .contentShape(Rectangle())
-        .draggable(pin.stored)
-        .dropDestination(for: String.self) { items, _ in
+        .draggable(MenuBarPinTransfer(stored: pin.stored))
+        // Tipo próprio em vez de `String`: texto de outro app não marca mais a linha como
+        // alvo válido, e o id interno do pino não vaza como texto para fora do app.
+        .dropDestination(for: MenuBarPinTransfer.self) { items, _ in
             guard let dragged = items.first else { return false }
-            return movePin(stored: dragged, toPositionOf: pin)
+            return movePin(stored: dragged.stored, toPositionOf: pin)
         }
     }
 
