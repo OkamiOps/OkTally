@@ -6,13 +6,17 @@ let package = Package(
     defaultLocalization: "pt",
     platforms: [.macOS(.v26)],
     dependencies: [
-        .package(url: "https://github.com/groue/GRDB.swift.git", from: "6.29.0")
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "6.29.0"),
+        // Exceção documentada à regra de "nenhuma dependência nova": o painel do notch.
+        // Ver .superpowers/notch-hud-report.md.
+        .package(url: "https://github.com/MrKai77/DynamicNotchKit.git", from: "1.1.0")
     ],
     targets: [
         .executableTarget(
             name: "OkTally",
             dependencies: [
-                .product(name: "GRDB", package: "GRDB.swift")
+                .product(name: "GRDB", package: "GRDB.swift"),
+                .product(name: "DynamicNotchKit", package: "DynamicNotchKit")
             ],
             resources: [.process("Resources")]
         ),

@@ -14,9 +14,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   and a strip of the tightest quotas across all providers.
 - The usage heatmap now fills the available width and gained a legend.
 - Alert thresholds now include **50 %** and **80 %** alongside the existing 70 / 90 / 100 %.
+- **Notch panel** on the MacBook's built-in display: a black panel continuous with the
+  notch, with rounded "wing" corners. Idle it hugs the notch with the brand symbol on
+  one side and one minimal tick per tracked quota on the other; hovering springs it open
+  into a dense row per quota (identity chip, bar, % remaining, reset countdown); clicking
+  opens the full popover anchored under the notch. It exists only where there is a notch
+  — on an external monitor, with the lid closed, or with the new **Notch panel** switch
+  in Preferences ▸ Menu bar turned off, the window is not created at all and the menu bar
+  carries on alone.
 
 ### Changed
 
+- **The menu bar now carries a single number.** It used to print one segment per pinned
+  window (`C100 X56 ▷56 G99 M84`), which was unreadable at 11 pt in the system bar. It
+  now shows the official brand symbol plus the *tightest* quota only, and that number is
+  neutral gray unless it is actually running out (amber, then magenta) — the rest moved
+  to the notch panel and the popover.
 - **Menu bar popover rebuilt around one hero and a dense provider list.** The tightest
   window across all providers gets the only display-size number, a danger-colored bar
   and its own tinted block; every other provider becomes a single compact row —
@@ -35,7 +48,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Popover, Overview, Provider detail, and Preferences now share the same design system:
   colors, typography, and card chrome all come from one place, and Liquid Glass is used
   for the popover chrome — header, today strip, and action bar. Glass stays off the
-  dashboards and detail cards, where it would sit behind dense numbers and charts.
+  dashboards and detail cards, where it would sit behind dense numbers and charts. The
+  notch panel is the deliberate exception: solid black, no glass, so it reads as the
+  notch itself.
+
+### Fixed
+
+- **The app bundle now carries its own resource bundle.** `build_app.sh` never copied
+  it, so translations and bundled assets only resolved through SwiftPM's fallback to an
+  absolute path inside `.build` on the building machine — copying the `.app` elsewhere
+  (or deleting `.build`) would have crashed it on the first translated string.
 
 ## [0.9.1-beta] — 2026-08-12
 

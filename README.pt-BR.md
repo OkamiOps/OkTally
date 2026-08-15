@@ -39,7 +39,8 @@ O OkTally é um app **nativo de barra de menu do macOS** que mantém todas essas
 
 | | Recurso | O que faz |
 | :-: | --- | --- |
-| 📌 | **Pins coloridos na barra** | Fixe quantas janelas quiser; cada uma vira `C 78 · X 86 · ▹ 26` — glifo na cor do provedor, % restante colorido pela urgência |
+| 📌 | **Um número na barra** | Fixe quantas janelas quiser; a barra mostra o símbolo da marca e a *mais apertada*, colorida só quando aperta |
+| 🕳️ | **Painel no notch** | Na tela embutida do MacBook, um painel preto abraçando o notch: tracinhos quando discreto, cotas completas no hover, popover no clique |
 | 🎯 | **Popover gargalo-primeiro** | Um gauge-herói destaca a janela mais perto de acabar, com contagem para o reset; cards por provedor com anéis abaixo |
 | 📈 | **Sparklines de 24h** | Cada card carrega uma mini-tendência das últimas 24 horas, direto do histórico local |
 | 🪟 | **Janela Visão geral** | Sidebar, KPIs (provedores · gargalo · custo estimado), barras em cápsula por janela, tendência de 7 dias por provedor |

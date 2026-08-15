@@ -140,8 +140,8 @@
 "Desconectado." = "Signed out.";
 "Barra de menu" = "Menu bar";
 "Nada fixado — a barra mostra automaticamente a janela mais próxima do limite." = "Nothing pinned — the bar automatically shows the window closest to its limit.";
-"Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra." = "Pin windows with the pin icon in the OkTally menu — each becomes a colored number in the bar.";
-"Arraste para reordenar. Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra." = "Drag to reorder. Pin windows with the pin icon in the OkTally menu — each becomes a colored number in the bar.";
+"Fixe janelas pelo alfinete no menu do OkTally — a barra mostra a mais apertada e o painel do notch mostra todas." = "Pin windows with the pin icon in the OkTally menu — the bar shows the tightest one and the notch panel shows them all.";
+"Arraste para reordenar. A barra mostra só a mais apertada; o painel do notch mostra todas." = "Drag to reorder. The bar shows only the tightest one; the notch panel shows them all.";
 "Alertas" = "Alerts";
 "Notificações de cota" = "Quota notifications";
 "Avisar quando o uso cruzar:" = "Warn when usage crosses:";
@@ -242,5 +242,9 @@
 "Estatísticas de uso" = "Usage statistics";
 "versão %@" = "version %@";
 "Na barra de menu" = "In the menu bar";
-"automático" = "automatic";
 "Limiares" = "Thresholds";
+
+/* Painel do notch */
+"Painel no notch" = "Notch panel";
+"Aparece só na tela embutida do MacBook: em monitor externo ou de tampa fechada não há notch, e a barra de menu segue sozinha." = "Only on the MacBook's built-in display: on an external monitor or with the lid closed there is no notch, and the menu bar carries on alone.";
+"Clique para abrir" = "Click to open";

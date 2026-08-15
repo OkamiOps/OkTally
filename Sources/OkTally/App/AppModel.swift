@@ -165,11 +165,21 @@ final class AppModel: ObservableObject {
         _ = await scheduler.fetchAll()
     }
 
-    var menuBarSegments: [MenuBarSegment] {
-        MenuBarLabelModel.segments(
+    /// O único número da barra de menu.
+    var menuBarSegment: MenuBarSegment {
+        MenuBarLabelModel.criticalSegment(
             pins: menuBarPins,
             snapshots: snapshotsByProvider,
             hasAnyError: !errorsByProvider.isEmpty
+        )
+    }
+
+    /// As cotas do painel do notch — as mesmas fechado e expandido.
+    var notchEntries: [NotchQuotaEntry] {
+        NotchHUDModel.entries(
+            pins: menuBarPins,
+            snapshots: snapshotsByProvider,
+            providerOrder: orderedProviders.map(\.id)
         )
     }
 

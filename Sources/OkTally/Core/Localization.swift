@@ -5,11 +5,12 @@ import Foundation
 /// PT (o texto original do app), e `en.lproj/Localizable.strings` fornece a tradução.
 /// Chave ausente cai no PT — nunca aparece uma chave crua na tela.
 ///
-/// `Bundle.module` é obrigatório: strings de recurso de um pacote SPM não vivem no
+/// O bundle explícito é obrigatório: strings de recurso de um pacote SPM não vivem no
 /// `Bundle.main`, então `Text("literal")` do SwiftUI (que só olha o main) não enxergaria
-/// as traduções — todo texto visível passa por `L`/`LF`.
+/// as traduções — todo texto visível passa por `L`/`LF`. Qual bundle é esse, e por que
+/// não `Bundle.module` cru, está em `AppResources`.
 func L(_ key: String) -> String {
-    NSLocalizedString(key, bundle: .module, comment: "")
+    NSLocalizedString(key, bundle: AppResources.bundle, comment: "")
 }
 
 /// Variante com interpolação: `LF("Reseta em %@", tempo)`.

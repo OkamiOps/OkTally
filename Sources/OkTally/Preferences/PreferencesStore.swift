@@ -30,6 +30,7 @@ final class PreferencesStore {
         static let mimoUsedCredits = "mimoUsedCredits"
         static let minimaxRegionRaw = "minimaxRegionRaw"
         static let alertsEnabled = "alertsEnabled"
+        static let notchHUDEnabled = "notchHUDEnabled"
         static let alertPercentThresholds = "alertPercentThresholds"
         static let alertLowBalanceThreshold = "alertLowBalanceThreshold"
         static func refreshInterval(_ providerId: String) -> String { "refreshInterval.\(providerId)" }
@@ -139,6 +140,19 @@ final class PreferencesStore {
 
     func setOpenCodeAPIKey(_ value: String?) throws {
         try setSecret(value, providerId: SecretProviderId.openCode, legacyKey: Keys.openCodeAPIKey)
+    }
+
+    // MARK: - Notch
+
+    /// Painel do notch ligado. Ligado por padrão (mesma convenção de `alertsEnabled`:
+    /// só a string "false" desliga, então nunca ter salvado nada vale como ligado).
+    ///
+    /// Desligar não é só esconder: o controller destrói a janela flutuante. Quem projeta
+    /// a tela, grava vídeo ou simplesmente não quer nada morando no notch fica com a barra
+    /// de menu sozinha, que continua completa.
+    var notchHUDEnabled: Bool {
+        get { store.string(forKey: Keys.notchHUDEnabled) != "false" }
+        set { store.set(newValue ? "true" : "false", forKey: Keys.notchHUDEnabled) }
     }
 
     // MARK: - Alert preferences

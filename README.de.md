@@ -39,7 +39,8 @@ OkTally ist eine **native macOS-Menüleisten-App**, die all diese Kontingente au
 
 | | Funktion | Was sie tut |
 | :-: | --- | --- |
-| 📌 | **Farbige Menüleisten-Pins** | Beliebig viele Fenster anheften; jedes erscheint als `C 78 · X 86 · ▹ 26` — Glyphe in Providerfarbe, Rest-% nach Dringlichkeit gefärbt |
+| 📌 | **Eine Zahl in der Leiste** | Beliebig viele Fenster anheften; die Menüleiste zeigt das Markensymbol und das *knappste* Fenster, gefärbt nur wenn es eng wird |
+| 🕳️ | **Notch-Panel** | Auf dem eingebauten MacBook-Display: ein schwarzes Panel am Notch — schmale Striche im Ruhezustand, volle Kontingentzeilen beim Hover, Popover per Klick |
 | 🎯 | **Engpass-zuerst-Popover** | Ein Hero-Gauge zeigt das knappste Fenster mit Reset-Countdown; darunter Provider-Karten mit Ringen |
 | 📈 | **24h-Sparklines** | Jede Karte trägt einen Mini-Trend der letzten 24 Stunden aus der lokalen Historie |
 | 🪟 | **Übersichtsfenster** | Sidebar, KPI-Zeile (Provider · Engpass · geschätzte Kosten), Kapselbalken pro Fenster, 7-Tage-Trends |

@@ -179,7 +179,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.snapshotsByProvider["claude"], persisted)
     }
 
-    func test_menuBarSegments_reflectWorstSnapshot() async {
+    func test_menuBarSegment_reflectsWorstSnapshot() async {
         let provider = FakeUsageProvider(id: "claude", displayName: "Claude Code")
         provider.snapshotToReturn = ProviderSnapshot(
             providerId: "claude",
@@ -199,7 +199,12 @@ final class AppModelTests: XCTestCase {
 
         await model.refreshNow()
 
-        // 88% used → 12% remaining, warn tier, no glyph in automatic mode.
-        XCTAssertEqual(model.menuBarSegments, [MenuBarSegment(glyph: nil, providerId: nil, text: "12", danger: .warn)])
+        // 88% usado → 12% restante, faixa de alerta. A barra carrega UM segmento só.
+        XCTAssertEqual(model.menuBarSegment,
+                       MenuBarSegment(glyph: "C", providerId: "claude", text: "12", danger: .warn))
+        // E o painel do notch, a mesma cota — a barra é um recorte do painel, não outra
+        // fonte de verdade.
+        XCTAssertEqual(model.notchEntries.map(\.providerId), ["claude"])
+        XCTAssertEqual(model.notchEntries.first?.danger, .warn)
     }
 }

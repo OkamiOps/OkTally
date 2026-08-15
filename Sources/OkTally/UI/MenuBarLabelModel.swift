@@ -10,35 +10,81 @@ struct MenuBarSegment: Equatable {
     let danger: DangerLevel
 }
 
-/// Pure computation of what the menu bar shows — kept out of the view/renderer so the
-/// pin → segment rules are unit-testable. The bar shows *remaining* percent, matching
-/// the dropdown's "X% restante" copy (the pre-redesign bar showed used percent).
+/// Cálculo puro do que a barra de menu mostra — fora da view/renderer para as regras
+/// serem testáveis. A barra mostra o percentual *restante*, igual ao "X% restante" do
+/// popover (a barra pré-redesenho mostrava o usado).
+///
+/// A barra carrega UM número só. Ela chegou a imprimir um segmento por pino
+/// ("C100 X56 ▷56 G99 M84") e o dono reprovou nestes termos: "muito feios e ruins de
+/// ler". Cinco números de 11pt lado a lado no menu do sistema não são um painel, são
+/// ruído. O que sobra na barra é o símbolo da marca mais a cota mais crítica — a única
+/// informação que justifica ocupar a barra o dia inteiro. Os demais números foram para o
+/// painel do notch (`NotchHUDModel`), que sabe usar espaço de verdade.
 enum MenuBarLabelModel {
-    static func segments(pins: [AppModel.MenuBarPin], snapshots: [String: ProviderSnapshot], hasAnyError: Bool) -> [MenuBarSegment] {
-        let pinned = pins.compactMap { pin -> MenuBarSegment? in
-            guard let snapshot = snapshots[pin.providerId],
-                  let window = snapshot.quotas.first(where: { $0.label == pin.windowLabel })
-            else { return nil }
-            return segment(providerId: pin.providerId, shape: window.shape)
-        }
-        if !pinned.isEmpty { return pinned }
 
-        let remainings = snapshots.values
-            .flatMap(\.quotas)
-            .compactMap { QuotaPresentation.remainingFraction($0.shape) }
-        guard let worst = remainings.min() else {
-            return [MenuBarSegment(glyph: nil, providerId: nil,
-                                   text: hasAnyError ? "!" : "OK", danger: .neutral)]
+    /// A ÚNICA cota que vai para a barra: a mais apertada entre as candidatas.
+    ///
+    /// Vence a menor sobra; empate desempata pelo reset mais próximo e, se ainda empatar,
+    /// pela ordem determinística das candidatas — `snapshots` é um dicionário, e sem esse
+    /// último critério o número da barra poderia trocar entre dois empatados a cada
+    /// recomposição.
+    static func criticalSegment(
+        pins: [AppModel.MenuBarPin],
+        snapshots: [String: ProviderSnapshot],
+        hasAnyError: Bool
+    ) -> MenuBarSegment {
+        let candidates = self.candidates(pins: pins, snapshots: snapshots)
+        // Janelas com porcentagem primeiro: um saldo em dólares não tem "aperto" para
+        // comparar com uma cota em porcento, então ele só aparece quando é tudo o que há.
+        let ranked = candidates.enumerated().compactMap { index, candidate -> (Int, Candidate, Double)? in
+            QuotaPresentation.remainingFraction(candidate.window.shape).map { (index, candidate, $0) }
         }
-        return [MenuBarSegment(glyph: nil, providerId: nil,
-                               text: String(Int((worst * 100).rounded())), danger: danger(remaining: worst))]
+        if let best = ranked.min(by: { lhs, rhs in
+            if lhs.2 != rhs.2 { return lhs.2 < rhs.2 }
+            let lReset = lhs.1.window.shape.resetAt ?? .distantFuture
+            let rReset = rhs.1.window.shape.resetAt ?? .distantFuture
+            if lReset != rReset { return lReset < rReset }
+            return lhs.0 < rhs.0
+        }) {
+            return segment(providerId: best.1.providerId, shape: best.1.window.shape)
+        }
+        if let only = candidates.first {
+            return segment(providerId: only.providerId, shape: only.window.shape)
+        }
+        return MenuBarSegment(glyph: nil, providerId: nil,
+                              text: hasAnyError ? "!" : "OK", danger: .neutral)
     }
 
-    /// Same thresholds as `QuotaPresentation.color(remaining:)`.
+    /// Mesmas faixas de `QuotaPresentation.color(remaining:)`.
     static func danger(remaining: Double) -> DangerLevel {
         if remaining <= 0.10 { return .critical }
         if remaining <= 0.30 { return .warn }
         return .ok
+    }
+
+    struct Candidate: Equatable {
+        let providerId: String
+        let window: QuotaWindow
+    }
+
+    /// Janelas elegíveis, em ordem determinística: com pinos, a ordem dos pinos; sem
+    /// pinos, provedores por id (o dicionário de snapshots não tem ordem própria) e,
+    /// dentro de cada um, a ordem em que o provedor devolveu as janelas.
+    ///
+    /// Compartilhado com o painel do notch: os dois precisam concordar sobre o que conta
+    /// como "as cotas que o dono está acompanhando".
+    static func candidates(pins: [AppModel.MenuBarPin], snapshots: [String: ProviderSnapshot]) -> [Candidate] {
+        if !pins.isEmpty {
+            return pins.compactMap { pin in
+                guard let snapshot = snapshots[pin.providerId],
+                      let window = snapshot.quotas.first(where: { $0.label == pin.windowLabel })
+                else { return nil }
+                return Candidate(providerId: pin.providerId, window: window)
+            }
+        }
+        return snapshots.keys.sorted().flatMap { providerId in
+            (snapshots[providerId]?.quotas ?? []).map { Candidate(providerId: providerId, window: $0) }
+        }
     }
 
     private static func segment(providerId: String, shape: QuotaShape) -> MenuBarSegment {

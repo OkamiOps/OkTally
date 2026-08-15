@@ -16,7 +16,12 @@
 
 <br />
 
-<img src="docs/assets/menubar.png" width="260" alt="OkTally menu bar label showing multiple pinned quota windows" />
+<img src="docs/assets/menubar.png" width="150" alt="OkTally menu bar label: brand symbol and the tightest quota" />
+
+<br />
+<br />
+
+<img src="docs/assets/notch-expanded.png" width="560" alt="OkTally notch panel expanded, with one dense row per pinned quota" />
 
 <br />
 <br />
@@ -39,7 +44,8 @@ OkTally is a **native macOS menu bar app** that keeps every one of those quotas 
 
 | | Feature | What it does |
 | :-: | --- | --- |
-| 📌 | **Colored menu bar pins** | Pin any number of quota windows; each renders as `C 78 · X 86 · ▹ 26` — glyph in the provider's color, % remaining colored by urgency |
+| 📌 | **One number in the bar** | Pin any number of quota windows; the menu bar shows the brand symbol plus the *tightest* one, colored only when it is running out |
+| 🕳️ | **Notch panel** | On the MacBook's built-in display, a black panel hugging the notch: minimal ticks when idle, full quota rows on hover, the popover on click |
 | 🎯 | **Bottleneck-first popover** | A hero gauge spotlights the window closest to running out, with reset countdown; two-column provider cards with ring gauges below |
 | 📈 | **24h sparklines** | Every provider card carries a mini trend of the last 24 hours, straight from the local history database |
 | 🪟 | **Overview window** | Sidebar navigation, KPI row (providers · bottleneck · estimated cost), capsule bars per window, 7-day trends per provider |

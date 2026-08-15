@@ -11,6 +11,10 @@ struct OkTallyApp: App {
     private let deviceCodeFlow: DeviceCodeFlow
     private let claudeProvider: ClaudeUsageProvider
     private let mimoSessionStore = MiMoSessionStore()
+    /// O painel do notch. Criado aqui e mantido vivo pelo `App`: ele não pertence a cena
+    /// nenhuma (é uma janela flutuante própria), então precisa de um dono com o mesmo
+    /// tempo de vida do app.
+    private let notchController: NotchHUDController
 
     init() {
         let appSupportDir = NSHomeDirectory() + "/Library/Application Support/OkTally"
@@ -97,15 +101,31 @@ struct OkTallyApp: App {
         }
         _appModel = StateObject(wrappedValue: model)
 
+        let notchController = NotchHUDController(appModel: model, isEnabled: { preferencesStore.notchHUDEnabled })
+        self.notchController = notchController
+
         Task { await notificationSender.requestAuthorizationIfNeeded() }
         model.start()
+        // Depois do launch, não durante o `init`: criar uma janela flutuante antes de o
+        // NSApp terminar de subir deixa o painel fora da tela (as métricas do notch ainda
+        // não estão disponíveis). Se o app já estiver ativo — recarga do SwiftUI —
+        // começamos na hora.
+        if NSApp?.isRunning == true {
+            Task { @MainActor in notchController.start() }
+        } else {
+            NotificationCenter.default.addObserver(
+                forName: NSApplication.didFinishLaunchingNotification, object: nil, queue: .main
+            ) { _ in
+                Task { @MainActor in notchController.start() }
+            }
+        }
     }
 
     var body: some Scene {
         MenuBarExtra {
             PopoverView(appModel: appModel)
         } label: {
-            Image(nsImage: MenuBarLabelRenderer.image(for: appModel.menuBarSegments))
+            Image(nsImage: MenuBarLabelRenderer.image(for: appModel.menuBarSegment))
         }
         .menuBarExtraStyle(.window)
 
@@ -123,7 +143,8 @@ struct OkTallyApp: App {
                 deviceCodeFlow: deviceCodeFlow,
                 mimoSessionStore: mimoSessionStore,
                 appModel: appModel,
-                onImportClaudeLegacy: { claudeProvider.importLegacyCredentialsIfAvailable() }
+                onImportClaudeLegacy: { claudeProvider.importLegacyCredentialsIfAvailable() },
+                onNotchPreferenceChanged: { notchController.refresh() }
             )
         }
     }

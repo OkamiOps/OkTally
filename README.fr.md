@@ -39,7 +39,8 @@ OkTally est une **app native de barre de menus macOS** qui garde tous ces quotas
 
 | | Fonctionnalité | Ce qu'elle fait |
 | :-: | --- | --- |
-| 📌 | **Épingles colorées** | Épinglez autant de fenêtres que voulu ; chacune devient `C 78 · X 86 · ▹ 26` — glyphe à la couleur du fournisseur, % restant coloré selon l'urgence |
+| 📌 | **Un seul chiffre dans la barre** | Épinglez autant de fenêtres que voulu ; la barre affiche le symbole de la marque et la fenêtre la *plus tendue*, colorée seulement quand ça serre |
+| 🕳️ | **Panneau dans l'encoche** | Sur l'écran intégré du MacBook, un panneau noir collé à l'encoche : petits traits au repos, quotas complets au survol, popover au clic |
 | 🎯 | **Popover goulot-d'abord** | Une jauge-héros met en avant la fenêtre la plus proche de l'épuisement, avec compte à rebours ; cartes par fournisseur en dessous |
 | 📈 | **Sparklines 24h** | Chaque carte porte une mini-tendance des dernières 24 heures, issue de l'historique local |
 | 🪟 | **Fenêtre Vue d'ensemble** | Sidebar, ligne de KPI (fournisseurs · goulot · coût estimé), barres capsules par fenêtre, tendances 7 jours |

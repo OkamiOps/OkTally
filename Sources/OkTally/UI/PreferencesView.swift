@@ -16,6 +16,9 @@ struct PreferencesView: View {
     let mimoSessionStore: MiMoSessionStoring
     @ObservedObject var appModel: AppModel
     let onImportClaudeLegacy: () -> Bool
+    /// Avisa quem cuida do painel do notch que a preferência mudou. Opcional porque o
+    /// harness de render monta esta tela sem app vivo — lá não há painel para reavaliar.
+    var onNotchPreferenceChanged: (() -> Void)?
 
     @State private var pane: PreferencesPane = .general
 
@@ -68,7 +71,9 @@ struct PreferencesView: View {
             // Geral e os panes de provider são `Form` agrupados, que já rolam sozinhos —
             // o `ScrollView` que os panes de provider tinham daria rolagem aninhada.
             if case .general = pane {
-                GeneralPane(appModel: appModel, preferencesStore: preferencesStore, providerName: providerName)
+                GeneralPane(appModel: appModel, preferencesStore: preferencesStore,
+                            providerName: providerName,
+                            onNotchPreferenceChanged: onNotchPreferenceChanged)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
                     detailContent
@@ -612,8 +617,10 @@ private struct GeneralPane: View {
     @ObservedObject var appModel: AppModel
     let preferencesStore: PreferencesStore
     let providerName: (String) -> String
+    var onNotchPreferenceChanged: (() -> Void)?
 
     @State private var alertsEnabled = true
+    @State private var notchHUDEnabled = true
     @State private var percentSteps: Set<Double> = []
     @State private var lowBalanceText = ""
     @State private var savedFlash = false
@@ -639,8 +646,17 @@ private struct GeneralPane: View {
                     }
                     // Sem pinos não há o que arrastar — o rodapé não promete reordenação.
                     Text(appModel.menuBarPins.isEmpty
-                         ? L("Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra.")
-                         : L("Arraste para reordenar. Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra."))
+                         ? L("Fixe janelas pelo alfinete no menu do OkTally — a barra mostra a mais apertada e o painel do notch mostra todas.")
+                         : L("Arraste para reordenar. A barra mostra só a mais apertada; o painel do notch mostra todas."))
+                        .font(.caption).foregroundStyle(.secondary)
+
+                    Toggle(L("Painel no notch"), isOn: $notchHUDEnabled)
+                        .toggleStyle(.switch)
+                        .onChange(of: notchHUDEnabled) { _, newValue in
+                            preferencesStore.notchHUDEnabled = newValue
+                            onNotchPreferenceChanged?()
+                        }
+                    Text(L("Aparece só na tela embutida do MacBook: em monitor externo ou de tampa fechada não há notch, e a barra de menu segue sozinha."))
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
@@ -717,6 +733,7 @@ private struct GeneralPane: View {
         }
         .onAppear {
             alertsEnabled = preferencesStore.alertsEnabled
+            notchHUDEnabled = preferencesStore.notchHUDEnabled
             percentSteps = Set(preferencesStore.alertPercentThresholds)
             lowBalanceText = String(format: "%.2f", preferencesStore.alertLowBalanceThreshold)
         }
@@ -751,15 +768,7 @@ private struct GeneralPane: View {
                 // Pílula quase preta: é a cor real da barra de menu no escuro, e sem ela
                 // os números coloridos ficariam sobre ciano saturado, que é exatamente o
                 // fundo que eles nunca têm.
-                Group {
-                    if appModel.menuBarSegments.isEmpty {
-                        Text(L("automático"))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Theme.onHero.opacity(0.75))
-                    } else {
-                        MenuBarLabelView(segments: appModel.menuBarSegments)
-                    }
-                }
+                MenuBarLabelView(segment: appModel.menuBarSegment)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .background(RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)

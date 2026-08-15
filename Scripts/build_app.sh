@@ -12,6 +12,14 @@ cp "$BUILD_DIR/$APP_NAME" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 cp Resources/Info.plist "$APP_BUNDLE/Contents/Info.plist"
 # Ícone da marca: sem isto o app aparece sem logo no Launchpad e no Finder.
 cp Resources/AppIcon.icns "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+# Bundle de recursos do SPM (traduções em en.lproj, símbolo da barra de menu). O
+# acessor gerado pelo SwiftPM procuraria por ele na RAIZ do .app, que é exatamente onde
+# o codesign recusa qualquer coisa ("unsealed contents present in the bundle root"). Por
+# isso ele vai para Contents/Resources e quem o encontra é `AppResources`. Sem esta cópia
+# o app só funcionava porque o acessor tem um fallback para o caminho absoluto de .build
+# desta máquina: copiar o .app para outro lugar (ou apagar o .build) derrubava o app no
+# primeiro texto traduzido.
+cp -R "$BUILD_DIR/${APP_NAME}_${APP_NAME}.bundle" "$APP_BUNDLE/Contents/Resources/${APP_NAME}_${APP_NAME}.bundle"
 # Ad-hoc signatures change identity every build, which invalidates Keychain ACLs and
 # forces relogin (Claude/Codex/SuperGrok/API keys) after each update. Prefer a stable
 # identity: a local self-signed "OkTally Dev" first, then a real Apple Development

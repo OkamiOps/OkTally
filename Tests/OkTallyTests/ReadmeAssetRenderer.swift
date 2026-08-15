@@ -91,6 +91,16 @@ final class ReadmeAssetRenderer: XCTestCase {
                         .frame(width: 760),
                       to: "provider-detail.png", scheme: scheme)
         }
+        // O painel do notch: a JANELA em si (NSPanel flutuante, forma de "asa", hover)
+        // não tem como ser renderizada fielmente por `ImageRenderer`, mas o conteúdo
+        // SwiftUI dela tem — e é o conteúdo que decide se o painel se lê. Os dois PNGs
+        // saem sobre um fundo claro de propósito: é contra uma janela clara que um painel
+        // "quase preto" denunciaria que não é o notch.
+        try write(view: notchStage { NotchCollapsedMock(appModel: model) },
+                  to: "notch-collapsed.png", scheme: .dark)
+        try write(view: notchStage { NotchExpandedMock(appModel: model) },
+                  to: "notch-expanded.png", scheme: .dark)
+
         // Preferências vai por outro caminho: `ImageRenderer` NÃO desenha `Form`
         // agrupado (sai em branco), então a tela nunca pôde ser olhada sem abrir o app —
         // e foi exatamente por isso que ela atravessou o redesenho inteiro sem ser
@@ -361,9 +371,22 @@ final class ReadmeAssetRenderer: XCTestCase {
         return model
     }
 
+    /// Palco do painel do notch: uma faixa de "desktop" clara com o topo da tela, para o
+    /// preto do painel ser julgado contra algo em vez de contra o vazio.
+    private func notchStage<V: View>(@ViewBuilder content: () -> V) -> some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.bottom, 26)
+            .background(
+                LinearGradient(colors: [Color(hex: 0x2C3E63), Color(hex: 0x7A5C8E)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+            )
+            .frame(width: 700)
+    }
+
     /// The menu bar label on a dark menu-bar-like strip.
     private func menuBarStrip(_ model: AppModel) -> some View {
-        MenuBarLabelView(segments: model.menuBarSegments)
+        MenuBarLabelView(segment: model.menuBarSegment)
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
             .background(RoundedRectangle(cornerRadius: 8).fill(Color(white: 0.12)))
@@ -422,4 +445,72 @@ private struct DemoProviderError: LocalizedError {
 
 private final class FakePreferencesMiMoSession: MiMoSessionStoring {
     var isLoggedIn = false
+}
+
+
+// MARK: - Maquetes do painel do notch
+
+/// A forma do painel: preto sólido, topo reto (encosta na borda da tela) e cantos
+/// INFERIORES arredondados — a "asa" que faz o painel parecer o próprio notch crescendo.
+/// `DynamicNotchKit` desenha isto com uma `NotchShape` interna ao pacote; aqui a forma é
+/// reproduzida só para o PNG, porque o que precisa ser julgado no render é o CONTEÚDO.
+private struct NotchChrome<Content: View>: View {
+    var bottomRadius: CGFloat = 22
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        content
+            .background(
+                UnevenRoundedRectangle(
+                    bottomLeadingRadius: bottomRadius,
+                    bottomTrailingRadius: bottomRadius,
+                    style: .continuous
+                ).fill(.black)
+            )
+    }
+}
+
+/// Altura do notch físico num MacBook Pro (`safeAreaInsets.top`), e largura típica do
+/// recorte. Números do hardware, não escolha de layout — a maquete precisa deles para o
+/// conteúdo cair onde vai cair de verdade.
+private enum NotchMetrics {
+    static let height: CGFloat = 32
+    static let width: CGFloat = 190
+}
+
+/// Fechado: marca de um lado do recorte, tracinhos do outro.
+private struct NotchCollapsedMock: View {
+    @ObservedObject var appModel: AppModel
+
+    var body: some View {
+        NotchChrome(bottomRadius: 14) {
+            HStack(spacing: 0) {
+                NotchCompactLeading()
+                    .padding(.leading, 10)
+                Spacer().frame(width: NotchMetrics.width)
+                NotchCompactTrailing(appModel: appModel)
+                    .padding(.trailing, 10)
+            }
+            .frame(height: NotchMetrics.height)
+        }
+        .fixedSize()
+    }
+}
+
+/// Expandido: o recorte no topo e a lista densa embaixo dele.
+private struct NotchExpandedMock: View {
+    @ObservedObject var appModel: AppModel
+
+    var body: some View {
+        NotchChrome {
+            VStack(spacing: 0) {
+                // O conteúdo nunca sobe para debaixo do recorte físico.
+                Color.clear.frame(height: NotchMetrics.height)
+                NotchExpandedView(appModel: appModel, onOpen: {})
+                    .padding(.horizontal, 15)
+                    .padding(.bottom, 15)
+            }
+        }
+        .fixedSize()
+    }
 }
