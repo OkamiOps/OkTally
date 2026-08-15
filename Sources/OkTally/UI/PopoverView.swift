@@ -141,8 +141,13 @@ struct PopoverContentView: View {
         return best
     }
 
-    /// Volume de hoje + 14 dias, antes das cotas. A cota continua tendo prioridade: se o
-    /// espaço apertar, esta faixa é a primeira a sair.
+    /// Volume de hoje + 14 dias, antes das cotas. Fix round 1: a versão original (label +
+    /// valor empilhados + gráfico de 28pt) tomava ~100pt e derrubava uma linha inteira de
+    /// cards de cota para fora dos 480pt visíveis sem rolar — reprovada em revisão. Esta
+    /// versão é uma única linha (~30pt): rótulo, valor e o gráfico viram um traço fino de
+    /// fundo em vez de um bloco com altura própria. A cota continua tendo prioridade: se
+    /// mesmo compacta ela ainda espremer os cards, o caminho é remover a faixa, não a
+    /// cota — ver relatório da task.
     @ViewBuilder private var todayStrip: some View {
         if let analytics = appModel.aggregatedAnalytics {
             let totals = TrendSeries.dailyTotals(analytics, lastDays: 14)
@@ -150,17 +155,17 @@ struct PopoverContentView: View {
             let today = totals.last?.tokens ?? 0
             if today > 0 {
                 HStack(spacing: Theme.Space.sm) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        SectionHeader(L("Hoje"))
-                        Text(TokenAnalytics.compactTokens(today))
-                            .font(Theme.Font.metricMedium)
-                            .monospacedDigit()
-                    }
+                    Text(L("Hoje"))
+                        .font(Theme.Font.label)
+                        .foregroundStyle(.secondary)
+                    Text(TokenAnalytics.compactTokens(today))
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
                     DailyTokensAreaChart(points: totals, color: .accentColor)
-                        .frame(height: 28)
+                        .frame(height: 18)
                 }
                 .padding(.horizontal, Theme.Space.md)
-                .padding(.vertical, Theme.Space.sm)
+                .padding(.vertical, Theme.Space.xs)
                 .glassChrome()
                 .padding(.horizontal, Theme.Space.md)
             }
