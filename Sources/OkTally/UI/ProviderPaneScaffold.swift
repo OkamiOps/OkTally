@@ -91,5 +91,10 @@ struct AutoSaveField: View {
         .onChange(of: focused) { _, isFocused in
             if !isFocused { onCommit() }
         }
+        // Trocar de painel pela sidebar destrói o campo sem garantia de que o `@FocusState`
+        // emita `false` antes: sem isto, digitar a chave e clicar direto no próximo
+        // provedor perderia a edição sem aviso. É seguro repetir o commit porque
+        // `sanitized` recusa vazio e inalterado.
+        .onDisappear(perform: onCommit)
     }
 }

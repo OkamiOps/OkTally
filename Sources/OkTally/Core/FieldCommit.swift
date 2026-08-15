@@ -31,7 +31,10 @@ enum FieldCommit {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: ",", with: ".")
         guard normalized.lowercased().contains("e") == false else { return nil }
-        guard let value = Double(normalized), value >= 0 else { return nil }
+        // `Double("inf")` devolve +infinito e `Double("nan")` devolve NaN — ambos passariam
+        // por um `>= 0` ingênuo (o NaN não, mas por acidente) e virariam uma franquia
+        // infinita gravada em disco.
+        guard let value = Double(normalized), value.isFinite, value >= 0 else { return nil }
         return value
     }
 }

@@ -40,6 +40,12 @@ final class FieldCommitTests: XCTestCase {
         XCTAssertNil(FieldCommit.amount("abc"))
         XCTAssertNil(FieldCommit.amount(""))
         XCTAssertNil(FieldCommit.amount("1e3"))
+        // "inf" e "nan" passam por `Double(_:)` — infinito gravado em disco viraria uma
+        // barra de cota sem sentido.
+        XCTAssertNil(FieldCommit.amount("inf"))
+        XCTAssertNil(FieldCommit.amount("-inf"))
+        XCTAssertNil(FieldCommit.amount("nan"))
+        XCTAssertNil(FieldCommit.lowBalance("inf"))
     }
 
     func test_lowBalanceRejectsScientificNotation() {

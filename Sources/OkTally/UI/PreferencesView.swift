@@ -150,7 +150,7 @@ struct PreferencesView: View {
     @ViewBuilder private var detailContent: some View {
         switch pane {
         case .general:
-            EmptyView() // tratado antes do ScrollView, por rolar sozinho
+            EmptyView() // tratado no branch anterior do detalhe, por rolar sozinho
         case .provider("claude"): claudePane
         case .provider("codex"): codexPane
         case .provider("supergrok"): superGrokPane
@@ -158,18 +158,34 @@ struct PreferencesView: View {
         case .provider("copilot"): copilotPane
         case .provider("antigravity"): antigravityPane
         case .provider("openrouter"):
-            keyPane("openrouter", text: $openRouterAPIKey, status: openRouterAPIKey.isEmpty ? L("Sem chave") : L("Chave salva")) {
-                saveSecret("OpenRouter", previous: preferencesStore.openRouterAPIKey ?? "", raw: $openRouterAPIKey) {
-                    try preferencesStore.setOpenRouterAPIKey($0)
-                }
-            }
+            keyPane("openrouter",
+                    text: $openRouterAPIKey,
+                    status: openRouterAPIKey.isEmpty ? L("Sem chave") : L("Chave salva"),
+                    save: {
+                        saveSecret("OpenRouter", previous: preferencesStore.openRouterAPIKey ?? "", raw: $openRouterAPIKey) {
+                            try preferencesStore.setOpenRouterAPIKey($0)
+                        }
+                    },
+                    remove: {
+                        removeSecret("OpenRouter", raw: $openRouterAPIKey) {
+                            try preferencesStore.setOpenRouterAPIKey(nil)
+                        }
+                    })
         case .provider("minimax"): minimaxPane
         case .provider("opencode"):
-            keyPane("opencode", text: $openCodeAPIKey, status: openCodeAPIKey.isEmpty ? L("Sem chave") : L("Chave salva")) {
-                saveSecret("OpenCode", previous: preferencesStore.openCodeAPIKey ?? "", raw: $openCodeAPIKey) {
-                    try preferencesStore.setOpenCodeAPIKey($0)
-                }
-            }
+            keyPane("opencode",
+                    text: $openCodeAPIKey,
+                    status: openCodeAPIKey.isEmpty ? L("Sem chave") : L("Chave salva"),
+                    save: {
+                        saveSecret("OpenCode", previous: preferencesStore.openCodeAPIKey ?? "", raw: $openCodeAPIKey) {
+                            try preferencesStore.setOpenCodeAPIKey($0)
+                        }
+                    },
+                    remove: {
+                        removeSecret("OpenCode", raw: $openCodeAPIKey) {
+                            try preferencesStore.setOpenCodeAPIKey(nil)
+                        }
+                    })
         case .provider("mimo"): mimoPane
         case .provider: EmptyView()
         }
@@ -314,7 +330,11 @@ struct PreferencesView: View {
     /// Painel de chave de API. O botão "Salvar" saiu: o campo grava no Enter e ao perder
     /// o foco, e `saveSecret` recusa campo vazio ou inalterado para que um blur acidental
     /// não apague a chave que está no Keychain.
-    private func keyPane(_ id: String, text: Binding<String>, status: String, save: @escaping () -> Void) -> some View {
+    private func keyPane(_ id: String,
+                         text: Binding<String>,
+                         status: String,
+                         save: @escaping () -> Void,
+                         remove: @escaping () -> Void) -> some View {
         ProviderPaneScaffold(
             providerId: id,
             name: providerName(id),
@@ -322,8 +342,18 @@ struct PreferencesView: View {
         ) {
             AutoSaveField(placeholder: "API Key", text: text, isSecure: true, onCommit: save)
                 .frame(maxWidth: 380)
+            // Esvaziar o campo não apaga nada (é a regra do auto-save), então revogar a
+            // credencial precisa de um gesto deliberado — sem este botão não haveria
+            // nenhuma forma de desconectar o provedor pelo app.
+            if !text.wrappedValue.isEmpty {
+                HStack {
+                    Button(L("Remover chave"), role: .destructive, action: remove)
+                        .buttonStyle(.bordered)
+                    Spacer()
+                }
+            }
         } details: {
-            Text(L("A chave fica no Keychain desta máquina, nunca em disco."))
+            Text(L("A chave fica no Keychain desta máquina, nunca em texto puro."))
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -336,6 +366,17 @@ struct PreferencesView: View {
         ) {
             AutoSaveField(placeholder: "API Key", text: $minimaxAPIKey, isSecure: true, onCommit: saveMinimaxKey)
                 .frame(maxWidth: 380)
+            if !minimaxAPIKey.isEmpty {
+                HStack {
+                    Button(L("Remover chave"), role: .destructive) {
+                        removeSecret("MiniMax", raw: $minimaxAPIKey) {
+                            try preferencesStore.setMinimaxAPIKey(nil)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    Spacer()
+                }
+            }
             Toggle(L("Região China (minimaxi.com)"), isOn: $minimaxRegionIsChina)
                 .toggleStyle(.switch)
                 .controlSize(.small)
@@ -345,7 +386,7 @@ struct PreferencesView: View {
                     preferencesStore.minimaxRegionRaw = isChina ? "china" : "global"
                 }
         } details: {
-            Text(L("A chave fica no Keychain desta máquina, nunca em disco."))
+            Text(L("A chave fica no Keychain desta máquina, nunca em texto puro."))
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -402,8 +443,9 @@ struct PreferencesView: View {
         minimaxAPIKey = preferencesStore.minimaxAPIKey ?? ""
         minimaxRegionIsChina = preferencesStore.minimaxRegionRaw == "china"
         openCodeAPIKey = preferencesStore.openCodeAPIKey ?? ""
-        mimoAllowance = preferencesStore.mimoMonthlyAllowanceCredits.map { formatCredits($0) } ?? ""
-        mimoUsed = formatCredits(preferencesStore.mimoUsedCredits)
+        mimoAllowance = preferencesStore.mimoMonthlyAllowanceCredits
+            .map { PreferencesFieldCommit.credits($0) } ?? ""
+        mimoUsed = PreferencesFieldCommit.credits(preferencesStore.mimoUsedCredits)
         claudeLoggedIn = tokenStore.load(providerId: "claude") != nil
         codexLoggedIn = tokenStore.load(providerId: "codex") != nil
         superGrokLoggedIn = tokenStore.load(providerId: SuperGrokOAuth.providerId) != nil
@@ -466,20 +508,34 @@ struct PreferencesView: View {
 
     // MARK: - Auto-save
 
-    /// Gravação de credencial com as guardas que o botão "Salvar" dava de graça: campo
-    /// vazio ou inalterado não escreve nada (um blur acidental não pode apagar a chave do
-    /// Keychain) e o campo volta ao valor salvo, para não parecer que a chave sumiu.
+    /// Gravação de credencial. A decisão inteira ("grava ou ignora, e para que texto o
+    /// campo volta") vive no `PreferencesFieldCommit`, que é coberto por teste; aqui só
+    /// sobra o efeito colateral no Keychain.
     private func saveSecret(_ label: String, previous: String, raw: Binding<String>, _ save: (String) throws -> Void) {
-        guard let value = FieldCommit.sanitized(raw.wrappedValue, previous: previous) else {
-            raw.wrappedValue = previous
-            return
+        switch PreferencesFieldCommit.secret(raw: raw.wrappedValue, saved: previous) {
+        case .ignored(let restore):
+            raw.wrappedValue = restore
+        case .commit(let value, let display):
+            do {
+                try save(value)
+                raw.wrappedValue = display
+                statusMessage = LF("%@: chave salva.", label)
+            } catch {
+                statusMessage = LF("%@: falha ao salvar chave — %@", label, error.localizedDescription)
+            }
         }
+    }
+
+    /// Revogação explícita — o único caminho que apaga credencial. Fica atrás de um botão
+    /// justamente porque a regra do auto-save recusa campo vazio: um clique consciente não
+    /// é a mesma coisa que um blur acidental.
+    private func removeSecret(_ label: String, raw: Binding<String>, _ delete: () throws -> Void) {
         do {
-            try save(value)
-            raw.wrappedValue = value
-            statusMessage = LF("%@: chave salva.", label)
+            try delete()
+            raw.wrappedValue = ""
+            statusMessage = LF("%@: chave removida.", label)
         } catch {
-            statusMessage = LF("%@: falha ao salvar chave — %@", label, error.localizedDescription)
+            statusMessage = LF("%@: falha ao remover chave — %@", label, error.localizedDescription)
         }
     }
 
@@ -490,36 +546,27 @@ struct PreferencesView: View {
     }
 
     /// Franquia do MiMo. Antes isto era `= Double(mimoAllowance)` atrás de um botão: com o
-    /// campo vazio virava `nil` e apagava a franquia salva. Com auto-save no blur seria um
-    /// acidente de um clique, então passa pelo `FieldCommit` como as chaves.
+    /// campo vazio virava `nil` e apagava a franquia salva.
     private func saveMiMoAllowance() {
-        let stored = preferencesStore.mimoMonthlyAllowanceCredits.map { formatCredits($0) } ?? ""
-        guard let candidate = FieldCommit.sanitized(mimoAllowance, previous: stored),
-              let value = FieldCommit.lowBalance(candidate) else {
-            mimoAllowance = stored
-            return
+        switch PreferencesFieldCommit.allowance(raw: mimoAllowance,
+                                                saved: preferencesStore.mimoMonthlyAllowanceCredits) {
+        case .ignored(let restore):
+            mimoAllowance = restore
+        case .commit(let value, let display):
+            preferencesStore.mimoMonthlyAllowanceCredits = value
+            mimoAllowance = display
         }
-        preferencesStore.mimoMonthlyAllowanceCredits = value
-        mimoAllowance = formatCredits(value)
     }
 
-    /// Créditos usados. Zero é legítimo aqui (mês recém-começado), então usa `amount` em
-    /// vez de `lowBalance` — mas campo vazio continua sendo "não mexi nisso".
+    /// Créditos usados. Zero é legítimo aqui (mês recém-começado).
     private func saveMiMoUsed() {
-        let stored = formatCredits(preferencesStore.mimoUsedCredits)
-        guard let candidate = FieldCommit.sanitized(mimoUsed, previous: stored),
-              let value = FieldCommit.amount(candidate) else {
-            mimoUsed = stored
-            return
+        switch PreferencesFieldCommit.used(raw: mimoUsed, saved: preferencesStore.mimoUsedCredits) {
+        case .ignored(let restore):
+            mimoUsed = restore
+        case .commit(let value, let display):
+            preferencesStore.mimoUsedCredits = value
+            mimoUsed = display
         }
-        preferencesStore.mimoUsedCredits = value
-        mimoUsed = formatCredits(value)
-    }
-
-    /// Mesma renderização em `load()` e nos commits — se divergissem, "valor inalterado"
-    /// nunca bateria e todo blur gravaria de novo.
-    private func formatCredits(_ value: Double) -> String {
-        String(value)
     }
 
     private func logout(providerId: String, flag: Binding<Bool>) {
