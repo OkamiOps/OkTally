@@ -10,6 +10,8 @@ mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
 cp "$BUILD_DIR/$APP_NAME" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 cp Resources/Info.plist "$APP_BUNDLE/Contents/Info.plist"
+# Ícone da marca: sem isto o app aparece sem logo no Launchpad e no Finder.
+cp Resources/AppIcon.icns "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 # Ad-hoc signatures change identity every build, which invalidates Keychain ACLs and
 # forces relogin (Claude/Codex/SuperGrok/API keys) after each update. Prefer a stable
 # identity: a local self-signed "OkTally Dev" first, then a real Apple Development
