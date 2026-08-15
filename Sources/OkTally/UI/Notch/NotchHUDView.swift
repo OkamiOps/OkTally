@@ -12,6 +12,10 @@ enum NotchPalette {
     static let ink = Theme.Brand.offWhite
     static let inkDim = Theme.Brand.offWhite.opacity(0.62)
     static let track = Color.white.opacity(0.14)
+    /// Trilho da barra da borda: mais forte que o das listas de propósito. Num traço de
+    /// 2,5pt sobre preto sólido, 0.14 de branco desaparece — e um trilho invisível
+    /// devolve o problema que a barra veio resolver.
+    static let ruleTrack = Color.white.opacity(0.22)
 }
 
 // MARK: - Fechado
@@ -32,10 +36,19 @@ struct NotchCompactLeading: View {
     /// conteúdo UMA vez, na criação do painel, então um valor passado por cópia
     /// congelaria no número do momento em que o app subiu.
     @ObservedObject var appModel: AppModel
+    @ObservedObject private var span = NotchBarSpan.shared
 
     var body: some View {
         NotchWing(segment: appModel.notchWings.leading, showsBrandFallback: true)
-            .notchBottomRule(appModel.notchBottomBar, growingToward: .leading)
+            .measuringNotchSpan(\.leading)
+            // A asa esquerda é quem desenha a barra INTEIRA — ver `NotchBottomRule`.
+            .overlay(alignment: .bottomLeading) {
+                NotchBottomRule(bar: appModel.notchBottomBar, totalWidth: span.width)
+                    // Alinhada pelo fundo do chip e EMPURRADA para dentro do respiro que
+                    // o pacote reserva embaixo — sem o deslocamento a barra sublinharia o
+                    // chip, no meio do painel, em vez de correr pela borda de baixo dele.
+                    .offset(y: NotchBottomRule.reservedBottomInset - NotchBottomRule.bottomGap)
+            }
     }
 }
 
@@ -44,42 +57,74 @@ struct NotchCompactTrailing: View {
 
     var body: some View {
         NotchWing(segment: appModel.notchWings.trailing, showsBrandFallback: false)
-            .notchBottomRule(appModel.notchBottomBar, growingToward: .trailing)
+            // Não desenha barra nenhuma: só informa onde o painel TERMINA.
+            .measuringNotchSpan(\.trailing)
     }
 }
 
 // MARK: - Barra inferior
 
+/// Onde a barra contínua começa e onde ela termina, em coordenadas da janela.
+///
+/// O painel fechado chega até nós PARTIDO EM DOIS: `DynamicNotchKit` desenha a asa
+/// esquerda e a direita como views irmãs, com o recorte entre elas, e nenhuma das duas
+/// sabe onde a outra acaba. Uma barra de ponta a ponta precisa exatamente dessa medida —
+/// daí esta caixinha compartilhada, onde cada asa publica o próprio retângulo. Um objeto
+/// único (e não um valor injetado) porque existe UM painel de notch no app inteiro, e
+/// porque as duas asas são criadas por closures independentes do controller: não há
+/// ancestral nosso onde uma `PreferenceKey` pudesse se encontrar.
+@MainActor
+final class NotchBarSpan: ObservableObject {
+    static let shared = NotchBarSpan()
+
+    @Published var leading: CGRect = .zero
+    @Published var trailing: CGRect = .zero
+
+    /// Da ponta esquerda do painel até a direita. Zero enquanto ninguém mediu — e aí a
+    /// barra simplesmente não é desenhada, em vez de aparecer com um comprimento chutado.
+    var width: CGFloat { max(0, trailing.maxX - leading.minX) }
+}
+
+private extension View {
+    /// Publica o retângulo desta asa na caixinha compartilhada, sem mexer no layout.
+    func measuringNotchSpan(_ key: ReferenceWritableKeyPath<NotchBarSpan, CGRect>) -> some View {
+        onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
+            NotchBarSpan.shared[keyPath: key] = rect
+        }
+    }
+}
+
 /// A barra fina da borda inferior do notch fechado — um traço de 2,5pt com o quanto RESTA
 /// da cota escolhida (`notchBottomSlot`; em automático, a mais apertada).
 ///
-/// ## Por que ela é desenhada em duas metades
+/// ## Uma barra só, de ponta a ponta
 ///
-/// A região central do painel fechado é o recorte físico: ali não existe pixel nenhum,
-/// e nada desenhado no meio apareceria. Os únicos lugares com tela são as duas asas. A
-/// barra é, portanto, uma linha só que o recorte INTERROMPE — e as duas metades precisam
-/// ler como uma coisa, não como dois medidores diferentes.
+/// A primeira versão eram duas metades ancoradas no recorte, crescendo para fora. O dono
+/// olhou e recusou: "eu queria uma barra contínua que fosse de um lado pro outro pra eu
+/// ter noção do gasto, não uma pequena de cada lado". Ele tem razão — duas metades
+/// espelhadas obrigam o olho a somar dois comprimentos para estimar um número só, que é
+/// exatamente o trabalho que uma barra de progresso existe para poupar.
 ///
-/// O que faz isso funcionar é a âncora: as duas metades crescem A PARTIR do recorte para
-/// fora, com o mesmo valor. Cheia, o traço acompanha toda a borda inferior das duas asas;
-/// esvaziando, ele recua simetricamente na direção do recorte. Simetria é o que o olho
-/// usa para decidir que são um elemento só.
+/// Então é UMA barra, preenchida da esquerda para a direita como qualquer barra de
+/// progresso, correndo por baixo do recorte. Ela é desenhada inteira pela asa ESQUERDA,
+/// num `overlay` mais largo que a própria asa: overlay não é recortado pelos limites de
+/// quem o hospeda, e o painel inteiro já é mascarado pela `NotchShape` do pacote — o que
+/// passar da borda é aparado por ela, não por nós.
 ///
-/// Cheia = FOLGA, igual a `QuotaCapsuleBar` e a todo o resto do app. Espelhar a âncora
-/// não inverte essa leitura — só troca de que lado o preenchimento começa.
+/// Cheia = FOLGA, igual a `QuotaCapsuleBar` e a todo o resto do app: a barra esvazia
+/// conforme o uso é consumido, que é o "quanto falta pra acabar" que foi pedido.
 ///
 /// Cor pela escala de perigo (`QuotaPresentation.color(remaining:)`) e não pela
-/// identidade do provedor: num traço de 2,5pt a cor não consegue fazer as duas coisas, e
-/// quem é o provedor já está dito pelo chip logo acima, com muito mais clareza do que uma
-/// linha de dois pixels conseguiria. O que só a barra pode dizer é "está apertando".
+/// identidade do provedor: ela ACOMPANHA o valor caindo — ciano com folga, Heat Orange
+/// apertando, Neon Magenta no crítico. Num traço de 2,5pt a cor não consegue fazer as
+/// duas coisas, e quem é o provedor já está dito pelo chip logo acima.
 ///
 /// No estado EXPANDIDO ela não existe: o `DynamicNotchKit` só desenha as asas em
-/// `.compact`, e o painel aberto já traz uma `QuotaCapsuleBar` própria por linha — repetir
-/// o mesmo número num traço no rodapé seria ruído.
+/// `.compact`, e o painel aberto já traz uma `QuotaCapsuleBar` própria por linha.
 struct NotchBottomRule: View {
     let bar: NotchBottomBar?
-    /// Para que lado esta metade cresce (o lado OPOSTO ao recorte).
-    let growingToward: HorizontalEdge
+    /// Largura do painel fechado inteiro, medida pelas duas asas (`NotchBarSpan`).
+    let totalWidth: CGFloat
 
     /// Traço, não layout: a espessura é a identidade visual do elemento, do mesmo jeito
     /// que a de um `Divider`. Abaixo de 2pt ela some no antialiasing da borda curva do
@@ -96,34 +141,18 @@ struct NotchBottomRule: View {
     static let bottomGap: CGFloat = 3
 
     var body: some View {
-        if let bar {
-            GeometryReader { geo in
-                ZStack(alignment: growingToward == .leading ? .trailing : .leading) {
-                    Capsule().fill(NotchPalette.track)
-                    Capsule()
-                        .fill(QuotaPresentation.color(remaining: bar.remaining))
-                        .frame(width: max(Self.thickness,
-                                          geo.size.width * Theme.clampFraction(bar.remaining)))
-                        .animation(.easeInOut(duration: 0.3), value: bar.remaining)
-                }
+        if let bar, totalWidth > 0 {
+            ZStack(alignment: .leading) {
+                // O trilho precisa ser VISÍVEL: sem ele não há proporção, e sem proporção
+                // não dá para ver o quanto falta — só o quanto sobrou em pixels soltos.
+                Capsule().fill(NotchPalette.ruleTrack)
+                Capsule()
+                    .fill(QuotaPresentation.color(remaining: bar.remaining))
+                    .frame(width: max(Self.thickness,
+                                      totalWidth * Theme.clampFraction(bar.remaining)))
+                    .animation(.easeInOut(duration: 0.3), value: bar.remaining)
             }
-            .frame(height: Self.thickness)
-        }
-    }
-}
-
-private extension View {
-    /// Pendura a metade da barra na borda inferior da asa, sem alterar a altura dela: a
-    /// asa continua medindo o que o chip mede, e o traço mora no respiro que o pacote já
-    /// reserva embaixo. Um `overlay` (e não um `VStack`) justamente para o texto do chip
-    /// não subir 2,5pt quando a barra aparece.
-    func notchBottomRule(_ bar: NotchBottomBar?, growingToward edge: HorizontalEdge) -> some View {
-        overlay(alignment: .bottom) {
-            NotchBottomRule(bar: bar, growingToward: edge)
-                // Alinhada pelo fundo do chip e EMPURRADA para dentro do respiro do
-                // pacote — sem o deslocamento a barra sublinharia o chip, no meio do
-                // painel, em vez de correr pela borda de baixo dele.
-                .offset(y: NotchBottomRule.reservedBottomInset - NotchBottomRule.bottomGap)
+            .frame(width: totalWidth, height: Self.thickness)
         }
     }
 }

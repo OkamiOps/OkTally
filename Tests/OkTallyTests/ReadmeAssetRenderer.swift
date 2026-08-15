@@ -493,7 +493,8 @@ private enum NotchMetrics {
     }
 }
 
-/// Fechado: marca de um lado do recorte, tracinhos do outro.
+/// Fechado: uma cota de cada lado do recorte e a barra contínua correndo pela borda de
+/// baixo, de ponta a ponta (a asa esquerda desenha a barra inteira — ver `NotchBottomRule`).
 private struct NotchCollapsedMock: View {
     @ObservedObject var appModel: AppModel
 
