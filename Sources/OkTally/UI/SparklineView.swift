@@ -8,6 +8,10 @@ struct SparklineView: View {
     /// Used-percent values (0…100) in chronological order.
     let points: [Double]
     let color: Color
+    /// Altura da faixa. Um gráfico sem eixos não tem altura intrínseca — alguém precisa
+    /// propor uma — mas 20pt esmagavam a área preenchida a ponto de a curva virar um
+    /// risco reto. Dentro do bloco-herói ela ganha mais espaço e volta a ter forma.
+    var height: CGFloat = 20
 
     var body: some View {
         GeometryReader { geo in
@@ -22,7 +26,7 @@ struct SparklineView: View {
                 .animation(.easeInOut(duration: 0.3), value: points)
             }
         }
-        .frame(height: 20)
+        .frame(height: height)
     }
 
     private func normalizedPoints(in size: CGSize) -> [CGPoint] {

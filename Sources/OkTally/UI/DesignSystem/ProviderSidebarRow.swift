@@ -3,6 +3,12 @@ import SwiftUI
 
 /// Linha de sidebar com chip colorido e ponto de status. Estava duplicada entre
 /// `MainWindowView.sidebarRow` e `PreferencesView.sidebarRow`.
+///
+/// O chip passou a ser o `IconChip` saturado do resto do app. A versão anterior era a
+/// única sobrevivente do desenho antigo — `color.opacity(0.16)` com o glifo na própria
+/// cor —, que contra a base quase preta vira um retângulo cinza com uma letra apagada.
+/// Como a sidebar é a primeira coisa que se vê nas duas janelas, era justamente ali que
+/// a identidade dos dez provedores estava sendo jogada fora.
 struct ProviderSidebarRow: View {
     let providerId: String
     let name: String
@@ -11,14 +17,9 @@ struct ProviderSidebarRow: View {
 
     var body: some View {
         HStack(spacing: Theme.Space.sm) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(ProviderPalette.color(for: providerId).opacity(0.16))
-                    .frame(width: 20, height: 20)
-                Text(ProviderPalette.glyph(forId: providerId))
-                    .font(.system(size: 10, weight: .heavy))
-                    .foregroundStyle(ProviderPalette.color(for: providerId))
-            }
+            IconChip(glyph: ProviderPalette.glyph(forId: providerId),
+                     color: ProviderPalette.color(for: providerId),
+                     size: 18)
             Text(name).font(Theme.Font.body)
             Spacer()
             Circle()

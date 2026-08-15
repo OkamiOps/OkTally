@@ -228,3 +228,19 @@
 "%@: chave removida." = "%@: key removed.";
 "%@: falha ao remover chave — %@" = "%@: failed to remove key — %@";
 "A chave fica no Keychain desta máquina, nunca em texto puro." = "The key lives in this machine's Keychain, never in plain text.";
+
+/* Redesenho da Visão geral e do detalhe do provedor */
+"Sob pressão" = "Under pressure";
+"Em observação" = "Watch list";
+"Com folga" = "Comfortable";
+"Saldos" = "Balances";
+"Todas as cotas" = "All quotas";
+"Outras janelas" = "Other windows";
+"Resumo" = "Summary";
+"Janelas" = "Windows";
+"Custo 30d" = "Cost 30d";
+"Estatísticas de uso" = "Usage statistics";
+"versão %@" = "version %@";
+"Na barra de menu" = "In the menu bar";
+"automático" = "automatic";
+"Limiares" = "Thresholds";

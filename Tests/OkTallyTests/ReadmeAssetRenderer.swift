@@ -22,6 +22,7 @@
 // de sistema e não é a base quase preta da identidade.
 import XCTest
 import SwiftUI
+import AppKit
 @testable import OkTally
 
 @MainActor
@@ -59,6 +60,15 @@ final class ReadmeAssetRenderer: XCTestCase {
                         .padding(24)
                         .frame(width: 760),
                       to: "overview.png", scheme: scheme)
+            try write(view: OverviewScreen(
+                            appModel: model,
+                            entries: model.orderedProviders.compactMap { provider in
+                                model.snapshotsByProvider[provider.id].map { (provider, $0) }
+                            },
+                            onSelect: { _ in })
+                        .padding(24)
+                        .frame(width: 500),
+                      to: "overview-narrow.png", scheme: scheme)
             // `isStaticRender` troca só os controles do AppKit por um desenho equivalente:
             // o `ImageRenderer` não sabe desenhá-los e o PNG sairia com um retângulo amarelo
             // no lugar do seletor de janela. O app não liga essa flag.
@@ -81,10 +91,121 @@ final class ReadmeAssetRenderer: XCTestCase {
                         .frame(width: 760),
                       to: "provider-detail.png", scheme: scheme)
         }
-        // O `ProviderPaneScaffold` ficou de fora de propósito: o `ImageRenderer` não
-        // desenha `Form` agrupado (o mesmo motivo pelo qual o pane Geral também não é
-        // renderizado aqui) e o PNG saía inteiramente em branco. Os painéis de provider
-        // se conferem abrindo o app.
+        // Preferências vai por outro caminho: `ImageRenderer` NÃO desenha `Form`
+        // agrupado (sai em branco), então a tela nunca pôde ser olhada sem abrir o app —
+        // e foi exatamente por isso que ela atravessou o redesenho inteiro sem ser
+        // redesenhada. `NSHostingView` + `cacheDisplay(in:to:)` desenha pelo caminho do
+        // AppKit, que sabe desenhar `Form`, `TextField` e `Toggle`.
+        try await renderPreferences()
+    }
+
+    /// Os dois estados que valem a pena olhar: o painel Geral (que abre por padrão) e um
+    /// painel de provedor (a casca que vale para os dez).
+    private func renderPreferences() async throws {
+        let model = try await demoPreferencesModel()
+        let store = PreferencesStore(store: FakeKeyValueStore(), secretStore: FakeSecretStore())
+        let tokens = FakeTokenStore()
+        let oauth = FakeOAuthManaging()
+        let view = PreferencesView(
+            preferencesStore: store,
+            tokenStore: tokens,
+            browserFlow: BrowserOAuthFlow(manager: oauth),
+            manualFlow: ManualCodeOAuthFlow(manager: oauth),
+            deviceCodeFlow: DeviceCodeFlow(tokenStore: tokens),
+            mimoSessionStore: FakePreferencesMiMoSession(),
+            appModel: model,
+            onImportClaudeLegacy: { true }
+        )
+        try writeHosted(view: view, to: "preferences-general.png", size: CGSize(width: 760, height: 600))
+        model.requestedPreferencesPane = "claude"
+        try writeHosted(view: view, to: "preferences-provider.png", size: CGSize(width: 760, height: 600))
+        // Um painel de CHAVE também: é o que tem campo, botão destrutivo e rodapé, ou
+        // seja, o painel com mais conteúdo dos dez.
+        model.requestedPreferencesPane = "openrouter"
+        try writeHosted(view: view, to: "preferences-key.png", size: CGSize(width: 760, height: 600))
+    }
+
+    /// Modelo mínimo para a tela de Preferências: um snapshot por provedor (o cabeçalho
+    /// mostra a cota) e três pinos (a faixa da marca mostra a barra de menu de verdade).
+    private func demoPreferencesModel() async throws -> AppModel {
+        let now = Date()
+        let registry = PluginRegistry()
+        let claude = FakeUsageProvider(id: "claude", displayName: "Claude Code")
+        claude.snapshotToReturn = ProviderSnapshot(
+            providerId: "claude", fetchedAt: now,
+            quotas: [QuotaWindow(label: "5h", shape: .rollingWindow(
+                used: 22, limit: 100, windowStart: now, resetAt: now.addingTimeInterval(9700)))],
+            usageDetail: nil)
+        registry.register(claude)
+        for (id, name) in [("codex", "Codex"), ("supergrok", "SuperGrok"), ("cursor", "Cursor"),
+                           ("copilot", "GitHub Copilot"), ("antigravity", "Antigravity"),
+                           ("openrouter", "OpenRouter"), ("minimax", "MiniMax"),
+                           ("opencode", "OpenCode"), ("mimo", "MiMo")] {
+            let provider = FakeUsageProvider(id: id, displayName: name)
+            // O OpenRouter entra com FALHA de propósito: o painel de chave é justamente
+            // onde a tela mais precisa funcionar, e o estado de erro nunca tinha sido
+            // olhado em Preferências.
+            if id == "openrouter" {
+                provider.errorToThrow = DemoProviderError(
+                    message: L("Configure sua chave de API do OpenRouter nas Preferências."))
+            }
+            // Todo provider precisa de snapshot: o dublê força-desembrulha o valor no
+            // `fetch`, e um provedor sem resposta derruba o processo de teste inteiro.
+            provider.snapshotToReturn = ProviderSnapshot(
+                providerId: id, fetchedAt: now,
+                quotas: [QuotaWindow(label: "weekly", shape: .rollingWindow(
+                    used: 41, limit: 100, windowStart: now,
+                    resetAt: now.addingTimeInterval(3 * 24 * 3600)))],
+                usageDetail: nil)
+            registry.register(provider)
+        }
+        let defaults = UserDefaults(suiteName: "PreferencesAssetRenderer")!
+        defaults.removePersistentDomain(forName: "PreferencesAssetRenderer")
+        let storage = FakeStorage()
+        let scheduler = Scheduler(registry: registry, storage: storage,
+                                  alertEngine: AlertEngine(),
+                                  alertDispatcher: AlertDispatcher(sender: FakeNotificationSender()))
+        let model = AppModel(registry: registry, scheduler: scheduler, storage: storage, defaults: defaults)
+        await model.refreshNow()
+        try await Task.sleep(nanoseconds: 200_000_000)
+        model.menuBarPins = [
+            AppModel.MenuBarPin(providerId: "claude", windowLabel: "5h"),
+            AppModel.MenuBarPin(providerId: "codex", windowLabel: "semanal")
+        ]
+        return model
+    }
+
+    /// Render pelo AppKit. `ImageRenderer` (SwiftUI puro) devolve branco para `Form`
+    /// agrupado; `cacheDisplay` desenha a árvore de `NSView` real, com os controles do
+    /// sistema no lugar. A janela é obrigatória: fora dela o `NSHostingView` não recebe
+    /// a aparência nem completa o layout dos controles.
+    private func writeHosted<V: View>(view: V, to filename: String, size: CGSize) throws {
+        let host = NSHostingView(rootView: AnyView(view.environment(\.colorScheme, .dark)))
+        host.frame = CGRect(origin: .zero, size: size)
+        let window = NSWindow(contentRect: host.frame,
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = host
+        // Sem trazer a janela para a tela, a sidebar do `NavigationSplitView` (que é um
+        // `NSVisualEffectView`) nunca desenha e sai como um retângulo branco no PNG.
+        window.makeKeyAndOrderFront(nil)
+        window.layoutIfNeeded()
+        // O `Form` só termina o layout depois de um giro de run loop: sem isto o PNG sai
+        // com a sidebar desenhada e o detalhe ainda vazio.
+        RunLoop.current.run(until: Date().addingTimeInterval(1.2))
+        guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
+            XCTFail("sem bitmap para \(filename)")
+            return
+        }
+        window.display()
+        host.cacheDisplay(in: host.bounds, to: rep)
+        guard let png = rep.representation(using: .png, properties: [:]) else {
+            XCTFail("falha ao codificar \(filename)")
+            return
+        }
+        let url = assetsDir.appendingPathComponent(filename)
+        try png.write(to: url)
+        print("wrote \(url.path)")
     }
 
     /// Deterministic pseudo-random daily buckets (LCG) so re-rendering doesn't churn
@@ -169,6 +290,13 @@ final class ReadmeAssetRenderer: XCTestCase {
         ]
         for (id, name, quotas) in entries {
             let provider = FakeUsageProvider(id: id, displayName: name)
+            // O OpenRouter entra com FALHA de propósito: o painel de chave é justamente
+            // onde a tela mais precisa funcionar, e o estado de erro nunca tinha sido
+            // olhado em Preferências.
+            if id == "openrouter" {
+                provider.errorToThrow = DemoProviderError(
+                    message: L("Configure sua chave de API do OpenRouter nas Preferências."))
+            }
             provider.snapshotToReturn = ProviderSnapshot(providerId: id, fetchedAt: now, quotas: quotas, usageDetail: nil)
             registry.register(provider)
         }
@@ -273,4 +401,25 @@ final class ReadmeAssetRenderer: XCTestCase {
         try png.write(to: url)
         print("wrote \(url.path)")
     }
+}
+
+
+// MARK: - Dublês só para a tela de Preferências
+
+private final class FakeTokenStore: TokenStoring {
+    private var tokens: [String: OAuthToken] = [
+        "claude": OAuthToken(accessToken: "demo", refreshToken: nil, expiresAt: nil, extra: [:])
+    ]
+    func save(_ token: OAuthToken, providerId: String) throws { tokens[providerId] = token }
+    func load(providerId: String) -> OAuthToken? { tokens[providerId] }
+    func delete(providerId: String) throws { tokens[providerId] = nil }
+}
+
+private struct DemoProviderError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
+private final class FakePreferencesMiMoSession: MiMoSessionStoring {
+    var isLoggedIn = false
 }

@@ -56,8 +56,8 @@ struct PreferencesView: View {
                                 .font(.system(size: 9, weight: .bold))
                                 .monospacedDigit()
                                 .padding(.horizontal, 5).padding(.vertical, 1)
-                                .background(Capsule().fill(Color.orange.opacity(0.25)))
-                                .foregroundStyle(.orange)
+                                .background(Capsule().fill(Theme.Brand.heatOrange.opacity(0.25)))
+                                .foregroundStyle(Theme.Brand.heatOrange)
                                 .help(L("Contas com credencial expirada"))
                         }
                     }
@@ -116,8 +116,10 @@ struct PreferencesView: View {
     /// reconectar (token presente mas o último fetch falhou por credencial), cinza não
     /// configurado.
     private func statusDotColor(_ id: String) -> Color {
-        if appModel.errorKindByProvider[id] == .needsReauth { return .orange }
-        return isConfigured(id) ? .green : Color.secondary.opacity(0.35)
+        if appModel.errorKindByProvider[id] == .needsReauth { return Theme.Brand.heatOrange }
+        // Verde da marca-vizinha, não `.green` do sistema: contra a base quase preta o
+        // verde do sistema é a única cor da tela que não veio da paleta.
+        return isConfigured(id) ? Color(hex: 0x35D07F) : Color.secondary.opacity(0.35)
     }
 
     private func statusDotHelp(_ id: String) -> String {
@@ -196,6 +198,8 @@ struct PreferencesView: View {
     private var claudePane: some View {
         ProviderPaneScaffold(
             providerId: "claude",
+            snapshot: appModel.snapshotsByProvider["claude"],
+            problem: appModel.errorsByProvider["claude"],
             name: providerName("claude"),
             status: claudeLoggedIn ? .connected(L("Conectado")) : .notConfigured(L("Não conectado"))
         ) {
@@ -241,6 +245,8 @@ struct PreferencesView: View {
     private var codexPane: some View {
         ProviderPaneScaffold(
             providerId: "codex",
+            snapshot: appModel.snapshotsByProvider["codex"],
+            problem: appModel.errorsByProvider["codex"],
             name: providerName("codex"),
             status: codexLoggedIn ? .connected(L("Conectado")) : .notConfigured(L("Não conectado"))
         ) {
@@ -259,6 +265,8 @@ struct PreferencesView: View {
     private var superGrokPane: some View {
         ProviderPaneScaffold(
             providerId: "supergrok",
+            snapshot: appModel.snapshotsByProvider["supergrok"],
+            problem: appModel.errorsByProvider["supergrok"],
             name: providerName("supergrok"),
             status: superGrokLoggedIn ? .connected(L("Conectado")) : .notConfigured(L("Não conectado"))
         ) {
@@ -285,6 +293,8 @@ struct PreferencesView: View {
     private var cursorPane: some View {
         ProviderPaneScaffold(
             providerId: "cursor",
+            snapshot: appModel.snapshotsByProvider["cursor"],
+            problem: appModel.errorsByProvider["cursor"],
             name: providerName("cursor"),
             status: .connected(L("Lê a sessão do app Cursor automaticamente"))
         ) {
@@ -299,6 +309,8 @@ struct PreferencesView: View {
         let detected = CopilotTokenReader().firstToken() != nil
         return ProviderPaneScaffold(
             providerId: "copilot",
+            snapshot: appModel.snapshotsByProvider["copilot"],
+            problem: appModel.errorsByProvider["copilot"],
             name: providerName("copilot"),
             status: detected
                 ? .connected(L("Login do Copilot/gh CLI detectado"))
@@ -315,6 +327,8 @@ struct PreferencesView: View {
         let detected = AntigravityTokenReader().readTokens() != nil
         return ProviderPaneScaffold(
             providerId: "antigravity",
+            snapshot: appModel.snapshotsByProvider["antigravity"],
+            problem: appModel.errorsByProvider["antigravity"],
             name: providerName("antigravity"),
             status: detected
                 ? .connected(L("Login do IDE Antigravity detectado"))
@@ -337,6 +351,8 @@ struct PreferencesView: View {
                          remove: @escaping () -> Void) -> some View {
         ProviderPaneScaffold(
             providerId: id,
+            snapshot: appModel.snapshotsByProvider[id],
+            problem: appModel.errorsByProvider[id],
             name: providerName(id),
             status: hasSavedKey ? .connected(L("Chave salva")) : .notConfigured(L("Sem chave"))
         ) {
@@ -367,6 +383,8 @@ struct PreferencesView: View {
         let hasSavedKey = !(preferencesStore.minimaxAPIKey ?? "").isEmpty
         return ProviderPaneScaffold(
             providerId: "minimax",
+            snapshot: appModel.snapshotsByProvider["minimax"],
+            problem: appModel.errorsByProvider["minimax"],
             name: providerName("minimax"),
             status: hasSavedKey ? .connected(L("Chave salva")) : .notConfigured(L("Sem chave"))
         ) {
@@ -400,6 +418,8 @@ struct PreferencesView: View {
     private var mimoPane: some View {
         ProviderPaneScaffold(
             providerId: "mimo",
+            snapshot: appModel.snapshotsByProvider["mimo"],
+            problem: appModel.errorsByProvider["mimo"],
             name: providerName("mimo"),
             status: mimoLoggedIn
                 ? .connected(L("Sessão ativa — uso automático"))
@@ -605,95 +625,146 @@ private struct GeneralPane: View {
     private static let percentOptions: [Double] = [0.5, 0.7, 0.8, 0.9, 1.0]
 
     var body: some View {
-        Form {
-            Section(L("Barra de menu")) {
-                if appModel.menuBarPins.isEmpty {
-                    Text(L("Nada fixado — a barra mostra automaticamente a janela mais próxima do limite."))
+        VStack(spacing: 0) {
+            brandHero
+            Form {
+                Section(L("Barra de menu")) {
+                    if appModel.menuBarPins.isEmpty {
+                        Text(L("Nada fixado — a barra mostra automaticamente a janela mais próxima do limite."))
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        ForEach(appModel.menuBarPins, id: \.stored) { pin in
+                            pinRow(pin)
+                        }
+                    }
+                    // Sem pinos não há o que arrastar — o rodapé não promete reordenação.
+                    Text(appModel.menuBarPins.isEmpty
+                         ? L("Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra.")
+                         : L("Arraste para reordenar. Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra."))
                         .font(.caption).foregroundStyle(.secondary)
-                } else {
-                    ForEach(appModel.menuBarPins, id: \.stored) { pin in
-                        pinRow(pin)
-                    }
                 }
-                // Sem pinos não há o que arrastar — o rodapé não promete reordenação.
-                Text(appModel.menuBarPins.isEmpty
-                     ? L("Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra.")
-                     : L("Arraste para reordenar. Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra."))
-                    .font(.caption).foregroundStyle(.secondary)
-            }
 
-            // Quem impede o bug é o `.disabled` estar no `Group` dos detalhes, mais
-            // abaixo — não esta separação. Ela é uma segunda barreira barata: enquanto o
-            // toggle mestre estiver sozinho na própria `Section`, um `.disabled` aplicado
-            // à seção dos detalhes não tem como alcançá-lo.
-            //
-            // O bug que isso previne: `.disabled(true)` propaga para os descendentes e
-            // nenhum filho pode revertê-lo. Quando o toggle dividia a seção com os
-            // detalhes, desligar as notificações apagava o próprio switch e não havia como
-            // religá-las pela UI — só por `defaults write`.
-            Section(L("Alertas")) {
-                Toggle(L("Notificações de cota"), isOn: $alertsEnabled)
-                    .toggleStyle(.switch)
-                    .onChange(of: alertsEnabled) { _, newValue in
-                        preferencesStore.alertsEnabled = newValue
-                    }
-            }
+                // Quem impede o bug é o `.disabled` estar no `Group` dos detalhes, mais
+                // abaixo — não esta separação. Ela é uma segunda barreira barata: enquanto o
+                // toggle mestre estiver sozinho na própria `Section`, um `.disabled` aplicado
+                // à seção dos detalhes não tem como alcançá-lo.
+                //
+                // O bug que isso previne: `.disabled(true)` propaga para os descendentes e
+                // nenhum filho pode revertê-lo. Quando o toggle dividia a seção com os
+                // detalhes, desligar as notificações apagava o próprio switch e não havia como
+                // religá-las pela UI — só por `defaults write`.
+                Section(L("Alertas")) {
+                    Toggle(L("Notificações de cota"), isOn: $alertsEnabled)
+                        .toggleStyle(.switch)
+                        .onChange(of: alertsEnabled) { _, newValue in
+                            preferencesStore.alertsEnabled = newValue
+                        }
+                }
 
-            Section {
-                Group {
-                    VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                        Text(L("Avisar quando o uso cruzar:")).font(.caption).foregroundStyle(.secondary)
+                // Com título próprio: sem ele esta era a única seção sem cabeçalho da
+                // tela e parecia um cartão órfão colado embaixo de "Alertas".
+                Section(L("Limiares")) {
+                    Group {
+                        VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                            Text(L("Avisar quando o uso cruzar:")).font(.caption).foregroundStyle(.secondary)
+                            HStack(spacing: Theme.Space.sm) {
+                                ForEach(Self.percentOptions, id: \.self) { step in
+                                    thresholdChip(step)
+                                }
+                            }
+                        }
                         HStack(spacing: Theme.Space.sm) {
-                            ForEach(Self.percentOptions, id: \.self) { step in
-                                thresholdChip(step)
+                            Text(L("Saldo baixo (USD):")).font(.caption).foregroundStyle(.secondary)
+                            TextField("5.00", text: $lowBalanceText)
+                                .textFieldStyle(.roundedBorder)
+                                // Dentro do `Form` o título do TextField vira rótulo visível, e o
+                                // "5.00" aparecia duas vezes ao lado do campo.
+                                .labelsHidden()
+                                .frame(width: 80)
+                                .focused($lowBalanceFocused)
+                                .onSubmit(saveLowBalance)
+                                .onChange(of: lowBalanceFocused) { _, focused in
+                                    // Auto-save também ao perder o foco: o botão "Salvar" saiu.
+                                    if !focused { saveLowBalance() }
+                                }
+                            if savedFlash {
+                                Text(L("Salvo")).font(.caption).foregroundStyle(Theme.accent).transition(.opacity)
                             }
                         }
                     }
-                    HStack(spacing: Theme.Space.sm) {
-                        Text(L("Saldo baixo (USD):")).font(.caption).foregroundStyle(.secondary)
-                        TextField("5.00", text: $lowBalanceText)
-                            .textFieldStyle(.roundedBorder)
-                            // Dentro do `Form` o título do TextField vira rótulo visível, e o
-                            // "5.00" aparecia duas vezes ao lado do campo.
-                            .labelsHidden()
-                            .frame(width: 80)
-                            .focused($lowBalanceFocused)
-                            .onSubmit(saveLowBalance)
-                            .onChange(of: lowBalanceFocused) { _, focused in
-                                // Auto-save também ao perder o foco: o botão "Salvar" saiu.
-                                if !focused { saveLowBalance() }
-                            }
-                        if savedFlash {
-                            Text(L("Salvo")).font(.caption).foregroundStyle(.green).transition(.opacity)
-                        }
-                    }
+                    .disabled(!alertsEnabled)
+                    .opacity(alertsEnabled ? 1 : 0.5)
                 }
-                .disabled(!alertsEnabled)
-                .opacity(alertsEnabled ? 1 : 0.5)
-            }
 
-            Section(L("Atualizações")) {
-                if let update = appModel.availableUpdate {
-                    HStack(spacing: Theme.Space.sm) {
-                        Label(LF("Versão %@ disponível", update.version), systemImage: "arrow.down.circle.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.orange)
-                        Spacer()
-                        Button(L("Abrir no GitHub")) { NSWorkspace.shared.open(update.url) }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
+                Section(L("Atualizações")) {
+                    if let update = appModel.availableUpdate {
+                        HStack(spacing: Theme.Space.sm) {
+                            Label(LF("Versão %@ disponível", update.version), systemImage: "arrow.down.circle.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Theme.Brand.heatOrange)
+                            Spacer()
+                            Button(L("Abrir no GitHub")) { NSWorkspace.shared.open(update.url) }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                        }
+                    } else {
+                        Text(L("Você está na versão mais recente."))
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-                } else {
-                    Text(L("Você está na versão mais recente."))
-                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
+            .formStyle(.grouped)
         }
-        .formStyle(.grouped)
         .onAppear {
             alertsEnabled = preferencesStore.alertsEnabled
             percentSteps = Set(preferencesStore.alertPercentThresholds)
             lowBalanceText = String(format: "%.2f", preferencesStore.alertLowBalanceThreshold)
+        }
+    }
+
+    /// A faixa de destaque do painel Geral — e o único lugar do app onde a MARCA aparece
+    /// escrita. O símbolo já estava no header do popover; a grafia não estava em lugar
+    /// nenhum, e Preferências é onde ela cabe sem virar enfeite: é a tela do app sobre o
+    /// app.
+    ///
+    /// Do lado direito, o conteúdo que faz a faixa valer mais que um logo: a barra de
+    /// menu DE VERDADE, renderizada com os mesmos segmentos que o `MenuBarExtra` usa.
+    /// A primeira seção do `Form` logo abaixo é justamente a que configura esses pinos —
+    /// agora se vê o efeito da configuração na mesma tela em que ela é feita.
+    private var brandHero: some View {
+        PaneHero(tint: Theme.accent) {
+            HStack(spacing: Theme.Space.md) {
+                BrandMark(size: 30)
+                    .foregroundStyle(Theme.onHero)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("OkTally")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(Theme.onHero)
+                    Text(LF("versão %@", appModel.currentVersion))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Theme.onHero.opacity(0.75))
+                }
+            }
+        } trailing: {
+            VStack(alignment: .trailing, spacing: 5) {
+                SectionHeader(L("Na barra de menu"), onHero: true)
+                // Pílula quase preta: é a cor real da barra de menu no escuro, e sem ela
+                // os números coloridos ficariam sobre ciano saturado, que é exatamente o
+                // fundo que eles nunca têm.
+                Group {
+                    if appModel.menuBarSegments.isEmpty {
+                        Text(L("automático"))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Theme.onHero.opacity(0.75))
+                    } else {
+                        MenuBarLabelView(segments: appModel.menuBarSegments)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
+                    .fill(Color.black.opacity(0.55)))
+            }
         }
     }
 
@@ -705,12 +776,9 @@ private struct GeneralPane: View {
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 9))
                 .foregroundStyle(.tertiary)
-            Text(ProviderPalette.glyph(forId: pin.providerId))
-                .font(.system(size: 10, weight: .heavy))
-                .foregroundStyle(ProviderPalette.color(for: pin.providerId))
-                .padding(.horizontal, 5).padding(.vertical, 2)
-                .background(RoundedRectangle(cornerRadius: 5)
-                    .fill(ProviderPalette.color(for: pin.providerId).opacity(0.16)))
+            IconChip(glyph: ProviderPalette.glyph(forId: pin.providerId),
+                     color: ProviderPalette.color(for: pin.providerId),
+                     size: 18)
             Text("\(providerName(pin.providerId)) · \(WindowLabelCatalog.displayLabel(pin.windowLabel))")
                 .font(Theme.Font.body)
             Spacer()

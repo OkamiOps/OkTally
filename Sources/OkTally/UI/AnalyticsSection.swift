@@ -45,20 +45,38 @@ struct AnalyticsSection: View {
         }
         let dayValue: (String) -> String = { key in
             guard let tokens = analytics.tokens(onDay: key), tokens > 0 else { return L("Sem dados") }
-            return LF("%@ tokens", TokenAnalytics.compactTokens(tokens))
+            // Só o número: o rótulo da célula já diz "Hoje"/"Ontem", e a unidade repetida
+            // em três dos oito valores fazia a coluna inteira crescer e desalinhar.
+            return TokenAnalytics.compactTokens(tokens)
         }
         chips.append((dayValue(today), L("Hoje")))
         chips.append((dayValue(yesterday), L("Ontem")))
         if analytics.tokensLast30Days > 0 {
-            chips.append((LF("%@ tokens", TokenAnalytics.compactTokens(analytics.tokensLast30Days)), L("Últimos 30 dias")))
+            chips.append((TokenAnalytics.compactTokens(analytics.tokensLast30Days), L("Últimos 30 dias")))
         }
-        // `StatTile` no lugar dos oito chips iguais desenhados à mão: mesma tipografia,
-        // mesmo raio e mesma borda da aba Análise, que renderiza logo acima nesta janela.
-        // `fillsHeight` faz todos os tiles de uma linha terminarem juntos.
-        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: Theme.Space.sm)],
-                         alignment: .leading, spacing: Theme.Space.sm) {
-            ForEach(chips, id: \.1) { value, caption in
-                StatTile(title: caption, value: value, fillsHeight: true)
+        // UM objeto, não oito. A versão anterior era uma `LazyVGrid` de oito
+        // `StatTile` idênticos: oito retângulos com borda, oito superfícies, nenhum
+        // dominando — a crítica exata que o dono fez desta tela. Agora as estatísticas
+        // são o CONTEÚDO de um único card, em pares rótulo/número; a hierarquia da tela
+        // fica com o bloco-herói lá em cima, que é onde ela deve estar.
+        return DashboardCard {
+            VStack(alignment: .leading, spacing: Theme.Space.md) {
+                SectionHeader(L("Estatísticas de uso"))
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: Theme.Space.lg,
+                                             alignment: .leading)],
+                          alignment: .leading, spacing: Theme.Space.md) {
+                    ForEach(chips, id: \.1) { value, caption in
+                        VStack(alignment: .leading, spacing: 1) {
+                            SectionHeader(caption)
+                            Text(value)
+                                .font(.system(size: 19, weight: .bold, design: .rounded))
+                                .monospacedDigit()
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
             }
         }
     }

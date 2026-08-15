@@ -2,8 +2,8 @@
 import SwiftUI
 
 /// Janela "Visão geral" — o popover continua sendo o vistaço rápido; aqui há espaço para
-/// hierarquia bottleneck-first por provider e histórico de 7 dias (estrutura inspirada na
-/// janela do Quotio: NavigationSplitView com sidebar de páginas).
+/// hierarquia bottleneck-first e histórico de 7 dias (estrutura inspirada na janela do
+/// Quotio: NavigationSplitView com sidebar de páginas).
 struct MainWindowView: View {
     @ObservedObject var appModel: AppModel
 
@@ -86,21 +86,44 @@ struct MainWindowView: View {
 
 // MARK: - Visão geral
 
+/// Duas peças, nesta ordem: o bloco de destaque (o gargalo, com o resumo numérico ao
+/// lado) e a tabela densa com TODAS as janelas agrupadas por pressão.
+///
+/// A grade de cards por provedor saiu inteira. Ela era a origem do defeito de rodapé
+/// irregular — cards de conteúdo desigual numa `LazyVGrid`, com buracos de até 200pt ao
+/// lado de quem só tem saldo — e nenhuma variação de alinhamento resolvia isso sem
+/// esticar card vazio, que já foi reprovado quatro vezes. Trocando a unidade da tela
+/// (provedor → janela de cota), o problema some por construção e a tela ganha densidade:
+/// o que antes eram ~1900pt de rolagem viram ~600pt com a mesma informação.
 struct OverviewScreen: View {
     @ObservedObject var appModel: AppModel
     let entries: [(provider: UsageProvider, snapshot: ProviderSnapshot)]
     let onSelect: (String) -> Void
 
-    /// Pior janela entre todos os provedores, para o KPI de "gargalo".
-    private var worstOverall: (provider: UsageProvider, window: QuotaWindow, remaining: Double)? {
-        var best: (UsageProvider, QuotaWindow, Double)?
-        for (provider, snapshot) in entries {
-            for window in snapshot.quotas {
-                guard let remaining = QuotaPresentation.remainingFraction(window.shape) else { continue }
-                if best == nil || remaining < best!.2 { best = (provider, window, remaining) }
+    /// Todas as janelas de todos os provedores, achatadas — a matéria-prima da tabela.
+    private var allWindows: [QuotaLedgerEntry] {
+        entries.flatMap { entry in
+            entry.snapshot.quotas.map {
+                QuotaLedgerEntry(providerId: entry.provider.id,
+                                 providerName: entry.provider.displayName,
+                                 window: $0)
             }
         }
-        return best
+    }
+
+    /// Pior janela entre todos os provedores, para o bloco de destaque.
+    private var worstOverall: QuotaLedgerEntry? {
+        allWindows
+            .filter { $0.remaining != nil }
+            .min { ($0.remaining ?? 1) < ($1.remaining ?? 1) }
+    }
+
+    /// A tabela não repete a janela que já está gigante no destaque — é a mesma regra do
+    /// popover, onde o provedor do herói não volta como linha. Repetir o número seria o
+    /// mesmo defeito do card do OpenRouter, que imprimia "19.82 USD" duas vezes.
+    private var ledgerEntries: [QuotaLedgerEntry] {
+        guard let worstOverall else { return allWindows }
+        return allWindows.filter { $0.id != worstOverall.id }
     }
 
     private var totalEstimatedCost: Decimal? {
@@ -110,218 +133,133 @@ struct OverviewScreen: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: Theme.Space.lg) {
             if entries.isEmpty {
                 Text(L("Nenhum provedor com dados ainda — conecte contas nas Preferências."))
                     .foregroundStyle(.secondary)
             } else {
-                kpiRow
-                // `LazyVGrid` centraliza os itens de uma linha verticalmente — o
-                // `alignment:` do próprio grid só governa o eixo horizontal. Quem ancora
-                // no topo é o `alignment:` do `GridItem`, que vale para a célula. Os cards
-                // ficam com a altura do próprio conteúdo: esticar todos até o mais alto
-                // encheria de vazio o card de quem só tem saldo (OpenRouter), o mesmo
-                // "enchimento" que o dono reprovou no herói da aba Análise.
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 14, alignment: .top)], alignment: .leading, spacing: 14) {
-                    ForEach(entries, id: \.provider.id) { entry in
-                        ProviderOverviewCard(
-                            provider: entry.provider,
-                            snapshot: entry.snapshot,
-                            history: appModel.history(providerId: entry.provider.id, hours: 7 * 24),
-                            estimatedCost: appModel.estimatedCostByProvider[entry.provider.id]
-                        )
-                        .onTapGesture { onSelect(entry.provider.id) }
-                    }
-                }
+                heroRow
+                QuotaLedgerCard(title: L("Todas as cotas"),
+                                entries: ledgerEntries,
+                                onSelect: onSelect)
             }
         }
     }
 
-    private var kpiRow: some View {
-        HStack(spacing: Theme.Space.md) {
-            StatTile(title: L("Provedores"), value: "\(entries.count)", caption: L("com dados"),
-                     fillsHeight: true)
-                .frame(width: 150)
+    /// O destaque e o resumo dividem a primeira faixa. O resumo à direita existe porque o
+    /// destaque sozinho, na largura inteira da janela, deixava um vazio de uns 300pt no
+    /// meio dele — e a versão anterior tapava esse vazio com um tile "Provedores 8" que
+    /// era 90% ar. Aqui a coluna estreita carrega quatro números de verdade.
+    private var heroRow: some View {
+        HStack(alignment: .top, spacing: Theme.Space.md) {
             if let worst = worstOverall {
-                bottleneckTile(worst)
+                bottleneckHero(worst)
             }
-            if let cost = totalEstimatedCost {
-                StatTile(
-                    title: L("Custo estimado"),
-                    value: "$" + String(format: "%.2f", (cost as NSDecimalNumber).doubleValue),
-                    caption: L("últimos 30 dias"),
-                    fillsHeight: true
-                )
-                .frame(width: 170)
-            }
+            summaryCard
+                .frame(width: 190)
         }
-        // Rodapés alinhados: os tiles laterais esticam até a altura do herói em vez de
-        // flutuarem no topo de uma linha alta, e a linha inteira mede o conteúdo mais
-        // alto — sem nenhuma altura fixa.
+        // Rodapés alinhados nesta faixa (e só nela): os dois blocos têm conteúdo de
+        // volume comparável, então terminar juntos é honesto — nenhum dos dois ganha
+        // altura de enchimento.
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// O único bloco de gradiente saturado da tela. Antes era um `StatTile` limitado a
-    /// 300pt: o número ficava num canto, sobrava metade da largura da janela vazia à
-    /// direita dele e a linha de KPIs terminava no meio do nada. Agora ele ocupa a folga
-    /// e a preenche com conteúdo de verdade — quem, qual janela, quanto falta e quando
-    /// volta — que é o que justifica ser o maior bloco da tela.
-    private func bottleneckTile(_ worst: (provider: UsageProvider, window: QuotaWindow, remaining: Double)) -> some View {
-        let danger = QuotaPresentation.color(remaining: worst.remaining)
-        return VStack(alignment: .leading, spacing: Theme.Space.sm) {
+    /// O único bloco de gradiente saturado da tela.
+    ///
+    /// Ordem de leitura de cima para baixo, como nas referências: rótulo minúsculo em
+    /// caixa alta, quem, número gigante, barra. A primeira versão jogava o rótulo
+    /// "GARGALO" no canto superior DIREITO e deixava uns 300pt de gradiente vazio entre
+    /// o número e a contagem regressiva — o bloco tinha cor, mas não tinha composição.
+    private func bottleneckHero(_ worst: QuotaLedgerEntry) -> some View {
+        let remaining = worst.remaining ?? 0
+        let danger = QuotaPresentation.color(remaining: remaining)
+        return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: Theme.Space.sm) {
                 SectionHeader(L("Gargalo"), onHero: true)
-                Spacer(minLength: 0)
+                Spacer(minLength: Theme.Space.sm)
                 if let reset = QuotaPresentation.resetText(worst.window.shape) {
                     Text(reset)
-                        .font(.system(size: 10))
-                        .foregroundStyle(Theme.onHero.opacity(0.8))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.onHero.opacity(0.85))
+                        .lineLimit(1)
                 }
             }
+            HStack(spacing: Theme.Space.sm) {
+                // Chip em off-white com o glifo na cor do bloco, como no herói do
+                // popover: chip colorido sobre gradiente colorido vira mancha.
+                Text(ProviderPalette.glyph(forId: worst.providerId))
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundStyle(danger)
+                    .frame(width: 22, height: 22)
+                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Theme.onHero))
+                Text(worst.providerName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.onHero)
+                Text("· " + WindowLabelCatalog.displayLabel(worst.window.label))
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.onHero.opacity(0.78))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
             HStack(alignment: .lastTextBaseline, spacing: Theme.Space.sm) {
-                Text("\(Int((worst.remaining * 100).rounded()))%")
+                Text("\(Int((remaining * 100).rounded()))%")
                     .font(Theme.Font.metricHero)
                     .monospacedDigit()
                     .foregroundStyle(Theme.onHero)
                 Text(L("restante"))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Theme.onHero.opacity(0.8))
-                Spacer(minLength: Theme.Space.sm)
-                Text("\(worst.provider.displayName) · \(WindowLabelCatalog.displayLabel(worst.window.label))")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Theme.onHero.opacity(0.85))
-                    .lineLimit(1)
+                Spacer(minLength: 0)
             }
             Spacer(minLength: 0)
-            QuotaCapsuleBar(remaining: worst.remaining, color: Theme.onHero, height: 8,
+            QuotaCapsuleBar(remaining: remaining, color: Theme.onHero, height: 8,
                             track: AnyShapeStyle(Color.black.opacity(0.22)))
         }
         .padding(Theme.Space.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .heroSurface(danger)
     }
-}
 
-/// Card bottleneck-first (padrão do Quotio): a pior janela vira bloco-herói com fundo
-/// tingido; as demais colapsam em linhas compactas.
-private struct ProviderOverviewCard: View {
-    let provider: UsageProvider
-    let snapshot: ProviderSnapshot
-    let history: [UsageHistoryPoint]
-    let estimatedCost: Decimal?
-
-    private var identity: Color { ProviderPalette.color(for: provider.id) }
-
-    private var worst: (window: QuotaWindow, remaining: Double)? {
-        snapshot.quotas
-            .compactMap { w in QuotaPresentation.remainingFraction(w.shape).map { (w, $0) } }
-            .min { $0.1 < $1.1 }
-    }
-
-    /// Janelas que NÃO estão no bloco de destaque do card. Quando não há percentual
-    /// (OpenRouter só tem saldo), `worst` é nil e o filtro por rótulo não removia nada —
-    /// o card imprimia "19.82 USD" grande e repetia "Balance 19.82 USD" na linha de baixo.
-    /// Sem `worst`, quem ocupa o destaque é a primeira janela, então é ela que sai daqui.
-    private var others: [QuotaWindow] {
-        guard let worst else { return Array(snapshot.quotas.dropFirst()) }
-        return snapshot.quotas.filter { $0.label != worst.window.label }
-    }
-
-    var body: some View {
-        DashboardCard {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    IconChip(glyph: ProviderPalette.glyph(for: provider), color: identity)
-                    Text(provider.displayName).font(.system(size: 13, weight: .semibold))
-                    if let plan = snapshot.planLabel {
-                        PlanBadge(label: plan)
-                    }
-                    Spacer(minLength: 0)
-                }
-                if let worst {
-                    heroBlock(worst.window, remaining: worst.remaining)
-                } else if let balance = snapshot.quotas.first {
-                    Text(QuotaPresentation.remainingText(balance.shape))
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                }
-                ForEach(others, id: \.label) { window in
-                    compactRow(window)
-                }
-                if history.count >= 2 {
-                    SparklineView(points: history.map(\.usedPercent), color: identity)
-                    .help(L("Uso nos últimos 7 dias"))
-                }
-                if let estimatedCost {
-                    Label(LF("Custo est.: $%@ (30d)", String(format: "%.2f", (estimatedCost as NSDecimalNumber).doubleValue)),
-                          systemImage: "dollarsign.circle")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
+    /// Quatro números que, isolados, viravam um card vazio cada um.
+    private var summaryCard: some View {
+        let tight = allWindows.filter { $0.pressure == .tight }.count
+        return DashboardCard(padding: Theme.Space.md, fillsHeight: true) {
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                SectionHeader(L("Resumo"))
+                summaryLine(L("Provedores"), "\(entries.count)")
+                summaryLine(L("Janelas"), "\(allWindows.count)")
+                summaryLine(L("Sob pressão"), "\(tight)",
+                            tint: tight > 0 ? Theme.Brand.neonMagenta : nil)
+                if let cost = totalEstimatedCost {
+                    summaryLine(L("Custo 30d"),
+                                "$" + String(format: "%.2f", (cost as NSDecimalNumber).doubleValue))
                 }
             }
         }
     }
 
-    private func heroBlock(_ window: QuotaWindow, remaining: Double) -> some View {
-        let danger = QuotaPresentation.color(remaining: remaining)
-        // Rótulo minúsculo em caixa alta + número grande, na mesma proporção do herói do
-        // popover. A versão anterior era uma linha só, com o rótulo e o valor no mesmo
-        // corpo de 11–15pt: sem contraste de tamanho, o card não tinha o que ler primeiro
-        // e virava uma tabela.
-        return VStack(alignment: .leading, spacing: 6) {
-            SectionHeader(WindowLabelCatalog.displayLabel(window.label))
-            HStack(alignment: .lastTextBaseline, spacing: 5) {
-                Text(QuotaPresentation.remainingValueText(window.shape))
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(QuotaPresentation.valueColor(remaining: remaining))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                Text(L("restante"))
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 4)
-                if let reset = QuotaPresentation.resetCompactText(window.shape) {
-                    Text(reset)
-                        .font(.system(size: 10))
-                        .monospacedDigit()
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            // Barra na cor de IDENTIDADE (o número já carrega o perigo): é o que dá à
-            // grade a paleta categórica das referências em vez de oito barras iguais.
-            QuotaCapsuleBar(remaining: remaining, color: identity, height: 8)
-        }
-        .padding(Theme.Space.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
-            .fill(Theme.surfaceRaised()))
-    }
-
-    private func compactRow(_ window: QuotaWindow) -> some View {
-        let remaining = QuotaPresentation.remainingFraction(window.shape)
-        return HStack(spacing: 6) {
-            Text(WindowLabelCatalog.displayLabel(window.label))
-                .font(.system(size: 10))
+    private func summaryLine(_ label: String, _ value: String, tint: Color? = nil) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label)
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-            Spacer(minLength: 4)
-            if let reset = QuotaPresentation.resetText(window.shape) {
-                Text(reset).font(.system(size: 9)).foregroundStyle(.tertiary)
-            }
-            Text(QuotaPresentation.remainingText(window.shape))
-                .font(.system(size: 10, weight: .semibold))
+            Spacer(minLength: Theme.Space.sm)
+            Text(value)
+                .font(.system(size: 17, weight: .bold, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(QuotaPresentation.valueColor(remaining: remaining))
+                .foregroundStyle(tint ?? .primary)
         }
     }
 }
 
 // MARK: - Detalhe por provedor
 
-/// Internal (não `private`) só para o `ReadmeAssetRenderer` conseguir fotografar a tela —
-/// era a única das quatro sem PNG, e justamente a que carregava a inconsistência de
-/// cromo com a aba Análise.
+/// Internal (não `private`) só para o `ReadmeAssetRenderer` conseguir fotografar a tela.
+///
+/// Redesenhada: antes eram oito tiles idênticos com nada dominando — a tela mais fraca do
+/// app. Agora tem um herói (a janela mais crítica DESTE provedor, com o gráfico de 7 dias
+/// dentro dele), a tabela densa das outras janelas e as estatísticas num objeto só.
 struct ProviderDetailScreen: View {
     @ObservedObject var appModel: AppModel
     let provider: UsageProvider
@@ -329,49 +267,35 @@ struct ProviderDetailScreen: View {
 
     private var identity: Color { ProviderPalette.color(for: provider.id) }
 
+    private var windows: [QuotaLedgerEntry] {
+        snapshot.quotas.map {
+            QuotaLedgerEntry(providerId: provider.id, providerName: provider.displayName, window: $0)
+        }
+    }
+
+    /// A janela mais apertada deste provedor. Sem percentual em nenhuma (saldo puro), o
+    /// herói é a primeira janela mesmo assim — um saldo é o número dominante da tela de
+    /// quem só tem saldo.
+    private var hero: QuotaLedgerEntry? {
+        windows.filter { $0.remaining != nil }.min { ($0.remaining ?? 1) < ($1.remaining ?? 1) }
+            ?? windows.first
+    }
+
+    private var others: [QuotaLedgerEntry] {
+        guard let hero else { return [] }
+        return windows.filter { $0.id != hero.id }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 10) {
-                IconChip(glyph: ProviderPalette.glyph(for: provider), color: identity, size: 36)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(provider.displayName).font(.system(size: 16, weight: .bold))
-                        if let plan = snapshot.planLabel {
-                            PlanBadge(label: plan)
-                        }
-                    }
-                    Text(LF("Atualizado %@", Self.relative(snapshot.fetchedAt)))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
+        VStack(alignment: .leading, spacing: Theme.Space.lg) {
+            header
             if let message = appModel.errorsByProvider[provider.id] {
                 Label(message, systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(Theme.Brand.heatOrange)
             }
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(snapshot.quotas, id: \.label) { window in
-                    windowRow(window)
-                }
-            }
-            let history = appModel.history(providerId: provider.id, hours: 7 * 24)
-            if history.count >= 2 {
-                DashboardCard {
-                    VStack(alignment: .leading, spacing: 6) {
-                        SectionHeader(L("Uso — 7 dias"))
-                        // Sem `.frame(height:)`: a `SparklineView` já fixa 20pt por
-                        // dentro, e os 48 viravam 28pt de vazio — além de divergir do
-                        // card da Visão geral, que não passa frame nenhum.
-                        SparklineView(points: history.map(\.usedPercent), color: identity)
-                    }
-                }
-            }
-            if let cost = appModel.estimatedCostByProvider[provider.id] {
-                Label(LF("Custo estimado: $%@ nos últimos 30 dias", String(format: "%.2f", (cost as NSDecimalNumber).doubleValue)),
-                      systemImage: "dollarsign.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            if let hero {
+                heroBlock(hero)
             }
             if appModel.analyticsLoaders[provider.id] != nil {
                 if let analytics = appModel.analyticsByProvider[provider.id] {
@@ -388,29 +312,106 @@ struct ProviderDetailScreen: View {
         }
     }
 
-    private func windowRow(_ window: QuotaWindow) -> some View {
-        let remaining = QuotaPresentation.remainingFraction(window.shape)
-        let danger = QuotaPresentation.color(remaining: remaining)
-        return DashboardCard(padding: Theme.Space.md) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(WindowLabelCatalog.displayLabel(window.label))
-                        .font(.system(size: 12, weight: .medium))
-                    Spacer()
-                    if let reset = QuotaPresentation.resetText(window.shape) {
-                        Text(reset).font(.system(size: 10)).foregroundStyle(.tertiary)
+    private var header: some View {
+        HStack(spacing: Theme.Space.md) {
+            IconChip(glyph: ProviderPalette.glyph(for: provider), color: identity, size: 34)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: Theme.Space.sm) {
+                    Text(provider.displayName).font(.system(size: 17, weight: .bold))
+                    if let plan = snapshot.planLabel {
+                        PlanBadge(label: plan)
                     }
-                    Text(QuotaPresentation.remainingText(window.shape))
-                        .font(.system(size: 12, weight: .bold))
+                }
+                Text(LF("Atualizado %@", Self.relative(snapshot.fetchedAt)))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            // O custo estimado era um `Label` solto no meio da coluna; como par
+            // rótulo/número no cabeçalho ele vira informação de contexto e para de
+            // parecer um rodapé perdido.
+            if let cost = appModel.estimatedCostByProvider[provider.id] {
+                VStack(alignment: .trailing, spacing: 1) {
+                    SectionHeader(L("Custo 30d"))
+                    Text("$" + String(format: "%.2f", (cost as NSDecimalNumber).doubleValue))
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(QuotaPresentation.valueColor(remaining: remaining))
                 }
-                if let remaining {
-                    QuotaCapsuleBar(remaining: remaining, color: identity, height: 8)
-                }
+                .help(L("Estimativa: tokens locais × tabela de preços do OpenRouter"))
             }
         }
-        .help(window.shape.isEstimated ? L("Estimativa local, não confirmada pelo provedor") : "")
+    }
+
+    /// O bloco dominante da tela.
+    ///
+    /// A cor é a IDENTIDADE do provedor, não a escala de perigo — é a página dele, e com
+    /// a escala de perigo toda página folgada saía ciano, inclusive a do Claude, que é
+    /// terracota em todo o resto do app. A exceção é a cota apertada: aí o bloco vira
+    /// magenta e a página inteira grita, que é justamente quando a cor semântica vale
+    /// mais que a identidade.
+    private func heroBlock(_ entry: QuotaLedgerEntry) -> some View {
+        let remaining = entry.remaining
+        let tight = (remaining ?? 1) <= 0.30
+        let tint = tight ? QuotaPresentation.color(remaining: remaining) : identity
+        let history = appModel.history(providerId: provider.id, hours: 7 * 24)
+        return VStack(alignment: .leading, spacing: 6) {
+            SectionHeader(WindowLabelCatalog.displayLabel(entry.window.label), onHero: true)
+            // Número à esquerda, contagem regressiva à direita, na MESMA linha: com o
+            // "reseta em" lá em cima o corpo do bloco ficava com o lado direito vazio.
+            HStack(alignment: .lastTextBaseline, spacing: Theme.Space.sm) {
+                Text(QuotaPresentation.remainingValueText(entry.window.shape))
+                    .font(Theme.Font.metricHero)
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.onHero)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                if remaining != nil {
+                    Text(L("restante"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.onHero.opacity(0.8))
+                }
+                Spacer(minLength: Theme.Space.sm)
+                if let reset = QuotaPresentation.resetText(entry.window.shape) {
+                    Text(reset)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.onHero.opacity(0.85))
+                        .lineLimit(1)
+                }
+            }
+            if let remaining {
+                QuotaCapsuleBar(remaining: remaining, color: Theme.onHero, height: 8,
+                                track: AnyShapeStyle(Color.black.opacity(0.22)))
+            }
+            // As outras janelas do provedor moram DENTRO do herói, como no popover (que
+            // foi aprovado com esse desenho). Num card ao lado elas viravam uma linha só
+            // num retângulo esticado até a altura do herói — o mesmo "enchimento" que já
+            // foi reprovado. Aqui elas ocupam a largura inteira do bloco e ainda dão ao
+            // herói o conteúdo que faltava na metade direita.
+            if !others.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(others) { other in
+                        QuotaLedgerRow(entry: other, onHero: true)
+                    }
+                }
+                .padding(.top, Theme.Space.xs)
+            }
+            // Faixa de 7 dias como RODAPÉ do herói, não como card próprio. Sozinha num
+            // card ela era um traço de 20pt no meio de um retângulo de 60 — o "filete
+            // perdido" que o relatório anterior já apontava. Aqui ela é a base do bloco,
+            // com o rótulo na mesma linha, e a escala fixa 0–100 passa a ser lida como
+            // "uso baixo e estável" em vez de linha colada na borda de lugar nenhum.
+            if history.count >= 2 {
+                HStack(spacing: Theme.Space.sm) {
+                    SectionHeader(L("Uso — 7 dias"), onHero: true)
+                    SparklineView(points: history.map(\.usedPercent), color: Theme.onHero, height: 30)
+                }
+                .padding(.top, Theme.Space.xs)
+            }
+        }
+        .padding(Theme.Space.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .heroSurface(tint)
+        .help(entry.window.shape.isEstimated
+              ? L("Estimativa local, não confirmada pelo provedor") : "")
     }
 
     private static func relative(_ date: Date) -> String {
