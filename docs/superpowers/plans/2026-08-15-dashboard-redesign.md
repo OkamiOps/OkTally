@@ -1235,7 +1235,16 @@ struct AnalyticsDashboardView: View {
                     .monospacedDigit()
                     .frame(width: 34, alignment: .trailing)
             }
-            ShareBar(fraction: fraction, color: color)
+            HStack(spacing: Theme.Space.sm) {
+                ShareBar(fraction: fraction, color: color)
+                if let analytics = byProvider[entry.providerId] {
+                    DailyTokensAreaChart(
+                        points: TrendSeries.dailyTotals(analytics, lastDays: 14).reversed(),
+                        color: color
+                    )
+                    .frame(width: 70, height: 18)
+                }
+            }
         }
     }
 
@@ -1601,6 +1610,23 @@ Substitua o `body` de `GeneralPane` por:
             }
             .disabled(!alertsEnabled)
             .opacity(alertsEnabled ? 1 : 0.5)
+
+            Section(L("Atualizações")) {
+                if let update = appModel.availableUpdate {
+                    HStack(spacing: Theme.Space.sm) {
+                        Label(LF("Versão %@ disponível", update.version), systemImage: "arrow.down.circle.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.orange)
+                        Spacer()
+                        Button(L("Abrir no GitHub")) { NSWorkspace.shared.open(update.url) }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                    }
+                } else {
+                    Text(L("Você está na versão mais recente."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
         }
         .formStyle(.grouped)
         .onAppear {
@@ -1676,17 +1702,44 @@ E troque o corpo de `sidebarRow(_:)` pelo componente compartilhado:
     }
 ```
 
-- [ ] **Step 5: Compilar**
+- [ ] **Step 5: Mostrar na sidebar quantas contas precisam de atenção**
+
+Em `PreferencesView`, a `Section(L("Contas"))` da sidebar passa a exibir a contagem:
+
+```swift
+                Section {
+                    ForEach(providerIds, id: \.self) { id in
+                        sidebarRow(id).tag(PreferencesPane.provider(id))
+                    }
+                } header: {
+                    HStack {
+                        Text(L("Contas"))
+                        Spacer()
+                        let attention = providerIds.filter { appModel.errorKindByProvider[$0] == .needsReauth }.count
+                        if attention > 0 {
+                            Text("\(attention)")
+                                .font(.system(size: 9, weight: .bold))
+                                .monospacedDigit()
+                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .background(Capsule().fill(Color.orange.opacity(0.25)))
+                                .foregroundStyle(.orange)
+                                .help(L("Contas com credencial expirada"))
+                        }
+                    }
+                }
+```
+
+- [ ] **Step 6: Compilar**
 
 Run: `swift build 2>&1 | tail -15`
 Expected: `Build complete!`. Erro provável: `onChange(of:) { _, newValue in }` exige a assinatura de duas casas — no alvo macOS 26 é a correta; se o compilador reclamar de aridade, algum outro `onChange` do arquivo ainda usa a forma antiga de um parâmetro e precisa ser migrado junto.
 
-- [ ] **Step 6: Rodar a suíte**
+- [ ] **Step 7: Rodar a suíte**
 
 Run: `swift test 2>&1 | tail -10`
 Expected: tudo passa, incluindo `FieldCommitTests`.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add Sources/OkTally/UI/PreferencesView.swift
@@ -1802,13 +1855,104 @@ Em `PreferencesView`, `codexPane` passa a ser:
 Run: `swift build 2>&1 | tail -10 && echo OK`
 Expected: `Build complete!` antes de migrar os outros nove.
 
-- [ ] **Step 3: Migrar os panes restantes para o scaffold**
+- [ ] **Step 3: Migrar o pane do Claude, que é o mais complexo**
 
-Aplique o mesmo formato a `claudePane`, `superGrokPane`, `cursorPane`, `copilotPane`, `antigravityPane`, `minimaxPane` e `mimoPane`, preservando exatamente os botões e fluxos que cada um já tem — o conteúdo vai para `connection`, e os textos explicativos ("Nada a configurar — detectado automaticamente…") vão para `details`. Nenhum fluxo de login muda de comportamento nesta task.
+`claudePane` tem estado extra (a sessão de código colado). O fluxo não muda — só a casca:
+
+```swift
+    private var claudePane: some View {
+        ProviderPaneScaffold(
+            providerId: "claude",
+            name: providerName("claude"),
+            status: claudeLoggedIn ? .connected(L("Conectado")) : .notConfigured(L("Não conectado"))
+        ) {
+            HStack {
+                if claudeLoggedIn {
+                    Button(L("Sair")) {
+                        logout(providerId: "claude", flag: $claudeLoggedIn)
+                        claudeSession = nil
+                    }
+                    .buttonStyle(.bordered)
+                } else {
+                    Button(L("Entrar…")) { beginClaudeLogin() }
+                        .buttonStyle(.borderedProminent)
+                    Button(L("Importar do Claude Code")) {
+                        statusMessage = onImportClaudeLegacy()
+                            ? L("Login importado.")
+                            : L("Nenhum login do Claude Code encontrado.")
+                        claudeLoggedIn = tokenStore.load(providerId: "claude") != nil
+                    }
+                    .buttonStyle(.bordered)
+                }
+                Spacer()
+            }
+            if claudeSession != nil {
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                    Text(L("Autorize no navegador, copie o código e cole abaixo:"))
+                        .font(.caption).foregroundStyle(.secondary)
+                    TextField("CÓDIGO#STATE", text: $claudePastedCode).textFieldStyle(.roundedBorder)
+                    HStack {
+                        Button(L("Concluir")) { completeClaudeLogin() }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(claudePastedCode.trimmingCharacters(in: .whitespaces).isEmpty)
+                        Button(L("Cancelar")) {
+                            claudeSession = nil
+                            claudePastedCode = ""
+                            statusMessage = ""
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
+        } details: {
+            Text(L("O uso de cota vem da conta; o volume em tokens é estimado dos transcritos locais."))
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+```
+
+- [ ] **Step 4: Migrar os panes de detecção automática**
+
+`cursorPane`, `copilotPane` e `antigravityPane` têm a mesma forma: nenhuma ação de conexão, só um texto. Modelo, com Cursor preenchido — repita trocando id, nome e textos pelos que cada pane já usa hoje:
+
+```swift
+    private var cursorPane: some View {
+        ProviderPaneScaffold(
+            providerId: "cursor",
+            name: providerName("cursor"),
+            status: .connected(L("Lê a sessão do app Cursor automaticamente"))
+        ) {
+            Text(L("Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho."))
+                .font(.caption).foregroundStyle(.secondary)
+        } details: {
+            EmptyView()
+        }
+    }
+```
+
+Para `copilotPane`, o status depende de `CopilotTokenReader().firstToken() != nil`: conectado → `.connected(L("Login do Copilot/gh CLI detectado"))`, senão `.notConfigured(L("Nenhum login do Copilot/gh CLI encontrado"))`. Para `antigravityPane`, idem com `AntigravityTokenReader().readTokens() != nil` e os textos do Antigravity que já estão no arquivo.
+
+- [ ] **Step 5: Migrar SuperGrok, MiniMax e MiMo**
+
+`superGrokPane` segue o formato do Codex (botão Entrar/Sair em `connection`), mas o bloco do device code vai para `details`:
+
+```swift
+        } details: {
+            if let info = superGrokDeviceCode {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                    Text(LF("Abra %@ e digite:", info.verificationURL.absoluteString))
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text(info.userCode).font(.title3.monospaced()).textSelection(.enabled)
+                }
+            }
+        }
+```
+
+`minimaxPane` e `mimoPane` mantêm todos os campos que já possuem (região, allowance, used) — mova os controles para `connection` e os textos explicativos para `details`, sem alterar nenhum binding.
 
 Em seguida remova a função `paneHeader(_:status:active:)`, agora sem uso.
 
-- [ ] **Step 4: Dar auto-save às chaves de API**
+- [ ] **Step 6: Dar auto-save às chaves de API**
 
 `keyPane` passa a gravar sozinho, sem botão:
 
@@ -1846,12 +1990,12 @@ E, no `saveSecret`, proteja a gravação com `FieldCommit` para que blur com cam
 
 Ajuste as três chamadas de `saveSecret` (openrouter, opencode, minimax) para passar `previous:` e `raw:`.
 
-- [ ] **Step 5: Compilar e rodar a suíte**
+- [ ] **Step 7: Compilar e rodar a suíte**
 
 Run: `swift build 2>&1 | tail -10 && swift test 2>&1 | tail -10`
 Expected: build limpo, todos os testes passando.
 
-- [ ] **Step 6: Verificar visualmente**
+- [ ] **Step 8: Verificar visualmente**
 
 Acrescente ao `ReadmeAssetRenderer`, dentro de `test_renderReadmeAssets`:
 
@@ -1870,7 +2014,7 @@ Acrescente ao `ReadmeAssetRenderer`, dentro de `test_renderReadmeAssets`:
 Run: `RENDER_README_ASSETS=1 swift test --filter ReadmeAssetRenderer 2>&1 | tail -5 && open docs/assets/preferences-provider.png`
 Expected: cabeçalho com ícone, nome e pill verde, seção "Conexão" com o botão, seção de detalhes — tudo em cartões agrupados do `Form`.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add Sources/OkTally/UI/ProviderPaneScaffold.swift Sources/OkTally/UI/PreferencesView.swift Tests/OkTallyTests/ReadmeAssetRenderer.swift
