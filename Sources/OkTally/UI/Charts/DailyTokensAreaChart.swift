@@ -9,10 +9,25 @@ struct DailyTokensAreaChart: View {
     let color: Color
     var showsAxes: Bool = false
 
+    /// Pré-parseia `day` uma vez por avaliação de `body`, com um único `DateFormatter`
+    /// reaproveitado. `TokenAnalytics.date(fromDay:)` aloca um formatter por chamada, e o
+    /// `body` original chamava duas vezes por ponto (Area + Line) — numa janela de 365
+    /// dias isso media ~46ms por render, disparado a cada mudança de estado, hover ou
+    /// frame de animação. O formatter continua local (nunca `static`/compartilhado entre
+    /// threads), só a alocação sai do laço por ponto.
+    private var datedPoints: [(day: String, tokens: Int, date: Date)] {
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "yyyy-MM-dd"
+        return points.map { point in
+            (day: point.day, tokens: point.tokens, date: fmt.date(from: point.day) ?? Date())
+        }
+    }
+
     var body: some View {
-        Chart(points, id: \.day) { point in
+        Chart(datedPoints, id: \.day) { point in
             AreaMark(
-                x: .value(L("Dia"), TokenAnalytics.date(fromDay: point.day) ?? Date()),
+                x: .value(L("Dia"), point.date),
                 y: .value(L("Tokens"), point.tokens)
             )
             .interpolationMethod(.catmullRom)
@@ -21,7 +36,7 @@ struct DailyTokensAreaChart: View {
                                startPoint: .top, endPoint: .bottom)
             )
             LineMark(
-                x: .value(L("Dia"), TokenAnalytics.date(fromDay: point.day) ?? Date()),
+                x: .value(L("Dia"), point.date),
                 y: .value(L("Tokens"), point.tokens)
             )
             .interpolationMethod(.catmullRom)

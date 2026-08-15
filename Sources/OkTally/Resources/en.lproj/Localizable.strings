@@ -86,6 +86,12 @@
 "%@: sem uso" = "%@: no usage";
 "%@: %@ tokens" = "%@: %@ tokens";
 
+/* Charts */
+"Dia" = "Day";
+"Tokens" = "Tokens";
+"Provedor" = "Provider";
+"total" = "total";
+
 /* Preferences */
 "Geral" = "General";
 "Contas" = "Accounts";

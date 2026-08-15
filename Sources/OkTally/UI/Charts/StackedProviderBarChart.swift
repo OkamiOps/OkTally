@@ -13,10 +13,29 @@ struct StackedProviderBarChart: View {
         Array(Set(points.map(\.providerId))).sorted()
     }
 
+    /// Pré-parseia `day` uma vez por avaliação de `body`, com um único `DateFormatter`
+    /// reaproveitado — mesmo motivo de `DailyTokensAreaChart.datedPoints`:
+    /// `TokenAnalytics.date(fromDay:)` chamado direto no `body` alocava um formatter por
+    /// ponto (3 providers × 365 dias ≈ 60ms por render). O formatter fica local à
+    /// avaliação, nunca `static`/compartilhado entre threads.
+    private var datedPoints: [DatedTrendPoint] {
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "yyyy-MM-dd"
+        return points.map { point in
+            DatedTrendPoint(
+                day: point.day,
+                providerId: point.providerId,
+                tokens: point.tokens,
+                date: fmt.date(from: point.day) ?? Date()
+            )
+        }
+    }
+
     var body: some View {
-        Chart(points, id: \.self) { point in
+        Chart(datedPoints, id: \.self) { point in
             BarMark(
-                x: .value(L("Dia"), TokenAnalytics.date(fromDay: point.day) ?? Date(), unit: .day),
+                x: .value(L("Dia"), point.date, unit: .day),
                 y: .value(L("Tokens"), point.tokens)
             )
             // Categoria é o nome exibido, não o id: senão a legenda mostra "codex" cru.
@@ -48,4 +67,14 @@ extension TrendPoint: Hashable {
         hasher.combine(providerId)
         hasher.combine(tokens)
     }
+}
+
+/// `TrendPoint` com a data já parseada — o que o `Chart` de fato itera, para não repetir
+/// o parsing de `day` por mark. Declarado e conformado a `Hashable` neste mesmo arquivo,
+/// então a sintetização automática funciona sem implementação manual.
+private struct DatedTrendPoint: Hashable {
+    let day: String
+    let providerId: String
+    let tokens: Int
+    let date: Date
 }
