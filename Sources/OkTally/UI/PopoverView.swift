@@ -141,11 +141,38 @@ struct PopoverContentView: View {
         return best
     }
 
+    /// Volume de hoje + 14 dias, antes das cotas. A cota continua tendo prioridade: se o
+    /// espaço apertar, esta faixa é a primeira a sair.
+    @ViewBuilder private var todayStrip: some View {
+        if let analytics = appModel.aggregatedAnalytics {
+            let totals = TrendSeries.dailyTotals(analytics, lastDays: 14)
+            // Cronológico: hoje é o último elemento.
+            let today = totals.last?.tokens ?? 0
+            if today > 0 {
+                HStack(spacing: Theme.Space.sm) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionHeader(L("Hoje"))
+                        Text(TokenAnalytics.compactTokens(today))
+                            .font(Theme.Font.metricMedium)
+                            .monospacedDigit()
+                    }
+                    DailyTokensAreaChart(points: totals, color: .accentColor)
+                        .frame(height: 28)
+                }
+                .padding(.horizontal, Theme.Space.md)
+                .padding(.vertical, Theme.Space.sm)
+                .glassChrome()
+                .padding(.horizontal, Theme.Space.md)
+            }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 10) {
             if withData.isEmpty && !problems.isEmpty && problems.allSatisfy({ $0.kind == .notConfigured || $0.kind == nil }) {
                 OnboardingEmptyState()
             }
+            todayStrip
             if let hero {
                 HeroCard(
                     provider: hero.provider,
@@ -175,6 +202,7 @@ struct PopoverContentView: View {
             }
         }
         .padding(12)
+        .task { await appModel.loadAllAnalyticsIfStale() }
     }
 }
 
