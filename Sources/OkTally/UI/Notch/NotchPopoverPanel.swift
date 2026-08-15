@@ -30,11 +30,14 @@ final class NotchPopoverPanel {
     /// - Parameter below: de que altura (em coordenadas de tela) o popover deve pender.
     ///   `nil` = da barra de menu, que é onde o painel do notch termina. A ilha flutuante
     ///   passa a borda de baixo dela, senão o popover nasceria POR TRÁS da pílula.
-    func toggle(on screen: NSScreen, below anchorY: CGFloat? = nil) {
-        if isOpen { close() } else { open(on: screen, below: anchorY) }
+    /// - Parameter centeredOn: em que X o popover se centraliza. `nil` = o meio da tela,
+    ///   que é onde o painel do notch está sempre. A ilha pode ter sido arrastada para
+    ///   longe do centro e passa o centro dela.
+    func toggle(on screen: NSScreen, below anchorY: CGFloat? = nil, centeredOn anchorX: CGFloat? = nil) {
+        if isOpen { close() } else { open(on: screen, below: anchorY, centeredOn: anchorX) }
     }
 
-    func open(on screen: NSScreen, below anchorY: CGFloat? = nil) {
+    func open(on screen: NSScreen, below anchorY: CGFloat? = nil, centeredOn anchorX: CGFloat? = nil) {
         close()
         let host = NSHostingView(rootView: PopoverView(appModel: appModel)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)))
@@ -55,7 +58,7 @@ final class NotchPopoverPanel {
         // nasce colado embaixo dele e não pode passar por trás.
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-        panel.setFrameOrigin(origin(for: host.frame.size, on: screen, below: anchorY))
+        panel.setFrameOrigin(origin(for: host.frame.size, on: screen, below: anchorY, centeredOn: anchorX))
         panel.orderFrontRegardless()
         self.panel = panel
 
@@ -79,9 +82,14 @@ final class NotchPopoverPanel {
     /// Centralizado no painel e logo abaixo dele. Sem âncora explícita o teto é
     /// `visibleFrame.maxY`, que já desconta a barra de menu — o topo do popover encosta
     /// nela sem cobri-la, que é o certo para o painel colado no notch.
-    private func origin(for size: CGSize, on screen: NSScreen, below anchorY: CGFloat?) -> CGPoint {
-        CGPoint(
-            x: screen.frame.midX - size.width / 2,
+    private func origin(for size: CGSize, on screen: NSScreen, below anchorY: CGFloat?, centeredOn anchorX: CGFloat?) -> CGPoint {
+        // Centralizado na âncora, mas contido na tela: uma pílula arrastada até a borda
+        // não pode arrastar o popover inteiro para fora junto com ela.
+        let desired = (anchorX ?? screen.frame.midX) - size.width / 2
+        let x = min(max(desired, screen.frame.minX + Theme.Space.sm),
+                    screen.frame.maxX - size.width - Theme.Space.sm)
+        return CGPoint(
+            x: screen.frame.width > size.width ? x : desired,
             y: (anchorY ?? screen.visibleFrame.maxY) - size.height - Theme.Space.sm
         )
     }

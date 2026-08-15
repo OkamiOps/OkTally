@@ -38,6 +38,10 @@ final class PreferencesStore {
         static let alertPercentThresholds = "alertPercentThresholds"
         static let alertLowBalanceThreshold = "alertLowBalanceThreshold"
         static func refreshInterval(_ providerId: String) -> String { "refreshInterval.\(providerId)" }
+        /// Posição horizontal da ilha, POR TELA. A chave carrega o id do display porque
+        /// o dono tem dois monitores lado a lado e arrasta a pílula para lugares
+        /// diferentes em cada um; uma chave só faria a segunda tela desfazer a primeira.
+        static func islandFraction(_ screenId: String) -> String { "islandFraction.\(screenId)" }
     }
 
     /// Keychain namespace per provider (`com.oktally.app.apikey.<id>` via
@@ -157,6 +161,21 @@ final class PreferencesStore {
     var notchHUDEnabled: Bool {
         get { store.string(forKey: Keys.notchHUDEnabled) != "false" }
         set { store.set(newValue ? "true" : "false", forKey: Keys.notchHUDEnabled) }
+    }
+
+    /// Onde o dono largou a ilha nesta tela, como FRAÇÃO de 0 a 1 da largura — nunca em
+    /// pontos.
+    ///
+    /// A fração é o que sobrevive: trocar a resolução, girar a tela ou plugar outro
+    /// monitor com o mesmo id reposiciona a pílula proporcionalmente, enquanto um valor em
+    /// pontos jogaria ela para fora da tela. `nil` = nunca arrastada, e quem lê usa o
+    /// centro.
+    func islandFraction(screenId: String) -> Double? {
+        store.string(forKey: Keys.islandFraction(screenId)).flatMap(Double.init)
+    }
+
+    func setIslandFraction(_ value: Double?, screenId: String) {
+        store.set(value.map { String($0) }, forKey: Keys.islandFraction(screenId))
     }
 
     // MARK: - Slots de exibição

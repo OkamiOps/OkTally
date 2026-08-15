@@ -59,11 +59,13 @@ final class NotchHUDController {
     private let popover: NotchPopoverPanel
     private var island: NotchIslandPanel!
 
-    init(appModel: AppModel, isEnabled: @escaping () -> Bool) {
+    init(appModel: AppModel, preferences: PreferencesStore, isEnabled: @escaping () -> Bool) {
         self.appModel = appModel
         self.isEnabled = isEnabled
         self.popover = NotchPopoverPanel(appModel: appModel)
-        self.island = NotchIslandPanel(appModel: appModel, onOpen: { [weak self] screen in
+        // A ilha precisa das preferências por si: a posição horizontal em que o dono a
+        // largou é guardada POR TELA, e é ela quem sabe em que tela está.
+        self.island = NotchIslandPanel(appModel: appModel, preferences: preferences, onOpen: { [weak self] screen in
             self?.openPopoverFromIsland(on: screen)
         })
     }
@@ -306,9 +308,11 @@ final class NotchHUDController {
         popover.toggle(on: screen)
     }
 
-    /// Clique na ilha. Mesmo popover, ancoragem diferente: a ilha flutua ABAIXO da barra
-    /// de menu, então pendurar o popover na barra o faria nascer atrás dela.
+    /// Clique na ilha. Mesmo popover, ancoragem diferente nos DOIS eixos: a pílula termina
+    /// abaixo de onde o painel do notch termina (senão o popover nasceria atrás dela) e
+    /// pode ter sido arrastada para longe do centro (senão o popover apontaria para o
+    /// nada).
     private func openPopoverFromIsland(on screen: NSScreen) {
-        popover.toggle(on: screen, below: island.anchorBottomY)
+        popover.toggle(on: screen, below: island.anchorBottomY, centeredOn: island.anchorCenterX)
     }
 }

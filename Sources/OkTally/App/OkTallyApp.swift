@@ -101,7 +101,7 @@ struct OkTallyApp: App {
         }
         _appModel = StateObject(wrappedValue: model)
 
-        let notchController = NotchHUDController(appModel: model, isEnabled: { preferencesStore.notchHUDEnabled })
+        let notchController = NotchHUDController(appModel: model, preferences: preferencesStore, isEnabled: { preferencesStore.notchHUDEnabled })
         self.notchController = notchController
 
         Task { await notificationSender.requestAuthorizationIfNeeded() }

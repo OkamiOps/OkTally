@@ -363,10 +363,19 @@ private struct NotchQuotaRow: View {
 ///
 /// O conteúdo é o mesmo: as duas asas com chip + valor, a barra contínua no rodapé, e a
 /// mesma lista densa quando expande. O que muda é só a moldura — sem vão central (não há
-/// recorte para contornar), cantos totalmente arredondados, e uma borda de branco a 8%,
-/// que é o que impede a pílula de virar um buraco sem forma contra um wallpaper escuro.
-/// No modo notch essa borda seria um erro: lá o painel PRECISA se confundir com o preto do
-/// hardware.
+/// recorte para contornar) e uma borda de branco a 8%, que é o que impede a pílula de
+/// virar um buraco sem forma contra um wallpaper escuro. No modo notch essa borda seria um
+/// erro: lá o painel PRECISA se confundir com o preto do hardware.
+///
+/// ## Por que os cantos de cima são RETOS
+///
+/// A primeira versão saiu com a pílula toda arredondada, pendurada logo abaixo da barra de
+/// menu — e o dono viu o que ela era: uma janelinha flutuando no meio da tela, por cima da
+/// barra de ferramentas do navegador. A pílula agora encosta na borda de cima da tela e
+/// ocupa o miolo vazio da própria barra de menu, e é o canto reto em cima com o canto
+/// redondo embaixo que faz o olho ler "a tela tem um recorte aqui" em vez de "um app
+/// colocou uma janela aqui". Arredondar em cima uma coisa que está colada na borda só
+/// mostraria um vinco de wallpaper nos dois cantos, denunciando a janela.
 struct NotchIslandView: View {
     @ObservedObject var appModel: AppModel
     let isExpanded: Bool
@@ -375,30 +384,56 @@ struct NotchIslandView: View {
     /// Entrou/saiu com o cursor. A POLÍTICA (expandir na hora, fechar com atraso) mora no
     /// painel, junto com a do modo notch — a view só relata o que o mouse fez.
     let onHover: (Bool) -> Void
+    /// O dono está arrastando a pílula pelo topo. A view não sabe para ONDE: quem move a
+    /// janela é o painel, que lê a posição do cursor em coordenadas de TELA. Se a conta
+    /// saísse da translação do gesto, ela se morderia — a janela anda, o gesto passa a
+    /// medir a partir de uma view que andou junto, e a pílula travaria no lugar.
+    var onDragChanged: () -> Void = {}
+    var onDragEnded: () -> Void = {}
+    /// Duplo clique: de volta ao centro.
+    var onRecenter: () -> Void = {}
 
-    /// 999 vira cápsula sozinho: o `RoundedRectangle` limita o raio à metade da menor
-    /// dimensão, então fechado ele fecha nas pontas sem precisar saber a altura (que é
-    /// dada pelo conteúdo). Expandido o raio é explícito — uma lista de cinco linhas com
-    /// as pontas totalmente redondas viraria um comprimido, não um painel.
-    private var cornerRadius: CGFloat { isExpanded ? 24 : 999 }
+    /// Em cima, zero: a pílula encosta na borda da tela e canto redondo ali só mostraria
+    /// wallpaper. Embaixo, o mesmo 22pt de "asa" do modo notch fechado — expandido sobe
+    /// para 24, porque uma lista de cinco linhas com as pontas de uma cápsula viraria um
+    /// comprimido, não um painel.
+    private var bottomRadius: CGFloat { isExpanded ? 24 : 22 }
+
+    private var shape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: 0,
+            bottomLeadingRadius: bottomRadius,
+            bottomTrailingRadius: bottomRadius,
+            topTrailingRadius: 0,
+            style: .continuous
+        )
+    }
 
     var body: some View {
         content
-            .background(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.black)
-            )
+            .background(shape.fill(.black))
             .overlay(
                 // Um fio, não uma moldura: contra um wallpaper escuro é ele que devolve o
                 // contorno da pílula; contra um claro ele desaparece e o preto se vira
                 // sozinho.
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                shape.strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
             )
             .compositingGroup()
             .shadow(color: .black.opacity(0.45), radius: 10, y: 3)
-            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .contentShape(shape)
+            // Declarado ANTES do clique simples de propósito: com os dois registrados, o
+            // SwiftUI segura o clique simples até o intervalo do duplo passar, e o popover
+            // não abre no primeiro clique de um duplo clique de recentrar.
+            .onTapGesture(count: 2, perform: onRecenter)
             .onTapGesture(perform: onOpen)
+            // O limiar é o que separa clique de arrasto: sem ele, o tremor da mão entre
+            // apertar e soltar viraria um micro-arrasto e mataria o clique que abre o
+            // popover.
+            .gesture(
+                DragGesture(minimumDistance: NotchIslandGeometry.dragThreshold)
+                    .onChanged { _ in onDragChanged() }
+                    .onEnded { _ in onDragEnded() }
+            )
             .onHover(perform: onHover)
     }
 
