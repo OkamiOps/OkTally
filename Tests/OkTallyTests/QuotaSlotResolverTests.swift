@@ -236,6 +236,89 @@ final class QuotaSlotResolverTests: XCTestCase {
         XCTAssertEqual(bar?.providerId, "codex")
     }
 
+    // MARK: - Card-herói do popover
+
+    /// Em automático, o herói é a pior janela entre TODAS — não uma por provedor. Um
+    /// provedor com duas janelas apertadas não pode esconder a pior das duas atrás da
+    /// regra que as asas usam.
+    func test_popoverHero_automaticIsTheTightestAcrossAllWindows() {
+        var withSpark = snapshots
+        withSpark["codex"] = snapshot("codex", [
+            window("semanal", usedPercent: 44),
+            window("spark", usedPercent: 97)
+        ])
+        let hero = QuotaSlotResolver.popoverHero(slot: .automatic, snapshots: withSpark, providerOrder: order)
+        XCTAssertEqual(hero?.providerId, "codex")
+        XCTAssertEqual(hero?.window.label, "spark")
+    }
+
+    /// Escolha explícita manda, mesmo sendo a mais folgada de todas.
+    func test_popoverHero_explicitWindowWinsOverTheCritical() {
+        let hero = QuotaSlotResolver.popoverHero(
+            slot: .window(providerId: "claude", windowLabel: "5h"),
+            snapshots: snapshots, providerOrder: order)
+        XCTAssertEqual(hero?.providerId, "claude")
+        XCTAssertEqual(hero?.window.label, "5h")
+    }
+
+    /// Provedor escolhido que sumiu (deslogado, ou o `withData` do popover que já o
+    /// filtrou por erro `.notConfigured`) cai para automático em silêncio, igual às
+    /// asas e à barra inferior.
+    func test_popoverHero_orphanChoiceFallsBackToAutomatic() {
+        let hero = QuotaSlotResolver.popoverHero(
+            slot: .window(providerId: "sumiu", windowLabel: "5h"),
+            snapshots: snapshots, providerOrder: order)
+        XCTAssertEqual(hero?.providerId, "cursor")
+    }
+
+    /// Janela que sumiu de um provedor que continua logado é o mesmo caso.
+    func test_popoverHero_orphanWindowOnLivingProviderFallsBackToAutomatic() {
+        let hero = QuotaSlotResolver.popoverHero(
+            slot: .window(providerId: "claude", windowLabel: "janela-que-nao-existe"),
+            snapshots: snapshots, providerOrder: order)
+        XCTAssertEqual(hero?.providerId, "cursor")
+    }
+
+    /// Sem dado nenhum, nenhum herói.
+    func test_popoverHero_noDataIsNil() {
+        XCTAssertNil(QuotaSlotResolver.popoverHero(slot: .automatic, snapshots: [:], providerOrder: order))
+    }
+
+    /// Fração igual desempata pelo reset mais próximo, e não pela ordem de um dicionário.
+    func test_popoverHero_tieBreaksByNearestReset() {
+        let hero = QuotaSlotResolver.popoverHero(
+            slot: .automatic,
+            snapshots: [
+                "claude": snapshot("claude", [window("5h", usedPercent: 60, resetIn: 9 * 3600)]),
+                "codex": snapshot("codex", [window("semanal", usedPercent: 60, resetIn: 2 * 3600)])
+            ],
+            providerOrder: order)
+        XCTAssertEqual(hero?.providerId, "codex")
+    }
+
+    /// Um saldo em dólares não tem "aperto" comparável a uma porcentagem: ele nunca vira
+    /// herói do automático, mesmo sendo a única janela disponível.
+    func test_popoverHero_balanceOnlyNeverWinsAutomatic() {
+        let onlyBalance = ["openrouter": snapshot("openrouter", [
+            QuotaWindow(label: "saldo", shape: .creditBalance(remaining: 12, currency: "USD"))
+        ])]
+        XCTAssertNil(QuotaSlotResolver.popoverHero(slot: .automatic, snapshots: onlyBalance, providerOrder: order))
+    }
+
+    /// Mas uma escolha EXPLÍCITA de saldo é honrada — o card-herói mostra o que o dono
+    /// escolheu, mesmo sem barra para desenhar (isso é responsabilidade da view, não do
+    /// resolvedor).
+    func test_popoverHero_explicitBalanceIsHonored() {
+        let onlyBalance = ["openrouter": snapshot("openrouter", [
+            QuotaWindow(label: "saldo", shape: .creditBalance(remaining: 12, currency: "USD"))
+        ])]
+        let hero = QuotaSlotResolver.popoverHero(
+            slot: .window(providerId: "openrouter", windowLabel: "saldo"),
+            snapshots: onlyBalance, providerOrder: order)
+        XCTAssertEqual(hero?.providerId, "openrouter")
+        XCTAssertEqual(hero?.window.label, "saldo")
+    }
+
     // MARK: - Lista das Preferências
 
     /// A lista do `Picker` segue a ordem do registry, não a de aperto: uma lista que se

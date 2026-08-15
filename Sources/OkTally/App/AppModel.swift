@@ -87,6 +87,10 @@ final class AppModel: ObservableObject {
     @Published var notchTrailingSlot: QuotaSlot { didSet { preferences.notchTrailingSlot = notchTrailingSlot } }
     @Published var notchBottomSlot: QuotaSlot { didSet { preferences.notchBottomSlot = notchBottomSlot } }
     @Published var menuBarSlot: QuotaSlot { didSet { preferences.menuBarSlot = menuBarSlot } }
+    /// O card-herói do popover — quinto lugar escolhível, junto dos quatro acima. Mora
+    /// aqui e não só no `PreferencesStore` pelo mesmo motivo dos outros quatro: o
+    /// popover observa este modelo, e trocar o picker tem que repintar o card na hora.
+    @Published var popoverHeroSlot: QuotaSlot { didSet { preferences.popoverHeroSlot = popoverHeroSlot } }
 
     private static let menuBarPinsKey = "menuBarPins"
     private static let legacyMenuBarPinKey = "menuBarPin"
@@ -135,6 +139,7 @@ final class AppModel: ObservableObject {
         self.notchTrailingSlot = preferences.notchTrailingSlot
         self.notchBottomSlot = preferences.notchBottomSlot
         self.menuBarSlot = preferences.menuBarSlot
+        self.popoverHeroSlot = preferences.popoverHeroSlot
         if let joined = defaults.string(forKey: Self.menuBarPinsKey) {
             self.menuBarPins = joined.split(separator: "\u{2}").compactMap { MenuBarPin(stored: String($0)) }
         } else if let legacy = MenuBarPin(stored: defaults.string(forKey: Self.legacyMenuBarPinKey)) {

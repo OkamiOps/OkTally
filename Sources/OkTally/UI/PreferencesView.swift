@@ -650,14 +650,18 @@ private struct GeneralPane: View {
                          : L("Arraste para reordenar. Os pinos são o conjunto que os seletores abaixo usam no modo automático."))
                         .font(.caption).foregroundStyle(.secondary)
 
-                    // Os três lugares onde um número do app aparece o dia inteiro. Cada um
+                    // Os cinco lugares onde um número do app aparece o dia inteiro. Cada um
                     // escolhe a sua cota; "Automático" mantém a regra antiga (a mais
                     // apertada) e continua sendo o padrão.
                     slotPicker(L("Valor na barra"), selection: $appModel.menuBarSlot)
                     slotPicker(L("Notch — lado esquerdo"), selection: $appModel.notchLeadingSlot)
                     slotPicker(L("Notch — lado direito"), selection: $appModel.notchTrailingSlot)
                     slotPicker(L("Notch — barra inferior"), selection: $appModel.notchBottomSlot)
-                    Text(L("Em automático, o lado esquerdo mostra a cota mais apertada e o direito a seguinte; a barra inferior mostra sempre a mais apertada. Uma cota escolhida que deixe de existir volta para automático sozinha."))
+                    // O card-herói do popover — o bloco grande em gradiente no topo do
+                    // menu, antes travado na pior cota. É o pedido do dono: "eu não
+                    // consigo trocar esse card principal".
+                    slotPicker(L("Destaque do menu"), selection: $appModel.popoverHeroSlot)
+                    Text(L("Em automático, o lado esquerdo mostra a cota mais apertada e o direito a seguinte; a barra inferior mostra sempre a mais apertada; o destaque do menu mostra a mais crítica entre todas. Uma cota escolhida que deixe de existir volta para automático sozinha."))
                         .font(.caption).foregroundStyle(.secondary)
 
                     // Um switch só governa os DOIS modos (colado ao notch e ilha

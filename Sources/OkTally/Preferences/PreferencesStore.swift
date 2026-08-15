@@ -35,6 +35,7 @@ final class PreferencesStore {
         static let notchLeadingSlot = "notchLeadingSlot"
         static let notchTrailingSlot = "notchTrailingSlot"
         static let notchBottomSlot = "notchBottomSlot"
+        static let popoverHeroSlot = "popoverHeroSlot"
         static let alertPercentThresholds = "alertPercentThresholds"
         static let alertLowBalanceThreshold = "alertLowBalanceThreshold"
         static func refreshInterval(_ providerId: String) -> String { "refreshInterval.\(providerId)" }
@@ -211,6 +212,17 @@ final class PreferencesStore {
     var notchBottomSlot: QuotaSlot {
         get { QuotaSlot(stored: store.string(forKey: Keys.notchBottomSlot)) }
         set { store.set(newValue.stored.isEmpty ? nil : newValue.stored, forKey: Keys.notchBottomSlot) }
+    }
+
+    /// O card-herói do popover — o bloco grande em gradiente no topo.
+    ///
+    /// Nasceu travado na pior janela, sem escolha nenhuma: o dono não conseguia colocar
+    /// outro uso no card principal, só olhar o que já era o mais crítico. Em automático
+    /// continua sendo essa mesma regra (a pior janela entre TODAS, não uma por
+    /// provedor); a escolha explícita é o que faltava.
+    var popoverHeroSlot: QuotaSlot {
+        get { QuotaSlot(stored: store.string(forKey: Keys.popoverHeroSlot)) }
+        set { store.set(newValue.stored.isEmpty ? nil : newValue.stored, forKey: Keys.popoverHeroSlot) }
     }
 
     // MARK: - Alert preferences

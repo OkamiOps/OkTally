@@ -251,11 +251,13 @@
 "Na tela do MacBook o painel abraça o notch. Sem notch — monitor externo, tampa fechada, iMac — ele vira uma ilha flutuante no topo da tela principal, com o mesmo conteúdo." = "On the MacBook display the panel hugs the notch. With no notch — external monitor, closed lid, iMac — it becomes a floating island at the top of the primary display, with the same content.";
 "Clique para abrir" = "Click to open";
 
-/* Escolha de qual cota aparece em cada lugar (asas do notch e barra de menu) */
+/* Escolha de qual cota aparece em cada lugar (asas do notch, barra de menu e card-herói do popover) */
 "Valor na barra" = "Menu bar value";
 "Notch — lado esquerdo" = "Notch — left side";
 "Notch — lado direito" = "Notch — right side";
 "Notch — barra inferior" = "Notch — bottom bar";
+"Destaque do menu" = "Menu highlight";
 "Automático (mais crítico)" = "Automatic (most critical)";
 "%@ (indisponível)" = "%@ (unavailable)";
-"Em automático, o lado esquerdo mostra a cota mais apertada e o direito a seguinte; a barra inferior mostra sempre a mais apertada. Uma cota escolhida que deixe de existir volta para automático sozinha." = "In automatic mode the left side shows the tightest quota and the right side the next one; the bottom bar always shows the tightest. A chosen quota that stops existing quietly falls back to automatic.";
+"Em automático, o lado esquerdo mostra a cota mais apertada e o direito a seguinte; a barra inferior mostra sempre a mais apertada; o destaque do menu mostra a mais crítica entre todas. Uma cota escolhida que deixe de existir volta para automático sozinha." = "In automatic mode the left side shows the tightest quota and the right side the next one; the bottom bar always shows the tightest; the menu highlight shows the most critical of all. A chosen quota that stops existing quietly falls back to automatic.";
+"Destacar" = "Highlight";

@@ -119,24 +119,20 @@ struct PopoverContentView: View {
         }
     }
 
-    /// Most critical window overall: smallest remaining fraction; ties → nearest reset.
-    private var hero: (provider: UsageProvider, window: QuotaWindow, remaining: Double)? {
-        var best: (UsageProvider, QuotaWindow, Double)?
-        for (provider, snapshot) in withData {
-            for window in snapshot.quotas {
-                guard let remaining = QuotaPresentation.remainingFraction(window.shape) else { continue }
-                if let (_, currentWindow, currentRemaining) = best {
-                    if remaining < currentRemaining ||
-                        (remaining == currentRemaining &&
-                         (window.shape.resetAt ?? .distantFuture) < (currentWindow.shape.resetAt ?? .distantFuture)) {
-                        best = (provider, window, remaining)
-                    }
-                } else {
-                    best = (provider, window, remaining)
-                }
-            }
+    /// O card-herói: a escolha do dono em `appModel.popoverHeroSlot`, ou — em automático,
+    /// o padrão de sempre — a janela mais crítica entre TODAS as que têm dado (menor
+    /// fração restante; empate desempata pelo reset mais próximo). A regra em si mora no
+    /// `QuotaSlotResolver`, testável sem tela; aqui só se traduz o `Candidate` de volta
+    /// para o `UsageProvider` que a view precisa.
+    private var hero: (provider: UsageProvider, window: QuotaWindow, remaining: Double?)? {
+        guard let candidate = QuotaSlotResolver.popoverHero(
+            slot: appModel.popoverHeroSlot,
+            snapshots: Dictionary(uniqueKeysWithValues: withData.map { ($0.provider.id, $0.snapshot) }),
+            providerOrder: providers.map(\.id)
+        ), let provider = providers.first(where: { $0.id == candidate.providerId }) else {
+            return nil
         }
-        return best
+        return (provider, candidate.window, QuotaPresentation.remainingFraction(candidate.window.shape))
     }
 
     /// Volume de hoje + 14 dias, antes das cotas. Fix round 1: a versão original (label +
@@ -211,7 +207,8 @@ struct PopoverContentView: View {
                         appModel.snapshotsByProvider[hero.provider.id]?.quotas ?? []
                     ).filter { $0.label != hero.window.label },
                     isPinned: { appModel.isPinned(providerId: hero.provider.id, windowLabel: $0) },
-                    onPin: { appModel.togglePin(providerId: hero.provider.id, windowLabel: $0) }
+                    onPin: { appModel.togglePin(providerId: hero.provider.id, windowLabel: $0) },
+                    onHighlight: { appModel.popoverHeroSlot = .window(providerId: hero.provider.id, windowLabel: $0) }
                 )
             }
             // Abaixo do herói, não acima: a posição mais valiosa da tela é o topo, e ela
@@ -232,7 +229,8 @@ struct PopoverContentView: View {
                             snapshot: entry.snapshot,
                             estimatedCost: appModel.estimatedCostByProvider[entry.provider.id],
                             isPinned: { appModel.isPinned(providerId: entry.provider.id, windowLabel: $0) },
-                            onPin: { appModel.togglePin(providerId: entry.provider.id, windowLabel: $0) }
+                            onPin: { appModel.togglePin(providerId: entry.provider.id, windowLabel: $0) },
+                            onHighlight: { appModel.popoverHeroSlot = .window(providerId: entry.provider.id, windowLabel: $0) }
                         )
                     }
                 }
@@ -288,6 +286,11 @@ private struct PinButton: View {
     /// do sistema, invisível sobre cor saturada) — vira off-white rebaixado.
     var onHero: Bool = false
     let onPin: () -> Void
+    /// Atalho de qualidade: um clique-direito no alfinete oferece "Destacar", que troca
+    /// o card-herói para ESTA janela sem passar por Preferências. `nil` quando a linha
+    /// já É o herói (destacar o que já está destacado não diz nada novo) — o chamador
+    /// decide, não este botão.
+    var onHighlight: (() -> Void)? = nil
 
     var body: some View {
         Button(action: onPin) {
@@ -297,6 +300,11 @@ private struct PinButton: View {
         }
         .buttonStyle(.plain)
         .help(isPinned ? L("Remover da barra de menu") : L("Fixar esta janela na barra de menu"))
+        .contextMenu {
+            if let onHighlight {
+                Button(L("Destacar")) { onHighlight() }
+            }
+        }
     }
 }
 
@@ -326,12 +334,17 @@ private struct IdentityChip: View {
 private struct HeroBlock: View {
     let provider: UsageProvider
     let window: QuotaWindow
-    let remaining: Double
+    /// `nil` para uma escolha explícita de janela sem percentual (saldo em dólares): o
+    /// herói continua mostrando o valor e o nome, só não desenha barra nem tinge o
+    /// bloco de perigo — a mesma regra que a lista de baixo já aplica a esse tipo de
+    /// janela.
+    let remaining: Double?
     /// The hero provider's remaining windows — it is excluded from the list below, so
     /// they would otherwise disappear.
     let others: [QuotaWindow]
     let isPinned: (String) -> Bool
     let onPin: (String) -> Void
+    let onHighlight: (String) -> Void
 
     private var danger: Color { QuotaPresentation.color(remaining: remaining) }
 
@@ -380,14 +393,17 @@ private struct HeroBlock: View {
                         .lineLimit(1)
                 }
             }
-            QuotaCapsuleBar(remaining: remaining, color: Theme.onHero, height: 8,
-                            track: AnyShapeStyle(Color.black.opacity(0.22)))
+            if let remaining {
+                QuotaCapsuleBar(remaining: remaining, color: Theme.onHero, height: 8,
+                                track: AnyShapeStyle(Color.black.opacity(0.22)))
+            }
             ForEach(others, id: \.label) { other in
                 SecondaryWindowLine(window: other,
                                     identity: Theme.onHero,
                                     onHero: true,
                                     isPinned: isPinned(other.label),
-                                    onPin: { onPin(other.label) })
+                                    onPin: { onPin(other.label) },
+                                    onHighlight: { onHighlight(other.label) })
             }
         }
         .padding(14)
@@ -411,6 +427,7 @@ private struct ProviderQuotaRow: View {
     let estimatedCost: Decimal?
     let isPinned: (String) -> Bool
     let onPin: (String) -> Void
+    let onHighlight: (String) -> Void
 
     private var identity: Color { ProviderPalette.color(for: provider.id) }
     private var windows: [QuotaWindow] { PopoverLayout.orderedWindows(snapshot.quotas) }
@@ -469,7 +486,8 @@ private struct ProviderQuotaRow: View {
                             .layoutPriority(2)
                     }
                     PinButton(isPinned: isPinned(primary.label), identity: identity,
-                              onPin: { onPin(primary.label) })
+                              onPin: { onPin(primary.label) },
+                              onHighlight: { onHighlight(primary.label) })
                 }
             }
             // Identity color on the bar, danger color on the number: the row says whose
@@ -495,7 +513,8 @@ private struct ProviderQuotaRow: View {
             ForEach(windows.dropFirst(), id: \.label) { window in
                 SecondaryWindowLine(window: window, identity: identity,
                                     isPinned: isPinned(window.label),
-                                    onPin: { onPin(window.label) })
+                                    onPin: { onPin(window.label) },
+                                    onHighlight: { onHighlight(window.label) })
                     .padding(.top, 3)
             }
             if let meta = metaText {
@@ -574,6 +593,7 @@ private struct SecondaryWindowLine: View {
     var onHero: Bool = false
     let isPinned: Bool
     let onPin: () -> Void
+    var onHighlight: (() -> Void)? = nil
 
     var body: some View {
         let remaining = QuotaPresentation.remainingFraction(window.shape)
@@ -596,7 +616,7 @@ private struct SecondaryWindowLine: View {
                 .foregroundStyle(onHero ? Theme.onHero : QuotaPresentation.valueColor(remaining: remaining))
                 .frame(minWidth: 44, alignment: .trailing)
                 .layoutPriority(2)
-            PinButton(isPinned: isPinned, identity: identity, onHero: onHero, onPin: onPin)
+            PinButton(isPinned: isPinned, identity: identity, onHero: onHero, onPin: onPin, onHighlight: onHighlight)
         }
         // Deeper than the provider name's column: the extra step is what says this
         // window hangs off the row above instead of starting a new provider.

@@ -107,6 +107,52 @@ enum QuotaSlotResolver {
             }
         }
     }
+
+    /// O card-herói do popover: a escolha explícita do dono, ou — em automático — a pior
+    /// janela entre TODAS as que têm dado (o comportamento de sempre, antes travado sem
+    /// escolha nenhuma).
+    ///
+    /// Não recebe pinos de propósito: ao contrário das asas e da barra inferior do notch,
+    /// o herói do popover nunca foi restrito ao conjunto fixado — ele sempre respondeu
+    /// "o que está pior entre TODOS os provedores com dado", pinado ou não. Mudar isso
+    /// agora seria alterar um comportamento que ninguém pediu para mudar, só porque a
+    /// escolha explícita nasceu ao lado.
+    ///
+    /// `snapshots` já vem filtrado pelo chamador (sem provedores deslogados/sem dado) —
+    /// é o mesmo filtro que decide o que aparece na lista abaixo do herói, então uma
+    /// escolha explícita que aponte para fora dele já cai em automático por não ser
+    /// encontrada, sem lógica extra aqui.
+    static func popoverHero(
+        slot: QuotaSlot,
+        snapshots: [String: ProviderSnapshot],
+        providerOrder: [String]
+    ) -> MenuBarLabelModel.Candidate? {
+        if case .window(let providerId, let windowLabel) = slot,
+           let snapshot = snapshots[providerId],
+           let window = snapshot.quotas.first(where: { $0.label == windowLabel }) {
+            return MenuBarLabelModel.Candidate(providerId: providerId, window: window)
+        }
+        // Ordem de registry para o desempate: fração e reset iguais não podem fazer o
+        // herói trocar de provedor a cada recomposição por causa da ordem de um
+        // dicionário.
+        let order = providerOrder + snapshots.keys.sorted().filter { !providerOrder.contains($0) }
+        var best: MenuBarLabelModel.Candidate?
+        var bestFraction = Double.infinity
+        var bestReset = Date.distantFuture
+        for providerId in order {
+            guard let snapshot = snapshots[providerId] else { continue }
+            for window in snapshot.quotas {
+                guard let remaining = QuotaPresentation.remainingFraction(window.shape) else { continue }
+                let reset = window.shape.resetAt ?? .distantFuture
+                if remaining < bestFraction || (remaining == bestFraction && reset < bestReset) {
+                    best = MenuBarLabelModel.Candidate(providerId: providerId, window: window)
+                    bestFraction = remaining
+                    bestReset = reset
+                }
+            }
+        }
+        return best
+    }
 }
 
 /// A barra fina da borda inferior do notch fechado.
