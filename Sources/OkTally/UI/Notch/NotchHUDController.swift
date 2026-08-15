@@ -19,10 +19,21 @@ import DynamicNotchKit
 /// pior o que já existe — ver `.superpowers/notch-hud-report.md`.
 ///
 /// O que o pacote NÃO faz e mora aqui: expandir no hover (ele só publica `isHovering`),
-/// abrir o popover no clique, e a decisão de nem existir quando a tela não tem notch —
-/// o `.auto` do pacote cairia num painel FLUTUANTE no meio da tela, que não é o pedido.
+/// abrir o popover no clique, e escolher a tela.
 ///
-/// E há uma coisa que ele faz e que precisa ser DESFEITA: o observador de telas dele
+/// ## Dois modos, um controller
+///
+/// Existe tela com recorte → painel colado nele, pelo `DynamicNotchKit`. Não existe →
+/// **ilha flutuante** na tela primária, por `NotchIslandPanel`. A regra sai de
+/// `NotchScreenSelection.select`, que é pura e testada, e as duas formas compartilham o
+/// conteúdo inteiro (asas, barra, lista).
+///
+/// A ilha não usa o `DynamicNotchStyle.floating` do pacote, e o motivo está escrito em
+/// `NotchIslandPanel`: naquele estilo o pacote não suporta o estado compacto — `compact()`
+/// vira `hide()` —, ou seja, ele só sabe "aberto ou inexistente". Um painel que só aparece
+/// quando o mouse já está em cima não informa nada.
+///
+/// E há uma coisa que o pacote faz e que precisa ser DESFEITA: o observador de telas dele
 /// recria a janela em `NSScreen.screens[0]`, que ao plugar um monitor externo passa a ser
 /// o externo. É daí que vinha o "plugo o monitor e perco meu notch". Quem conserta é
 /// `reanchor()` — ver os comentários lá e em `makeNotch()`.
@@ -46,24 +57,30 @@ final class NotchHUDController {
     /// para sempre.
     private var isReanchoring = false
     private let popover: NotchPopoverPanel
+    private var island: NotchIslandPanel!
 
     init(appModel: AppModel, isEnabled: @escaping () -> Bool) {
         self.appModel = appModel
         self.isEnabled = isEnabled
         self.popover = NotchPopoverPanel(appModel: appModel)
+        self.island = NotchIslandPanel(appModel: appModel, onOpen: { [weak self] screen in
+            self?.openPopoverFromIsland(on: screen)
+        })
     }
 
-    /// A tela onde o painel pode existir: a que tem notch, e só ela.
+    /// Onde o painel vive AGORA: colado a um recorte físico, ou como ilha na tela
+    /// primária.
     ///
     /// Delega a decisão para `NotchScreenSelection` (pura, testada) e aqui só traduz
     /// `NSScreen` em descritor. `safeAreaInsets.top > 0` é o sinal de que há recorte; as
     /// duas áreas auxiliares são exigidas junto porque é delas que sai a LARGURA do notch
     /// — sem elas o pacote chutaria 300pt e o painel nasceria desalinhado.
     ///
-    /// Repare no que NÃO entra na conta: qual é a tela principal. Plugar um monitor
-    /// externo costuma promovê-lo a `NSScreen.screens[0]`, e o painel tem de continuar
-    /// exatamente onde estava.
-    static func notchScreen(_ screens: [NSScreen] = NSScreen.screens) -> NSScreen? {
+    /// Repare no que NÃO entra na conta do caso `.notch`: qual é a tela principal. Plugar
+    /// um monitor externo costuma promovê-lo a `NSScreen.screens[0]`, e o painel tem de
+    /// continuar exatamente onde estava. Já a ilha vai justamente para a primária — é lá
+    /// que a barra de menu está, e é onde o olho procura.
+    static func placement(_ screens: [NSScreen] = NSScreen.screens) -> (mode: NotchScreenPlacement, screen: NSScreen)? {
         let descriptors = screens.enumerated().map { index, screen in
             NotchScreenDescriptor(
                 id: index,
@@ -74,7 +91,14 @@ final class NotchHUDController {
             )
         }
         guard let chosen = NotchScreenSelection.select(from: descriptors) else { return nil }
-        return screens[chosen.id]
+        return (chosen, screens[chosen.screen.id])
+    }
+
+    /// A tela com recorte, e só ela — `nil` quando não houver nenhuma. É o que o modo
+    /// notch (e só ele) precisa saber.
+    static func notchScreen(_ screens: [NSScreen] = NSScreen.screens) -> NSScreen? {
+        guard let placement = placement(screens), case .notch = placement.mode else { return nil }
+        return placement.screen
     }
 
     /// Começa a observar telas e mostra o painel se houver notch. Idempotente: chamar de
@@ -121,10 +145,18 @@ final class NotchHUDController {
     /// O observador do pacote é assíncrono e não dá garantia de ordem: ele pode acordar
     /// DEPOIS de nós e roubar a janela de volta para `screens[0]`. A verificação confere
     /// em que tela a janela realmente ficou e refaz uma vez se estiver errada.
+    /// ## Por que a segunda passada vale para os DOIS modos
+    ///
+    /// Em modo ilha não há painel do pacote nenhum — mas o `DynamicNotch` continua vivo
+    /// (ver `makeNotch()`) e o observador interno dele não sabe disso: ao fechar a tampa
+    /// ele abre uma janela em `screens[0]` do mesmo jeito, e o resultado seria um
+    /// retângulo preto órfão no topo do monitor externo, ao lado da ilha. A verificação
+    /// aqui é o que garante que ele não sobreviva.
     private func reanchor() async {
         guard let notch else {
-            // Nunca houve painel (app começou sem notch, ou preferência desligada):
-            // o caminho normal já resolve, inclusive criando a janela se agora dá.
+            // Nunca houve painel do modo notch (o app subiu em clamshell, ou a
+            // preferência estava desligada): o caminho normal já resolve — inclusive
+            // criando a janela agora, se agora dá.
             refresh()
             return
         }
@@ -134,39 +166,67 @@ final class NotchHUDController {
         defer { isReanchoring = false }
 
         for attempt in 0 ..< 2 {
-            let target = Self.notchScreen()
+            let target = Self.placement()
             await notch.hide()
             // `hide()` sai cedo quando o estado já é `.hidden` e nesse caminho NÃO destrói
             // a janela — inclusive uma que o pacote tenha acabado de recriar sozinho.
             // `windowController` é público justamente para isto.
             notch.windowController?.close()
             notch.windowController = nil
-            guard !Task.isCancelled, isEnabled(), let target else { return }
-            await notch.compact(on: target)
             guard !Task.isCancelled else { return }
-            if attempt == 0 {
+            guard isEnabled(), let target else {
+                island.close()
+                return
+            }
+
+            switch target.mode {
+            case .floating:
+                island.show(on: target.screen)
+                guard attempt == 0 else { return }
                 try? await Task.sleep(for: .milliseconds(400))
                 guard !Task.isCancelled else { return }
-                if notch.windowController?.window?.screen === target { return }
+                // Nenhuma janela do pacote é o estado correto aqui. Se apareceu uma, o
+                // observador interno acordou depois de nós — a segunda volta a mata.
+                if notch.windowController == nil { return }
+
+            case .notch:
+                island.close()
+                await notch.compact(on: target.screen)
+                guard !Task.isCancelled else { return }
+                guard attempt == 0 else { return }
+                try? await Task.sleep(for: .milliseconds(400))
+                guard !Task.isCancelled else { return }
+                if notch.windowController?.window?.screen === target.screen { return }
             }
         }
     }
 
-    /// Reavalia do zero: preferência desligada ou tela sem notch → o painel deixa de
-    /// existir (a janela é destruída, não escondida). Caso contrário, painel fechado.
+    /// Reavalia do zero: preferência desligada ou sem tela nenhuma → o painel deixa de
+    /// existir (a janela é destruída, não escondida). Com recorte, painel colado nele;
+    /// sem recorte, ilha flutuante na primária.
     func refresh() {
-        guard isEnabled(), let screen = Self.notchScreen() else {
-            teardown()
+        guard isEnabled(), let target = Self.placement() else {
+            popover.close()
+            island.close()
+            teardownNotchWindow()
             return
         }
-        let notch = notch ?? makeNotch()
-        Task { await notch.compact(on: screen) }
+        switch target.mode {
+        case .notch:
+            island.close()
+            let notch = notch ?? makeNotch()
+            Task { await notch.compact(on: target.screen) }
+        case .floating:
+            // A janela do pacote some ANTES de a ilha aparecer: as duas no ar ao mesmo
+            // tempo seriam dois painéis do mesmo app disputando o topo da tela.
+            teardownNotchWindow()
+            island.show(on: target.screen)
+        }
     }
 
-    /// Destrói a JANELA, não o objeto — ver `makeNotch()`.
-    private func teardown() {
+    /// Destrói a JANELA do modo notch, não o objeto — ver `makeNotch()`.
+    private func teardownNotchWindow() {
         collapseTask?.cancel()
-        popover.close()
         guard let notch else { return }
         Task {
             await notch.hide()
@@ -244,5 +304,11 @@ final class NotchHUDController {
     private func openPopover() {
         guard let screen = Self.notchScreen() else { return }
         popover.toggle(on: screen)
+    }
+
+    /// Clique na ilha. Mesmo popover, ancoragem diferente: a ilha flutua ABAIXO da barra
+    /// de menu, então pendurar o popover na barra o faria nascer atrás dela.
+    private func openPopoverFromIsland(on screen: NSScreen) {
+        popover.toggle(on: screen, below: island.anchorBottomY)
     }
 }

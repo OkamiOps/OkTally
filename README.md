@@ -26,6 +26,13 @@
 <br />
 <br />
 
+<img src="docs/assets/island-collapsed.png" width="360" alt="OkTally floating island: a black pill at the top of an external display, one quota on each side of the brand mark and a continuous bar underneath" />
+
+<sub>No notch — external monitor, closed lid, iMac? The same panel becomes a floating island.</sub>
+
+<br />
+<br />
+
 <img src="docs/assets/popover.png" width="400" alt="OkTally popover dashboard with hero gauge, provider cards and 24h sparklines" />
 
 <sub>All screenshots use demo data.</sub>

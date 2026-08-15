@@ -247,8 +247,8 @@
 "Limiares" = "Thresholds";
 
 /* Painel do notch */
-"Painel no notch" = "Notch panel";
-"Aparece só na tela embutida do MacBook: em monitor externo ou de tampa fechada não há notch, e a barra de menu segue sozinha." = "Only on the MacBook's built-in display: on an external monitor or with the lid closed there is no notch, and the menu bar carries on alone.";
+"Painel no topo da tela" = "Top-of-screen panel";
+"Na tela do MacBook o painel abraça o notch. Sem notch — monitor externo, tampa fechada, iMac — ele vira uma ilha flutuante no topo da tela principal, com o mesmo conteúdo." = "On the MacBook display the panel hugs the notch. With no notch — external monitor, closed lid, iMac — it becomes a floating island at the top of the primary display, with the same content.";
 "Clique para abrir" = "Click to open";
 
 /* Escolha de qual cota aparece em cada lugar (asas do notch e barra de menu) */

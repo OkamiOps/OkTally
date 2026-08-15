@@ -101,6 +101,21 @@ final class ReadmeAssetRenderer: XCTestCase {
         try write(view: notchStage { NotchExpandedMock(appModel: model) },
                   to: "notch-expanded.png", scheme: .dark)
 
+        // A ilha flutuante — o painel quando NENHUMA tela tem recorte (clamshell, monitor
+        // externo, iMac). Aqui a `NotchIslandView` é a própria view do app, sem maquete:
+        // ela não depende de geometria de hardware nenhuma, então o que sai no PNG é
+        // literalmente o que a janela desenha. O palco tem gradiente ESCURO de propósito —
+        // é contra um wallpaper escuro que uma pílula preta sem borda vira um buraco sem
+        // forma, e é isso que a borda de branco a 8% existe para evitar.
+        try write(view: islandStage {
+                      NotchIslandView(appModel: model, isExpanded: false, onOpen: {}, onHover: { _ in })
+                  },
+                  to: "island-collapsed.png", scheme: .dark)
+        try write(view: islandStage {
+                      NotchIslandView(appModel: model, isExpanded: true, onOpen: {}, onHover: { _ in })
+                  },
+                  to: "island-expanded.png", scheme: .dark)
+
         // Preferências vai por outro caminho: `ImageRenderer` NÃO desenha `Form`
         // agrupado (sai em branco), então a tela nunca pôde ser olhada sem abrir o app —
         // e foi exatamente por isso que ela atravessou o redesenho inteiro sem ser
@@ -379,6 +394,23 @@ final class ReadmeAssetRenderer: XCTestCase {
             .padding(.bottom, 26)
             .background(
                 LinearGradient(colors: [Color(hex: 0x2C3E63), Color(hex: 0x7A5C8E)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+            )
+            .frame(width: 700)
+    }
+
+    /// Palco da ilha: um "desktop" ESCURO, com respiro em volta.
+    ///
+    /// Escuro e não claro, ao contrário do palco do notch, porque o risco muda de lado: a
+    /// pílula é preta e flutua sobre o wallpaper, então o teste que importa é se ela ainda
+    /// tem contorno contra um fundo escuro. Contra um fundo claro qualquer coisa preta se
+    /// lê.
+    private func islandStage<V: View>(@ViewBuilder content: () -> V) -> some View {
+        content()
+            .padding(.vertical, 30)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .background(
+                LinearGradient(colors: [Color(hex: 0x14161C), Color(hex: 0x241C2E)],
                                startPoint: .topLeading, endPoint: .bottomTrailing)
             )
             .frame(width: 700)

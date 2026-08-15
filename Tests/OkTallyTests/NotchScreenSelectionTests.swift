@@ -2,17 +2,18 @@
 import XCTest
 @testable import OkTally
 
-/// A escolha da tela do painel do notch. É onde mora o bug do "plugo o monitor externo e
-/// perco meu notch": a tela certa é a que tem RECORTE, nunca a principal.
+/// Onde o painel vive. É aqui que moram as duas reclamações do dono: "plugo o monitor
+/// externo e perco meu notch" (a tela certa é a que tem RECORTE, nunca a principal) e "de
+/// tampa fechada o notch não aparece" (sem recorte o painel não some — ele vira ilha).
 final class NotchScreenSelectionTests: XCTestCase {
     private func screen(_ id: Int, notch: Bool, primary: Bool = false) -> NotchScreenDescriptor {
         .init(id: id, hasNotch: notch, isPrimary: primary)
     }
 
     /// MacBook sozinho: a única tela, e ela tem notch.
-    func test_onlyBuiltIn_isChosen() {
+    func test_onlyBuiltIn_hugsTheNotch() {
         let chosen = NotchScreenSelection.select(from: [screen(0, notch: true, primary: true)])
-        XCTAssertEqual(chosen?.id, 0)
+        XCTAssertEqual(chosen, .notch(screen(0, notch: true, primary: true)))
     }
 
     /// Tampa aberta + monitor externo: o painel continua no MacBook. O externo não tem
@@ -22,28 +23,51 @@ final class NotchScreenSelectionTests: XCTestCase {
             screen(0, notch: true, primary: true),
             screen(1, notch: false)
         ])
-        XCTAssertEqual(chosen?.id, 0)
+        XCTAssertEqual(chosen, .notch(screen(0, notch: true, primary: true)))
     }
 
     /// O caso que quebrava: o macOS promove o monitor externo a tela PRINCIPAL (índice 0)
-    /// e o pacote recriava a janela nele. A escolha ignora "principal" de propósito.
-    func test_externalAsPrimary_stillPicksTheNotchedScreen() {
+    /// e o pacote recriava a janela nele. "Principal" é ignorado de propósito enquanto
+    /// houver recorte em algum lugar.
+    func test_externalAsPrimary_stillHugsTheNotchedScreen() {
         let chosen = NotchScreenSelection.select(from: [
             screen(0, notch: false, primary: true),
             screen(1, notch: true)
         ])
-        XCTAssertEqual(chosen?.id, 1)
-        XCTAssertEqual(chosen?.isPrimary, false)
+        XCTAssertEqual(chosen, .notch(screen(1, notch: true)))
+        XCTAssertEqual(chosen?.screen.isPrimary, false)
     }
 
-    /// Clamshell: tampa fechada, a embutida some da lista. Sem tela com notch não há
-    /// painel — e isso é uma resposta legítima, não um erro.
-    func test_onlyExternal_choosesNothing() {
-        XCTAssertNil(NotchScreenSelection.select(from: [screen(0, notch: false, primary: true)]))
+    /// Clamshell com UM externo: a embutida some da lista e não sobra recorte nenhum. A
+    /// resposta que o dono precisa não é "nada" — é a ilha, na tela que sobrou.
+    func test_clamshellOneExternal_floatsOnIt() {
+        let chosen = NotchScreenSelection.select(from: [screen(0, notch: false, primary: true)])
+        XCTAssertEqual(chosen, .floating(screen(0, notch: false, primary: true)))
+    }
+
+    /// Clamshell com DOIS externos — a configuração real do dono. A ilha vai para a
+    /// PRIMÁRIA, e não para a primeira da lista por acaso: é lá que a barra de menu está.
+    func test_clamshellTwoExternals_floatsOnThePrimary() {
+        let chosen = NotchScreenSelection.select(from: [
+            screen(0, notch: false),
+            screen(1, notch: false, primary: true)
+        ])
+        XCTAssertEqual(chosen, .floating(screen(1, notch: false, primary: true)))
+    }
+
+    /// Nenhuma tela marcada como primária (a lista pisca assim durante a reconfiguração):
+    /// a ilha cai na primeira em vez de sumir. Ficar sem painel é pior do que ficar numa
+    /// tela talvez errada por um instante — a próxima notificação corrige.
+    func test_noPrimaryFlag_fallsBackToTheFirstScreen() {
+        let chosen = NotchScreenSelection.select(from: [
+            screen(0, notch: false),
+            screen(1, notch: false)
+        ])
+        XCTAssertEqual(chosen, .floating(screen(0, notch: false)))
     }
 
     /// Lista vazia (a que o AppKit devolve por um instante durante a reconfiguração):
-    /// nil, sem estourar índice.
+    /// nil, sem estourar índice. É o único caso que continua sem painel nenhum.
     func test_noScreens_choosesNothing() {
         XCTAssertNil(NotchScreenSelection.select(from: []))
     }
@@ -56,6 +80,6 @@ final class NotchScreenSelectionTests: XCTestCase {
             screen(0, notch: true),
             screen(1, notch: true, primary: true)
         ])
-        XCTAssertEqual(chosen?.id, 0)
+        XCTAssertEqual(chosen?.screen.id, 0)
     }
 }

@@ -660,13 +660,16 @@ private struct GeneralPane: View {
                     Text(L("Em automático, o lado esquerdo mostra a cota mais apertada e o direito a seguinte; a barra inferior mostra sempre a mais apertada. Uma cota escolhida que deixe de existir volta para automático sozinha."))
                         .font(.caption).foregroundStyle(.secondary)
 
-                    Toggle(L("Painel no notch"), isOn: $notchHUDEnabled)
+                    // Um switch só governa os DOIS modos (colado ao notch e ilha
+                    // flutuante), então o rótulo não pode mais dizer "notch": de tampa
+                    // fechada ele estaria mentindo sobre o que liga.
+                    Toggle(L("Painel no topo da tela"), isOn: $notchHUDEnabled)
                         .toggleStyle(.switch)
                         .onChange(of: notchHUDEnabled) { _, newValue in
                             preferencesStore.notchHUDEnabled = newValue
                             onNotchPreferenceChanged?()
                         }
-                    Text(L("Aparece só na tela embutida do MacBook: em monitor externo ou de tampa fechada não há notch, e a barra de menu segue sozinha."))
+                    Text(L("Na tela do MacBook o painel abraça o notch. Sem notch — monitor externo, tampa fechada, iMac — ele vira uma ilha flutuante no topo da tela principal, com o mesmo conteúdo."))
                         .font(.caption).foregroundStyle(.secondary)
                 }
 

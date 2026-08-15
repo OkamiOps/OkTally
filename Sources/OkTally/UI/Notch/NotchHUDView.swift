@@ -124,7 +124,11 @@ private extension View {
 struct NotchBottomRule: View {
     let bar: NotchBottomBar?
     /// Largura do painel fechado inteiro, medida pelas duas asas (`NotchBarSpan`).
-    let totalWidth: CGFloat
+    ///
+    /// `nil` = "ocupe o que houver". É o caso da ilha flutuante: lá o painel não chega
+    /// partido em dois, a barra é irmã das asas dentro da mesma pílula, e a largura é a
+    /// que o layout já resolveu — medir de novo seria inventar um número que já existe.
+    let totalWidth: CGFloat?
 
     /// Traço, não layout: a espessura é a identidade visual do elemento, do mesmo jeito
     /// que a de um `Divider`. Abaixo de 2pt ela some no antialiasing da borda curva do
@@ -141,18 +145,33 @@ struct NotchBottomRule: View {
     static let bottomGap: CGFloat = 3
 
     var body: some View {
-        if let bar, totalWidth > 0 {
-            ZStack(alignment: .leading) {
-                // O trilho precisa ser VISÍVEL: sem ele não há proporção, e sem proporção
-                // não dá para ver o quanto falta — só o quanto sobrou em pixels soltos.
-                Capsule().fill(NotchPalette.ruleTrack)
-                Capsule()
-                    .fill(QuotaPresentation.color(remaining: bar.remaining))
-                    .frame(width: max(Self.thickness,
-                                      totalWidth * Theme.clampFraction(bar.remaining)))
-                    .animation(.easeInOut(duration: 0.3), value: bar.remaining)
+        if let bar {
+            if let totalWidth {
+                if totalWidth > 0 {
+                    track(bar: bar, width: totalWidth)
+                        .frame(width: totalWidth, height: Self.thickness)
+                }
+            } else {
+                // A altura é fixa porque é a ESPESSURA DO TRAÇO, não uma altura de
+                // conteúdo — a mesma constante do caso medido. É ela que dá ao
+                // `GeometryReader` (que sozinho não tem tamanho ideal) algo para preencher.
+                GeometryReader { proxy in
+                    track(bar: bar, width: proxy.size.width)
+                }
+                .frame(height: Self.thickness)
             }
-            .frame(width: totalWidth, height: Self.thickness)
+        }
+    }
+
+    private func track(bar: NotchBottomBar, width: CGFloat) -> some View {
+        ZStack(alignment: .leading) {
+            // O trilho precisa ser VISÍVEL: sem ele não há proporção, e sem proporção
+            // não dá para ver o quanto falta — só o quanto sobrou em pixels soltos.
+            Capsule().fill(NotchPalette.ruleTrack)
+            Capsule()
+                .fill(QuotaPresentation.color(remaining: bar.remaining))
+                .frame(width: max(Self.thickness, width * Theme.clampFraction(bar.remaining)))
+                .animation(.easeInOut(duration: 0.3), value: bar.remaining)
         }
     }
 }
@@ -326,5 +345,102 @@ private struct NotchQuotaRow: View {
                 .lineLimit(1)
                 .frame(width: 48, alignment: .trailing)
         }
+    }
+}
+
+// MARK: - Ilha flutuante
+
+/// O painel quando NENHUMA tela tem recorte — tampa fechada, monitor externo, iMac.
+///
+/// ## Por que existe
+///
+/// A versão anterior tratava "sem notch" como "sem painel". Só que o dono trabalha em
+/// clamshell com dois monitores externos: a tela embutida some da lista do sistema e o
+/// painel se escondia justamente na hora em que ele mais precisava ver as cotas. Sem
+/// recorte não há o que abraçar — então a pílula se desenha inteira.
+///
+/// ## O que muda em relação ao modo notch, e o que NÃO muda
+///
+/// O conteúdo é o mesmo: as duas asas com chip + valor, a barra contínua no rodapé, e a
+/// mesma lista densa quando expande. O que muda é só a moldura — sem vão central (não há
+/// recorte para contornar), cantos totalmente arredondados, e uma borda de branco a 8%,
+/// que é o que impede a pílula de virar um buraco sem forma contra um wallpaper escuro.
+/// No modo notch essa borda seria um erro: lá o painel PRECISA se confundir com o preto do
+/// hardware.
+struct NotchIslandView: View {
+    @ObservedObject var appModel: AppModel
+    let isExpanded: Bool
+    /// Clique: abre o popover. Mesmo gesto e mesmo destino do modo notch.
+    let onOpen: () -> Void
+    /// Entrou/saiu com o cursor. A POLÍTICA (expandir na hora, fechar com atraso) mora no
+    /// painel, junto com a do modo notch — a view só relata o que o mouse fez.
+    let onHover: (Bool) -> Void
+
+    /// 999 vira cápsula sozinho: o `RoundedRectangle` limita o raio à metade da menor
+    /// dimensão, então fechado ele fecha nas pontas sem precisar saber a altura (que é
+    /// dada pelo conteúdo). Expandido o raio é explícito — uma lista de cinco linhas com
+    /// as pontas totalmente redondas viraria um comprimido, não um painel.
+    private var cornerRadius: CGFloat { isExpanded ? 24 : 999 }
+
+    var body: some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(.black)
+            )
+            .overlay(
+                // Um fio, não uma moldura: contra um wallpaper escuro é ele que devolve o
+                // contorno da pílula; contra um claro ele desaparece e o preto se vira
+                // sozinho.
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+            )
+            .compositingGroup()
+            .shadow(color: .black.opacity(0.45), radius: 10, y: 3)
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .onTapGesture(perform: onOpen)
+            .onHover(perform: onHover)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if isExpanded {
+            NotchExpandedView(appModel: appModel, onOpen: onOpen)
+                .padding(.horizontal, 15)
+                .padding(.vertical, 13)
+        } else {
+            collapsed
+        }
+    }
+
+    /// Fechado: asa, marca, asa — e a barra contínua embaixo.
+    ///
+    /// As asas se aproximam porque não há recorte entre elas, e a marca ocupa o miolo que
+    /// sobra. Ela não é enfeite: fechada, a pílula é a única coisa do app visível na tela,
+    /// e sem a marca dois números soltos num comprimido preto não dizem de quem são.
+    private var collapsed: some View {
+        HStack(spacing: 10) {
+            NotchWing(segment: appModel.notchWings.leading, showsBrandFallback: false)
+            // Menor e mais apagada que as asas de propósito. No primeiro corte ela saiu
+            // do mesmo tamanho dos chips e em cinza médio, e o olho lia TRÊS chips — um
+            // deles sem número. Ela não é dado: é assinatura, e o lugar dela é atrás.
+            BrandMark(size: 11)
+                .foregroundStyle(NotchPalette.ink.opacity(0.38))
+            NotchWing(segment: appModel.notchWings.trailing, showsBrandFallback: false)
+        }
+        // O respiro onde a barra mora. É gutter da barra, não altura de conteúdo: a
+        // barra é um traço de espessura fixa, e sem reservar o lugar dela o `overlay`
+        // passaria por cima dos números.
+        .padding(.bottom, 7)
+        // `overlay` e não uma linha do `VStack`, de propósito: a barra sem largura
+        // medida é gulosa (é um `GeometryReader`), e como filha do empilhamento ela
+        // esticaria a pílula até a borda da tela. Num overlay ela recebe exatamente o
+        // tamanho de quem a hospeda — a largura das asas — e não opina sobre ele.
+        .overlay(alignment: .bottom) {
+            NotchBottomRule(bar: appModel.notchBottomBar, totalWidth: nil)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 7)
+        .padding(.bottom, 5)
     }
 }

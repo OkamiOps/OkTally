@@ -27,11 +27,14 @@ final class NotchPopoverPanel {
 
     var isOpen: Bool { panel?.isVisible == true }
 
-    func toggle(on screen: NSScreen) {
-        if isOpen { close() } else { open(on: screen) }
+    /// - Parameter below: de que altura (em coordenadas de tela) o popover deve pender.
+    ///   `nil` = da barra de menu, que é onde o painel do notch termina. A ilha flutuante
+    ///   passa a borda de baixo dela, senão o popover nasceria POR TRÁS da pílula.
+    func toggle(on screen: NSScreen, below anchorY: CGFloat? = nil) {
+        if isOpen { close() } else { open(on: screen, below: anchorY) }
     }
 
-    func open(on screen: NSScreen) {
+    func open(on screen: NSScreen, below anchorY: CGFloat? = nil) {
         close()
         let host = NSHostingView(rootView: PopoverView(appModel: appModel)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)))
@@ -52,7 +55,7 @@ final class NotchPopoverPanel {
         // nasce colado embaixo dele e não pode passar por trás.
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 1)
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-        panel.setFrameOrigin(origin(for: host.frame.size, on: screen))
+        panel.setFrameOrigin(origin(for: host.frame.size, on: screen, below: anchorY))
         panel.orderFrontRegardless()
         self.panel = panel
 
@@ -73,12 +76,13 @@ final class NotchPopoverPanel {
         panel = nil
     }
 
-    /// Centralizado no notch e logo abaixo da barra de menu. `visibleFrame.maxY` já
-    /// desconta a barra, então o topo do popover encosta nela sem cobri-la.
-    private func origin(for size: CGSize, on screen: NSScreen) -> CGPoint {
+    /// Centralizado no painel e logo abaixo dele. Sem âncora explícita o teto é
+    /// `visibleFrame.maxY`, que já desconta a barra de menu — o topo do popover encosta
+    /// nela sem cobri-la, que é o certo para o painel colado no notch.
+    private func origin(for size: CGSize, on screen: NSScreen, below anchorY: CGFloat?) -> CGPoint {
         CGPoint(
             x: screen.frame.midX - size.width / 2,
-            y: screen.visibleFrame.maxY - size.height - Theme.Space.sm
+            y: (anchorY ?? screen.visibleFrame.maxY) - size.height - Theme.Space.sm
         )
     }
 }
