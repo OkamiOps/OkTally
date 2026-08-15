@@ -85,6 +85,7 @@ final class AppModel: ObservableObject {
     /// mora toda a preferência do app.
     @Published var notchLeadingSlot: QuotaSlot { didSet { preferences.notchLeadingSlot = notchLeadingSlot } }
     @Published var notchTrailingSlot: QuotaSlot { didSet { preferences.notchTrailingSlot = notchTrailingSlot } }
+    @Published var notchBottomSlot: QuotaSlot { didSet { preferences.notchBottomSlot = notchBottomSlot } }
     @Published var menuBarSlot: QuotaSlot { didSet { preferences.menuBarSlot = menuBarSlot } }
 
     private static let menuBarPinsKey = "menuBarPins"
@@ -132,6 +133,7 @@ final class AppModel: ObservableObject {
         self.preferences = preferences
         self.notchLeadingSlot = preferences.notchLeadingSlot
         self.notchTrailingSlot = preferences.notchTrailingSlot
+        self.notchBottomSlot = preferences.notchBottomSlot
         self.menuBarSlot = preferences.menuBarSlot
         if let joined = defaults.string(forKey: Self.menuBarPinsKey) {
             self.menuBarPins = joined.split(separator: "\u{2}").compactMap { MenuBarPin(stored: String($0)) }
@@ -207,6 +209,17 @@ final class AppModel: ObservableObject {
         )
         return (pair.leading.map(MenuBarLabelModel.segment(for:)),
                 pair.trailing.map(MenuBarLabelModel.segment(for:)))
+    }
+
+    /// A barra fina da borda inferior do notch fechado. `nil` quando não há nenhuma
+    /// janela com percentual — a barra some em vez de inventar um preenchimento.
+    var notchBottomBar: NotchBottomBar? {
+        QuotaSlotResolver.bottomBar(
+            slot: notchBottomSlot,
+            pins: menuBarPins,
+            snapshots: snapshotsByProvider,
+            providerOrder: orderedProviders.map(\.id)
+        )
     }
 
     /// As janelas que os `Picker`s das Preferências oferecem, além de "Automático".

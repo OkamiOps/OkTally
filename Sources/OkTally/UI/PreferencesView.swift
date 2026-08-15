@@ -656,7 +656,8 @@ private struct GeneralPane: View {
                     slotPicker(L("Valor na barra"), selection: $appModel.menuBarSlot)
                     slotPicker(L("Notch — lado esquerdo"), selection: $appModel.notchLeadingSlot)
                     slotPicker(L("Notch — lado direito"), selection: $appModel.notchTrailingSlot)
-                    Text(L("Em automático, o lado esquerdo mostra a cota mais apertada e o direito a seguinte. Uma cota escolhida que deixe de existir volta para automático sozinha."))
+                    slotPicker(L("Notch — barra inferior"), selection: $appModel.notchBottomSlot)
+                    Text(L("Em automático, o lado esquerdo mostra a cota mais apertada e o direito a seguinte; a barra inferior mostra sempre a mais apertada. Uma cota escolhida que deixe de existir volta para automático sozinha."))
                         .font(.caption).foregroundStyle(.secondary)
 
                     Toggle(L("Painel no notch"), isOn: $notchHUDEnabled)

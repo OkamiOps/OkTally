@@ -174,6 +174,68 @@ final class QuotaSlotResolverTests: XCTestCase {
                                                  pins: [], snapshots: [:], hasAnyError: false).text, "OK")
     }
 
+    // MARK: - Barra inferior do notch
+
+    /// Em automático a barra é a MAIS APERTADA — inclusive quando isso a faz repetir a
+    /// asa esquerda. Ela é o alarme do painel, e alarme é sempre sobre a pior cota.
+    func test_bottomBar_automaticIsTheTightest() {
+        let bar = QuotaSlotResolver.bottomBar(
+            slot: .automatic, pins: [], snapshots: snapshots, providerOrder: order)
+        XCTAssertEqual(bar?.providerId, "cursor")
+        XCTAssertEqual(bar?.remaining ?? -1, 0.07, accuracy: 0.0001)
+    }
+
+    /// Escolha explícita manda, mesmo sendo a mais folgada de todas.
+    func test_bottomBar_explicitWindowWins() {
+        let bar = QuotaSlotResolver.bottomBar(
+            slot: .window(providerId: "claude", windowLabel: "5h"),
+            pins: [], snapshots: snapshots, providerOrder: order)
+        XCTAssertEqual(bar?.providerId, "claude")
+        XCTAssertEqual(bar?.remaining ?? -1, 0.78, accuracy: 0.0001)
+    }
+
+    /// Provedor escolhido que sumiu (deslogado, cota que o serviço parou de devolver)
+    /// cai para automático em silêncio, igual às asas e ao número da barra de menu.
+    func test_bottomBar_orphanChoiceFallsBackToAutomatic() {
+        let bar = QuotaSlotResolver.bottomBar(
+            slot: .window(providerId: "fantasma", windowLabel: "5h"),
+            pins: [], snapshots: snapshots, providerOrder: order)
+        XCTAssertEqual(bar?.providerId, "cursor")
+    }
+
+    /// Sem nenhuma janela com percentual a barra não existe — um saldo em dólares não
+    /// tem teto conhecido, e preenchê-la com qualquer coisa seria inventar um número.
+    func test_bottomBar_balanceOnlyDrawsNothing() {
+        let onlyBalance = ["openrouter": snapshot("openrouter", [
+            QuotaWindow(label: "saldo", shape: .creditBalance(remaining: 12, currency: "USD"))
+        ])]
+        XCTAssertNil(QuotaSlotResolver.bottomBar(
+            slot: .automatic, pins: [], snapshots: onlyBalance, providerOrder: order))
+        // E uma escolha explícita de saldo também não vira barra: o problema é a forma da
+        // cota, não a origem da escolha.
+        XCTAssertNil(QuotaSlotResolver.bottomBar(
+            slot: .window(providerId: "openrouter", windowLabel: "saldo"),
+            pins: [], snapshots: onlyBalance, providerOrder: order))
+    }
+
+    /// Sem dado nenhum, nada.
+    func test_bottomBar_noDataDrawsNothing() {
+        XCTAssertNil(QuotaSlotResolver.bottomBar(
+            slot: .automatic, pins: [], snapshots: [:], providerOrder: order))
+    }
+
+    /// Com pinos, a barra escolhe entre os PINOS — igual às asas. Fixar continua sendo o
+    /// jeito de dizer "acompanhe estas e ignore o resto".
+    func test_bottomBar_automaticRespectsPins() {
+        let bar = QuotaSlotResolver.bottomBar(
+            slot: .automatic,
+            pins: [.init(providerId: "claude", windowLabel: "5h"),
+                   .init(providerId: "codex", windowLabel: "semanal")],
+            snapshots: snapshots, providerOrder: order)
+        // O cursor a 93% usado é o mais apertado do mundo, mas não está fixado.
+        XCTAssertEqual(bar?.providerId, "codex")
+    }
+
     // MARK: - Lista das Preferências
 
     /// A lista do `Picker` segue a ordem do registry, não a de aperto: uma lista que se

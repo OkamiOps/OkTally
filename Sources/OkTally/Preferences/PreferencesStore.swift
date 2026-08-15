@@ -34,6 +34,7 @@ final class PreferencesStore {
         static let menuBarSlot = "menuBarSlot"
         static let notchLeadingSlot = "notchLeadingSlot"
         static let notchTrailingSlot = "notchTrailingSlot"
+        static let notchBottomSlot = "notchBottomSlot"
         static let alertPercentThresholds = "alertPercentThresholds"
         static let alertLowBalanceThreshold = "alertLowBalanceThreshold"
         static func refreshInterval(_ providerId: String) -> String { "refreshInterval.\(providerId)" }
@@ -181,6 +182,16 @@ final class PreferencesStore {
     var notchTrailingSlot: QuotaSlot {
         get { QuotaSlot(stored: store.string(forKey: Keys.notchTrailingSlot)) }
         set { store.set(newValue.stored.isEmpty ? nil : newValue.stored, forKey: Keys.notchTrailingSlot) }
+    }
+
+    /// A BARRA fina da borda inferior do notch fechado.
+    ///
+    /// Em automático ela é a cota mais apertada — sem a exclusão que a asa direita faz.
+    /// As asas dividem duas informações entre si; a barra é o alarme, e alarme é sempre
+    /// sobre a pior cota, ainda que isso a faça coincidir com a asa esquerda.
+    var notchBottomSlot: QuotaSlot {
+        get { QuotaSlot(stored: store.string(forKey: Keys.notchBottomSlot)) }
+        set { store.set(newValue.stored.isEmpty ? nil : newValue.stored, forKey: Keys.notchBottomSlot) }
     }
 
     // MARK: - Alert preferences

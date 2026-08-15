@@ -108,3 +108,45 @@ enum QuotaSlotResolver {
         }
     }
 }
+
+/// A barra fina da borda inferior do notch fechado.
+///
+/// Só percentual mora aqui: um saldo em dólares não tem "quanto resta" para preencher
+/// uma barra — sem teto conhecido, qualquer preenchimento seria inventado. Por isso o
+/// tipo carrega `remaining` não-opcional e a ausência de barra é representada pelo
+/// `nil` do resolvedor, não por um valor vazio.
+struct NotchBottomBar: Equatable {
+    let providerId: String
+    let windowLabel: String
+    /// Fração RESTANTE (0…1) — cheia é folga, igual a toda barra do app.
+    let remaining: Double
+}
+
+extension QuotaSlotResolver {
+
+    /// A cota da barra inferior do notch.
+    ///
+    /// Em automático é a MAIS APERTADA, sem exclusão nenhuma: ao contrário da asa
+    /// direita, esta barra não está tentando dizer uma segunda coisa — ela é o alarme, e
+    /// o alarme é sempre sobre a pior cota. Que ela coincida com a asa esquerda em
+    /// automático é o comportamento pedido, não um efeito colateral.
+    ///
+    /// Devolve `nil` quando não há nenhuma janela com percentual (por exemplo, só
+    /// provedores de saldo logados): a barra some em vez de mentir um preenchimento.
+    static func bottomBar(
+        slot: QuotaSlot,
+        pins: [AppModel.MenuBarPin],
+        snapshots: [String: ProviderSnapshot],
+        providerOrder: [String]
+    ) -> NotchBottomBar? {
+        let ranked = self.ranked(pins: pins, snapshots: snapshots, providerOrder: providerOrder)
+        guard let candidate = resolve(slot, ranked: ranked, snapshots: snapshots),
+              let remaining = QuotaPresentation.remainingFraction(candidate.window.shape)
+        else { return nil }
+        return NotchBottomBar(
+            providerId: candidate.providerId,
+            windowLabel: candidate.window.label,
+            remaining: remaining
+        )
+    }
+}

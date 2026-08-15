@@ -224,35 +224,51 @@ struct ProgressRing: View {
     }
 }
 
-/// O símbolo da marca desenhado em SwiftUI: três traços de contagem (tally) cortados por
-/// uma diagonal nas três cores de acento. Não usa `Resources/Brand/*.png` porque esses
-/// arquivos não estão no bundle do target e incluí-los exigiria mexer no `Package.swift`
-/// — e, de qualquer forma, um vetor de 16pt desenhado direto fica nítido em qualquer
-/// escala e acompanha o esquema de cor sozinho.
+/// O símbolo da marca. Não é um desenho "inspirado" nele: é o MESMO arquivo que a barra
+/// de menu usa (`MenuBarTemplate.png`, template nas três escalas), tingido pelo
+/// `foregroundStyle` de quem o coloca na tela.
 ///
-/// Fica no header do popover: é a tela que o dono abre dez vezes por dia e a única que
-/// não tinha nenhum sinal de identidade além do texto "OkTally".
+/// ## Por que isto deixou de ser um vetor escrito à mão
+///
+/// A primeira versão redesenhava a marca em SwiftUI — três cápsulas verticais mais UMA
+/// diagonal girada -52° com um gradiente das três cores de acento — para não depender do
+/// bundle. O resultado não era a marca: o símbolo do OkTally tem DUAS diagonais paralelas
+/// subindo para a direita e cortadas por um vão, e as cápsulas do desenho ainda
+/// transbordavam do `.frame` que deveria contê-las. No notch, onde ele aparece quando não
+/// há cota nenhuma, o dono leu exatamente o que estava lá: um logo "feio, que parece que
+/// foi alterado". Era.
+///
+/// A tentativa seguinte foi *consertar* o vetor. Também não presta: reproduzir a
+/// espessura, a inclinação e o vão do corte à mão dá, na melhor das hipóteses, um
+/// parecido — e um parecido é justamente o defeito que o dono apontou. Existe UM desenho
+/// da marca neste app, e ele é o arquivo.
+///
+/// Se o arquivo faltar, aqui não sai nada (só o espaço reservado). Não é omissão: um
+/// substituto desenhado na hora é como o bug nasceu, e a garantia de que o arquivo está
+/// no bundle é do `BrandAssetsTests`, não de um plano B que ninguém olha.
+///
+/// `.aspectRatio(.fit)` é o que impede um `.frame` de chamador de achatar o desenho de
+/// novo. E `size` é a altura do DESENHO, não a do quadro em que ele é pintado: o canvas
+/// do PNG tem margem em volta do glifo (`BrandAssets.symbolHeightRatio`), e ignorá-la
+/// fazia `BrandMark(size: 13)` sair com uns 10pt ao lado de um texto de 13pt.
 struct BrandMark: View {
     var size: CGFloat = 16
 
+    private var canvas: CGFloat { size / BrandAssets.symbolHeightRatio }
+
     var body: some View {
-        let barWidth = size * 0.17
-        ZStack {
-            HStack(spacing: size * 0.16) {
-                ForEach(0..<3, id: \.self) { _ in
-                    Capsule().fill(.primary).frame(width: barWidth)
-                }
+        Group {
+            if let nsImage = BrandAssets.symbol {
+                Image(nsImage: nsImage)
+                    .renderingMode(.template)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                Color.clear
             }
-            // A diagonal do símbolo, com o gradiente das três cores de acento — é ela que
-            // transforma "três barras" no logo.
-            Capsule()
-                .fill(LinearGradient(
-                    colors: [Theme.Brand.voltCyan, Theme.Brand.heatOrange, Theme.Brand.neonMagenta],
-                    startPoint: .top, endPoint: .bottom))
-                .frame(width: barWidth * 1.15, height: size * 1.34)
-                .rotationEffect(.degrees(-52))
         }
-        .frame(width: size * 0.83, height: size)
+        .frame(width: canvas, height: canvas)
         .accessibilityHidden(true)
     }
 }

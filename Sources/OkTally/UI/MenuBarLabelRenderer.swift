@@ -53,22 +53,17 @@ struct MenuBarLabelView: View {
         .fixedSize()
     }
 
-    /// O PNG template da marca quando o bundle o entrega; o vetor `BrandMark` quando não.
-    /// O fallback existe porque o bundle de recursos precisa ser empacotado junto (ver
-    /// `AppResources`) — se um empacotamento futuro esquecer disso, a barra continua
-    /// mostrando a marca em vez de um buraco.
-    @ViewBuilder private var symbol: some View {
-        if let nsImage = BrandAssets.menuBarSymbol {
-            Image(nsImage: nsImage)
-                .renderingMode(.template)
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 15, height: 15)
-                .foregroundStyle(ink)
-        } else {
-            BrandMark(size: 15)
-                .foregroundStyle(ink)
-        }
+    /// A marca, pelo mesmo `BrandMark` que o popover, as Preferências e o notch usam —
+    /// e não por uma cópia local do carregamento do PNG.
+    ///
+    /// Eram dois caminhos até aqui, e eles divergiram: este desenhava o arquivo oficial
+    /// num quadrado de 15pt (glifo de ~11pt, por causa da margem do canvas) enquanto o
+    /// `BrandMark` desenhava uma reinterpretação em SwiftUI que nem era a marca. Um
+    /// componente só, com `size` significando a altura do desenho, mantém a barra e o
+    /// notch mostrando a MESMA coisa — que é o mínimo que se espera de uma identidade.
+    private var symbol: some View {
+        BrandMark(size: 13)
+            .foregroundStyle(ink)
     }
 
     /// Escala de perigo da marca. Com folga o número é NEUTRO de propósito: quase toda
@@ -136,6 +131,40 @@ enum BrandAssets {
     /// PNG de 18px num Retina de 2× ou 3× e o traço sairia borrado. Cada bitmap entra com
     /// `size` de 18×18 *pontos* — é o tamanho em pontos, não em pixels, que faz o AppKit
     /// escolher a representação certa para a escala corrente.
+    /// O mesmo símbolo, com o nome que o resto do app usa. `menuBarSymbol` continua
+    /// existindo porque é o nome que a barra de menu sempre teve; `symbol` é o apelido
+    /// para quem não é a barra (o `BrandMark`, que agora desenha ESTE arquivo em vez de
+    /// uma reinterpretação em SwiftUI).
+    static var symbol: NSImage? { menuBarSymbol }
+
+    /// Que fatia da ALTURA do canvas do PNG o glifo realmente ocupa (o resto é margem
+    /// transparente).
+    ///
+    /// Existe para `BrandMark(size:)` poder significar "a marca sai com esta altura", e
+    /// não "a marca sai dentro de um quadrado deste tamanho" — a diferença entre as duas
+    /// leituras é uns 25%, e é ela que fazia o símbolo parecer encolhido ao lado de um
+    /// texto do mesmo corpo. Medida do arquivo, não cravada: se a marca for regerada com
+    /// outra margem, o número acompanha sozinho.
+    ///
+    /// 0,74 é o valor do asset atual; o `1` do fallback só vale se a medição falhar, e aí
+    /// o pior que acontece é o símbolo voltar a sair pequeno — nunca esticado.
+    static let symbolHeightRatio: CGFloat = {
+        guard let symbol,
+              let rep = symbol.representations.max(by: { $0.pixelsHigh < $1.pixelsHigh }) as? NSBitmapImageRep,
+              rep.pixelsHigh > 0
+        else { return 1 }
+        var top = rep.pixelsHigh, bottom = -1
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.05 {
+                top = min(top, y)
+                bottom = max(bottom, y)
+                break
+            }
+        }
+        guard bottom >= top else { return 1 }
+        return CGFloat(bottom - top + 1) / CGFloat(rep.pixelsHigh)
+    }()
+
     static let menuBarSymbol: NSImage? = {
         let pointSize = NSSize(width: 18, height: 18)
         let reps: [NSImageRep] = ["MenuBarTemplate", "MenuBarTemplate@2x", "MenuBarTemplate@3x"]

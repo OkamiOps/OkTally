@@ -480,6 +480,17 @@ private struct NotchChrome<Content: View>: View {
 private enum NotchMetrics {
     static let height: CGFloat = 32
     static let width: CGFloat = 190
+
+    /// Os respiros que o `DynamicNotchKit` aplica a CADA asa (`NotchView.compactContent`:
+    /// 8pt do lado de fora, 4pt em cima, 8pt embaixo). A maquete precisa dos mesmos
+    /// números, senão a barra inferior — que vive dentro do respiro de baixo — aparece no
+    /// PNG num lugar onde ela não vai ficar no app.
+    static func wingInsets(edge: HorizontalEdge) -> EdgeInsets {
+        EdgeInsets(top: 4,
+                   leading: edge == .leading ? 8 : 0,
+                   bottom: 8,
+                   trailing: edge == .trailing ? 8 : 0)
+    }
 }
 
 /// Fechado: marca de um lado do recorte, tracinhos do outro.
@@ -490,10 +501,10 @@ private struct NotchCollapsedMock: View {
         NotchChrome(bottomRadius: 14) {
             HStack(spacing: 0) {
                 NotchCompactLeading(appModel: appModel)
-                    .padding(.leading, 10)
+                    .padding(NotchMetrics.wingInsets(edge: .leading))
                 Spacer().frame(width: NotchMetrics.width)
                 NotchCompactTrailing(appModel: appModel)
-                    .padding(.trailing, 10)
+                    .padding(NotchMetrics.wingInsets(edge: .trailing))
             }
             .frame(height: NotchMetrics.height)
         }

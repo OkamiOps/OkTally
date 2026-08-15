@@ -35,6 +35,7 @@ struct NotchCompactLeading: View {
 
     var body: some View {
         NotchWing(segment: appModel.notchWings.leading, showsBrandFallback: true)
+            .notchBottomRule(appModel.notchBottomBar, growingToward: .leading)
     }
 }
 
@@ -43,6 +44,87 @@ struct NotchCompactTrailing: View {
 
     var body: some View {
         NotchWing(segment: appModel.notchWings.trailing, showsBrandFallback: false)
+            .notchBottomRule(appModel.notchBottomBar, growingToward: .trailing)
+    }
+}
+
+// MARK: - Barra inferior
+
+/// A barra fina da borda inferior do notch fechado — um traço de 2,5pt com o quanto RESTA
+/// da cota escolhida (`notchBottomSlot`; em automático, a mais apertada).
+///
+/// ## Por que ela é desenhada em duas metades
+///
+/// A região central do painel fechado é o recorte físico: ali não existe pixel nenhum,
+/// e nada desenhado no meio apareceria. Os únicos lugares com tela são as duas asas. A
+/// barra é, portanto, uma linha só que o recorte INTERROMPE — e as duas metades precisam
+/// ler como uma coisa, não como dois medidores diferentes.
+///
+/// O que faz isso funcionar é a âncora: as duas metades crescem A PARTIR do recorte para
+/// fora, com o mesmo valor. Cheia, o traço acompanha toda a borda inferior das duas asas;
+/// esvaziando, ele recua simetricamente na direção do recorte. Simetria é o que o olho
+/// usa para decidir que são um elemento só.
+///
+/// Cheia = FOLGA, igual a `QuotaCapsuleBar` e a todo o resto do app. Espelhar a âncora
+/// não inverte essa leitura — só troca de que lado o preenchimento começa.
+///
+/// Cor pela escala de perigo (`QuotaPresentation.color(remaining:)`) e não pela
+/// identidade do provedor: num traço de 2,5pt a cor não consegue fazer as duas coisas, e
+/// quem é o provedor já está dito pelo chip logo acima, com muito mais clareza do que uma
+/// linha de dois pixels conseguiria. O que só a barra pode dizer é "está apertando".
+///
+/// No estado EXPANDIDO ela não existe: o `DynamicNotchKit` só desenha as asas em
+/// `.compact`, e o painel aberto já traz uma `QuotaCapsuleBar` própria por linha — repetir
+/// o mesmo número num traço no rodapé seria ruído.
+struct NotchBottomRule: View {
+    let bar: NotchBottomBar?
+    /// Para que lado esta metade cresce (o lado OPOSTO ao recorte).
+    let growingToward: HorizontalEdge
+
+    /// Traço, não layout: a espessura é a identidade visual do elemento, do mesmo jeito
+    /// que a de um `Divider`. Abaixo de 2pt ela some no antialiasing da borda curva do
+    /// painel; acima de 3pt deixa de ser "fininha" e vira uma segunda barra de progresso.
+    private static let thickness: CGFloat = 2.5
+
+    /// O respiro que o `DynamicNotchKit` reserva embaixo do conteúdo compacto
+    /// (`NotchView.compactContent`, `safeAreaInset(edge: .bottom)` de 8pt). A barra mora
+    /// DENTRO desse respiro: é o que a coloca na borda do painel sem empurrar o chip.
+    static let reservedBottomInset: CGFloat = 8
+
+    /// Distância da barra até a borda inferior do painel. Encostar de fato na borda a
+    /// faria entrar na curva do canto, que a cortaria na ponta de fora.
+    static let bottomGap: CGFloat = 3
+
+    var body: some View {
+        if let bar {
+            GeometryReader { geo in
+                ZStack(alignment: growingToward == .leading ? .trailing : .leading) {
+                    Capsule().fill(NotchPalette.track)
+                    Capsule()
+                        .fill(QuotaPresentation.color(remaining: bar.remaining))
+                        .frame(width: max(Self.thickness,
+                                          geo.size.width * Theme.clampFraction(bar.remaining)))
+                        .animation(.easeInOut(duration: 0.3), value: bar.remaining)
+                }
+            }
+            .frame(height: Self.thickness)
+        }
+    }
+}
+
+private extension View {
+    /// Pendura a metade da barra na borda inferior da asa, sem alterar a altura dela: a
+    /// asa continua medindo o que o chip mede, e o traço mora no respiro que o pacote já
+    /// reserva embaixo. Um `overlay` (e não um `VStack`) justamente para o texto do chip
+    /// não subir 2,5pt quando a barra aparece.
+    func notchBottomRule(_ bar: NotchBottomBar?, growingToward edge: HorizontalEdge) -> some View {
+        overlay(alignment: .bottom) {
+            NotchBottomRule(bar: bar, growingToward: edge)
+                // Alinhada pelo fundo do chip e EMPURRADA para dentro do respiro do
+                // pacote — sem o deslocamento a barra sublinharia o chip, no meio do
+                // painel, em vez de correr pela borda de baixo dele.
+                .offset(y: NotchBottomRule.reservedBottomInset - NotchBottomRule.bottomGap)
+        }
     }
 }
 
