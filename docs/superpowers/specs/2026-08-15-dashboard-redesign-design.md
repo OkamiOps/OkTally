@@ -5,14 +5,19 @@ ampliado no mesmo dia para incluir **a tela de Preferências**.
 Direção visual: **dashboard rico com cor aplicada com critério** — hierarquia forte e
 gráficos coloridos por provider, mas ainda um app macOS nativo, não uma página web.
 
+**Deployment target sobe de macOS 13 para macOS 26 (Tahoe)**, decidido pelo dono em
+2026-08-15 depois de avisado da consequência: o app é distribuído publicamente (DMG +
+GitHub Releases + update checker), então usuários fora do Tahoe deixam de conseguir
+instalar e atualizar. Trade-off aceito conscientemente. Em troca, todo `if #available`
+desaparece e o Liquid Glass do macOS 26 fica disponível.
+
 ## Problemas que motivam o trabalho
 
 1. **O heatmap não aproveita o espaço.** `TokenHeatmapView` usa célula fixa de 10 pt e
    26 semanas → ~310 pt de largura dentro de um card que na janela passa de 600 pt.
    Sobra metade do card vazia à direita.
-2. **Swift Charts nunca foi usado.** O alvo é macOS 13 (`Package.swift`), onde o
-   framework já existe. Hoje todo gráfico é `RoundedRectangle`/`Path` na mão
-   (`SparklineView`, `QuotaCapsuleBar`, o heatmap) — o app não tira proveito do que a
+2. **Swift Charts nunca foi usado.** Hoje todo gráfico é `RoundedRectangle`/`Path` na
+   mão (`SparklineView`, `QuotaCapsuleBar`, o heatmap) — o app não tira proveito do que a
    plataforma oferece.
 3. **Sem hierarquia visual.** Em `AnalyticsSection.statChips` os oito chips têm o mesmo
    tamanho, peso e cor. Nada indica o que importa primeiro. As referências trazidas pelo
@@ -45,6 +50,11 @@ Tokens, sem lógica:
   `metricMedium` (15), `body` (12), `label` (9 pt semibold, tracking 0.5).
 - Superfícies: `surface` (opacidade 0.045, como hoje), `surfaceRaised` (0.075),
   `surfaceAccent(Color)` — gradiente diagonal da cor a 0.18 → 0.05.
+- **Liquid Glass** (macOS 26): cards elevados e a barra de ações usam `.glassEffect`
+  dentro de um `GlassEffectContainer`. Aplicado com parcimônia — vidro em superfície de
+  conteúdo denso prejudica legibilidade de número, então os cards de métrica continuam
+  opacos e o vidro fica em cromo (headers, barra de ações, faixa flutuante do popover).
+  As APIs exatas são confirmadas na implementação, compilando contra o SDK 26.5.
 
 Todos os valores respeitam claro e escuro por usarem `Color.primary`/`.secondary` e a
 cor de identidade, nunca hex fixo de fundo.
@@ -167,8 +177,12 @@ duplicação. A seção "Contas" exibe quantas precisam de atenção.
 
 ## Riscos
 
-- **Swift Charts no macOS 13** não tem `chartScrollableAxes` nem `chartXVisibleDomain`
-  (macOS 14+). Uso protegido por `if #available(macOS 14, *)`, com janela fixa no 13.
+- **Subir o alvo para macOS 26 quebra a base instalada.** Consequência aceita pelo dono.
+  Exige atualizar, na mesma entrega: `Package.swift` (`platforms: [.macOS(.v26)]`),
+  `LSMinimumSystemVersion` em `Resources/Info.plist` (hoje 13.0), o requisito declarado
+  nos quatro READMEs e uma nota no `CHANGELOG.md` avisando que a atualização exige Tahoe.
+- **Liquid Glass pode prejudicar a leitura de números.** Mitigação já no design: vidro só
+  em cromo, nunca atrás de métrica ou de gráfico.
 - **`ImageRenderer` não captura `ScrollView`.** Os PNGs renderizam o conteúdo
   diretamente, como o harness já faz com `PopoverContentView`.
 - **Densidade do popover:** 360 pt é apertado para gráficos. Se a faixa "hoje" espremer
