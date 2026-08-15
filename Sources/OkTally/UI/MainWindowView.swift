@@ -116,7 +116,13 @@ struct OverviewScreen: View {
                     .foregroundStyle(.secondary)
             } else {
                 kpiRow
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 14)], alignment: .leading, spacing: 14) {
+                // `LazyVGrid` centraliza os itens de uma linha verticalmente — o
+                // `alignment:` do próprio grid só governa o eixo horizontal. Quem ancora
+                // no topo é o `alignment:` do `GridItem`, que vale para a célula. Os cards
+                // ficam com a altura do próprio conteúdo: esticar todos até o mais alto
+                // encheria de vazio o card de quem só tem saldo (OpenRouter), o mesmo
+                // "enchimento" que o dono reprovou no herói da aba Análise.
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 14, alignment: .top)], alignment: .leading, spacing: 14) {
                     ForEach(entries, id: \.provider.id) { entry in
                         ProviderOverviewCard(
                             provider: entry.provider,
@@ -143,6 +149,9 @@ struct OverviewScreen: View {
                     tint: QuotaPresentation.color(remaining: worst.remaining),
                     emphasis: .hero
                 )
+                // Sem teto o herói esticava por toda a janela (~1080pt) com o número no
+                // primeiro terço. Ele continua o maior da linha, agora sem faixa vazia.
+                .frame(maxWidth: 300)
             }
             if let cost = totalEstimatedCost {
                 StatTile(
@@ -264,7 +273,10 @@ private struct ProviderOverviewCard: View {
 
 // MARK: - Detalhe por provedor
 
-private struct ProviderDetailScreen: View {
+/// Internal (não `private`) só para o `ReadmeAssetRenderer` conseguir fotografar a tela —
+/// era a única das quatro sem PNG, e justamente a que carregava a inconsistência de
+/// cromo com a aba Análise.
+struct ProviderDetailScreen: View {
     @ObservedObject var appModel: AppModel
     let provider: UsageProvider
     let snapshot: ProviderSnapshot
@@ -306,8 +318,10 @@ private struct ProviderDetailScreen: View {
                 DashboardCard {
                     VStack(alignment: .leading, spacing: 6) {
                         SectionHeader(L("Uso — 7 dias"))
+                        // Sem `.frame(height:)`: a `SparklineView` já fixa 20pt por
+                        // dentro, e os 48 viravam 28pt de vazio — além de divergir do
+                        // card da Visão geral, que não passa frame nenhum.
                         SparklineView(points: history.map(\.usedPercent), color: identity)
-                            .frame(height: 48)
                     }
                 }
             }
@@ -378,7 +392,7 @@ struct QuotaCapsuleBar: View {
                 Capsule().fill(Color.primary.opacity(0.08))
                 Capsule()
                     .fill(color.gradient)
-                    .frame(width: max(height, geo.size.width * max(0, min(1, remaining))))
+                    .frame(width: max(height, geo.size.width * Theme.clampFraction(remaining)))
                     .animation(.easeInOut(duration: 0.3), value: remaining)
             }
         }

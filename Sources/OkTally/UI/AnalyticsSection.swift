@@ -8,18 +8,18 @@ struct AnalyticsSection: View {
     let analytics: TokenAnalytics
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: Theme.Space.md) {
             statChips
             if !analytics.dailyBuckets.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(L("TENDÊNCIA DE USO"))
-                        .font(.system(size: 9, weight: .semibold)).tracking(0.5)
-                        .foregroundStyle(.secondary)
-                    TokenHeatmapView(analytics: analytics)
+                DashboardCard {
+                    VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                        // Mesma chave em caixa normal do resto do app: quem maiusculiza é
+                        // o `SectionHeader`, em runtime. Antes esta era a única chave
+                        // pré-maiusculizada do catálogo.
+                        SectionHeader(L("Tendência de uso"))
+                        TokenHeatmapView(analytics: analytics)
+                    }
                 }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.045)))
             }
         }
     }
@@ -52,21 +52,13 @@ struct AnalyticsSection: View {
         if analytics.tokensLast30Days > 0 {
             chips.append((LF("%@ tokens", TokenAnalytics.compactTokens(analytics.tokensLast30Days)), L("Últimos 30 dias")))
         }
-        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 8)], alignment: .leading, spacing: 8) {
+        // `StatTile` no lugar dos oito chips iguais desenhados à mão: mesma tipografia,
+        // mesmo raio e mesma borda da aba Análise, que renderiza logo acima nesta janela.
+        // `fillsHeight` faz todos os tiles de uma linha terminarem juntos.
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: Theme.Space.sm)],
+                         alignment: .leading, spacing: Theme.Space.sm) {
             ForEach(chips, id: \.1) { value, caption in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(value)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .lineLimit(1)
-                    Text(caption)
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.045)))
+                StatTile(title: caption, value: value, fillsHeight: true)
             }
         }
     }

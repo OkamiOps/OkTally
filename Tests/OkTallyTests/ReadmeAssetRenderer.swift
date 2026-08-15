@@ -48,6 +48,20 @@ final class ReadmeAssetRenderer: XCTestCase {
                     .frame(width: 860)
                     .background(Color(nsColor: .windowBackgroundColor)),
                   to: "analytics.png")
+        // Detalhe do provedor: era a única das quatro telas sem PNG — e justamente a que
+        // carregava a inconsistência de cromo com a aba Análise. `ProviderDetailScreen`
+        // deixou de ser `private` só para isto.
+        if let claude = model.orderedProviders.first(where: { $0.id == "claude" }),
+           let snapshot = model.snapshotsByProvider["claude"] {
+            try write(view: ProviderDetailScreen(appModel: model, provider: claude, snapshot: snapshot)
+                        .environment(\.isStaticRender, true)
+                        .padding(24)
+                        .frame(width: 760)
+                        .background(Color(nsColor: .windowBackgroundColor)),
+                      to: "provider-detail.png")
+        } else {
+            XCTFail("demo model sem snapshot do Claude para o PNG de detalhe")
+        }
         // O `ProviderPaneScaffold` ficou de fora de propósito: o `ImageRenderer` não
         // desenha `Form` agrupado (o mesmo motivo pelo qual o pane Geral também não é
         // renderizado aqui) e o PNG saía inteiramente em branco. Os painéis de provider

@@ -23,8 +23,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Preferences rebuilt** with native grouped forms and auto-save: fields commit on
   their own as you edit them, the "Save" buttons are gone, and each provider pane now
   has an explicit "Remove key" button instead of an implicit clear-on-blank.
-- Popover, Overview, and Preferences now share the same design system (colors,
-  typography, card chrome, and Liquid Glass materials).
+- Popover, Overview, Provider detail, and Preferences now share the same design system:
+  colors, typography, and card chrome all come from one place, and Liquid Glass is used
+  for the popover chrome — header, today strip, and action bar. Glass stays off content:
+  never behind a number or a chart.
 
 ## [0.9.1-beta] — 2026-08-12
 

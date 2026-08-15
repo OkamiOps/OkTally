@@ -42,6 +42,9 @@ struct PopoverView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        // Cromo, não conteúdo: o vidro fica atrás do título e do chip de update, nunca
+        // atrás de número ou gráfico. `Rectangle` porque a faixa encosta nas bordas.
+        .glassChrome(in: Rectangle())
     }
 
     private var pinnedHint: String {
@@ -70,6 +73,7 @@ struct PopoverView: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
+        .glassChrome(in: Rectangle())
     }
 }
 
@@ -180,7 +184,10 @@ struct PopoverContentView: View {
                     onPin: { appModel.togglePin(providerId: hero.provider.id, windowLabel: hero.window.label) }
                 )
             }
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+            // `alignment: .top` no `GridItem`: sem ele o grid centraliza verticalmente os
+            // cards de uma linha e o card mais curto flutua no meio.
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10, alignment: .top),
+                                GridItem(.flexible(), spacing: 10, alignment: .top)],
                       spacing: 10) {
                 ForEach(withData, id: \.provider.id) { entry in
                     ProviderGaugeCard(
@@ -275,76 +282,74 @@ private struct ProviderGaugeCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Text(ProviderPalette.glyph(for: provider))
-                    .font(.system(size: 10, weight: .heavy))
-                    .foregroundStyle(identity)
-                    .padding(.horizontal, 5).padding(.vertical, 2)
-                    .background(RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)))
-                Text(provider.displayName)
-                    .font(.system(size: 12, weight: .semibold))
-                    .lineLimit(1)
-                if let plan = snapshot.planLabel {
-                    PlanBadge(label: plan)
-                }
-                Spacer(minLength: 0)
-            }
-            HStack {
-                Spacer(minLength: 0)
-                if let worst {
-                    RingGauge(remaining: worst.remaining,
-                              size: 44,
-                              color: QuotaPresentation.color(remaining: worst.remaining),
-                              lineWidth: 5) {
-                        Text("\(Int((worst.remaining * 100).rounded()))")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(QuotaPresentation.color(remaining: worst.remaining))
+        DashboardCard(padding: Theme.Space.sm) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text(ProviderPalette.glyph(for: provider))
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(identity)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)))
+                    Text(provider.displayName)
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                    if let plan = snapshot.planLabel {
+                        PlanBadge(label: plan)
                     }
-                } else if let balance = snapshot.quotas.first {
-                    Text(QuotaPresentation.remainingText(balance.shape))
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(.primary)
-                        .frame(height: 44)
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(snapshot.quotas, id: \.label) { window in
-                    QuotaLine(
-                        window: window,
-                        identity: identity,
-                        isPinned: isPinned(window.label),
-                        onPin: { onPin(window.label) }
+                HStack {
+                    Spacer(minLength: 0)
+                    if let worst {
+                        RingGauge(remaining: worst.remaining,
+                                  size: 44,
+                                  color: QuotaPresentation.color(remaining: worst.remaining),
+                                  lineWidth: 5) {
+                            Text("\(Int((worst.remaining * 100).rounded()))")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(QuotaPresentation.color(remaining: worst.remaining))
+                        }
+                    } else if let balance = snapshot.quotas.first {
+                        Text(QuotaPresentation.remainingText(balance.shape))
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(.primary)
+                            .frame(height: 44)
+                    }
+                    Spacer(minLength: 0)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(snapshot.quotas, id: \.label) { window in
+                        QuotaLine(
+                            window: window,
+                            identity: identity,
+                            isPinned: isPinned(window.label),
+                            onPin: { onPin(window.label) }
+                        )
+                    }
+                }
+                if history.count >= 2 {
+                    SparklineView(
+                        points: history.map(\.usedPercent),
+                        color: worst.map { QuotaPresentation.color(remaining: $0.remaining) } ?? identity
                     )
+                    .help(L("Uso nas últimas 24h"))
                 }
-            }
-            if history.count >= 2 {
-                SparklineView(
-                    points: history.map(\.usedPercent),
-                    color: worst.map { QuotaPresentation.color(remaining: $0.remaining) } ?? identity
-                )
-                .help(L("Uso nas últimas 24h"))
-            }
-            if let estimatedCost {
-                Label(LF("Custo est.: $%@ (30d)", Self.costText(estimatedCost)), systemImage: "dollarsign.circle")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-                    .help(L("Estimativa: tokens locais × tabela de preços do OpenRouter"))
-            }
-            if let staleness = Self.stalenessText(fetchedAt: snapshot.fetchedAt) {
-                Label(staleness, systemImage: "clock")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-                    .help(L("Última atualização bem-sucedida — a busca mais recente falhou ou ainda não rodou"))
+                if let estimatedCost {
+                    Label(LF("Custo est.: $%@ (30d)", Self.costText(estimatedCost)), systemImage: "dollarsign.circle")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .help(L("Estimativa: tokens locais × tabela de preços do OpenRouter"))
+                }
+                if let staleness = Self.stalenessText(fetchedAt: snapshot.fetchedAt) {
+                    Label(staleness, systemImage: "clock")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .help(L("Última atualização bem-sucedida — a busca mais recente falhou ou ainda não rodou"))
+                }
             }
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.045)))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.07)))
     }
 
     static func costText(_ value: Decimal) -> String {

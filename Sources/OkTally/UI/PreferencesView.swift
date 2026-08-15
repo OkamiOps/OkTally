@@ -628,35 +628,42 @@ private struct GeneralPane: View {
                     .onChange(of: alertsEnabled) { _, newValue in
                         preferencesStore.alertsEnabled = newValue
                     }
-                VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                    Text(L("Avisar quando o uso cruzar:")).font(.caption).foregroundStyle(.secondary)
+                // O `.disabled` vale SÓ para os detalhes. Aplicado na `Section` inteira ele
+                // engloba o próprio toggle mestre acima, e `.disabled(true)` propaga para
+                // os descendentes sem que um filho possa revertê-lo: desligar as
+                // notificações apagaria o switch e não haveria como religá-lo pela UI.
+                // O `Group` mantém cada linha como uma linha independente do `Form`.
+                Group {
+                    VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                        Text(L("Avisar quando o uso cruzar:")).font(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: Theme.Space.sm) {
+                            ForEach(Self.percentOptions, id: \.self) { step in
+                                thresholdChip(step)
+                            }
+                        }
+                    }
                     HStack(spacing: Theme.Space.sm) {
-                        ForEach(Self.percentOptions, id: \.self) { step in
-                            thresholdChip(step)
+                        Text(L("Saldo baixo (USD):")).font(.caption).foregroundStyle(.secondary)
+                        TextField("5.00", text: $lowBalanceText)
+                            .textFieldStyle(.roundedBorder)
+                            // Dentro do `Form` o título do TextField vira rótulo visível, e o
+                            // "5.00" aparecia duas vezes ao lado do campo.
+                            .labelsHidden()
+                            .frame(width: 80)
+                            .focused($lowBalanceFocused)
+                            .onSubmit(saveLowBalance)
+                            .onChange(of: lowBalanceFocused) { _, focused in
+                                // Auto-save também ao perder o foco: o botão "Salvar" saiu.
+                                if !focused { saveLowBalance() }
+                            }
+                        if savedFlash {
+                            Text(L("Salvo")).font(.caption).foregroundStyle(.green).transition(.opacity)
                         }
                     }
                 }
-                HStack(spacing: Theme.Space.sm) {
-                    Text(L("Saldo baixo (USD):")).font(.caption).foregroundStyle(.secondary)
-                    TextField("5.00", text: $lowBalanceText)
-                        .textFieldStyle(.roundedBorder)
-                        // Dentro do `Form` o título do TextField vira rótulo visível, e o
-                        // "5.00" aparecia duas vezes ao lado do campo.
-                        .labelsHidden()
-                        .frame(width: 80)
-                        .focused($lowBalanceFocused)
-                        .onSubmit(saveLowBalance)
-                        .onChange(of: lowBalanceFocused) { _, focused in
-                            // Auto-save também ao perder o foco: o botão "Salvar" saiu.
-                            if !focused { saveLowBalance() }
-                        }
-                    if savedFlash {
-                        Text(L("Salvo")).font(.caption).foregroundStyle(.green).transition(.opacity)
-                    }
-                }
+                .disabled(!alertsEnabled)
+                .opacity(alertsEnabled ? 1 : 0.5)
             }
-            .disabled(!alertsEnabled)
-            .opacity(alertsEnabled ? 1 : 0.5)
 
             Section(L("Atualizações")) {
                 if let update = appModel.availableUpdate {

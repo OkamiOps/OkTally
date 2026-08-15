@@ -32,6 +32,15 @@ enum Theme {
     static func surfaceRaised() -> Color { Color.primary.opacity(0.075) }
     static func border() -> Color { Color.primary.opacity(0.07) }
 
+    /// Grampeia uma fração em 0…1 tratando `NaN`/infinito como zero. Existe porque em
+    /// Swift `max(0, min(1, .nan))` devolve `1.0` — qualquer divisão por zero que escape
+    /// de um call site desenharia a barra ou o anel CHEIOS, que é a leitura oposta da
+    /// verdadeira. A guarda mora no componente, não só no aviso do ledger.
+    static func clampFraction(_ value: Double) -> Double {
+        guard value.isFinite else { return 0 }
+        return max(0, min(1, value))
+    }
+
     /// Fundo tingido do bloco-herói.
     static func surfaceAccent(_ color: Color) -> LinearGradient {
         LinearGradient(
@@ -55,11 +64,11 @@ enum Theme {
 /// o fundo como apaga a subárvore inteira — os PNGs de `docs/assets` perdiam a faixa
 /// "Hoje" com número e sparkline. Por isso o render estático cai no material, pelo mesmo
 /// `isStaticRender` que já troca os controles do AppKit. O app nunca liga essa flag.
-private struct GlassChrome: ViewModifier {
+private struct GlassChrome<S: Shape>: ViewModifier {
+    let shape: S
     @Environment(\.isStaticRender) private var isStaticRender
 
     func body(content: Content) -> some View {
-        let shape = RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
         if isStaticRender {
             content.background(.regularMaterial, in: shape)
         } else {
@@ -69,5 +78,14 @@ private struct GlassChrome: ViewModifier {
 }
 
 extension View {
-    func glassChrome() -> some View { modifier(GlassChrome()) }
+    /// Vidro na cápsula/retângulo arredondado padrão (faixa flutuante).
+    func glassChrome() -> some View {
+        modifier(GlassChrome(shape: RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)))
+    }
+
+    /// Vidro numa faixa que encosta nas bordas — header e barra de ações do popover, onde
+    /// um canto arredondado deixaria um vinco visível contra a moldura da janela.
+    func glassChrome<S: Shape>(in shape: S) -> some View {
+        modifier(GlassChrome(shape: shape))
+    }
 }

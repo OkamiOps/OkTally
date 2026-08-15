@@ -69,7 +69,6 @@
 "Custo estimado: $%@ nos últimos 30 dias" = "Estimated cost: $%@ over the last 30 days";
 
 /* Analytics */
-"TENDÊNCIA DE USO" = "USAGE TREND";
 /* Rótulos do seletor de período (TrendWindow.label). */
 "30 d" = "30 d";
 "90 d" = "90 d";
@@ -209,6 +208,7 @@
 "ontem: %@" = "yesterday: %@";
 "recorde: %d dias" = "record: %d days";
 "tarefa mais longa: %@" = "longest task: %@";
+"total: %@" = "total: %@";
 "Tendência de uso" = "Usage trend";
 "Ver como barras" = "Show as bars";
 "Ver como heatmap" = "Show as heatmap";

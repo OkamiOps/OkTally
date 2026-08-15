@@ -63,7 +63,9 @@ struct AnalyticsDashboardView: View {
         let streak = analytics.effectiveCurrentStreakDays() ?? 0
         let longest = analytics.effectiveLongestStreakDays ?? max(streak, 1)
         return HStack(alignment: .top, spacing: Theme.Space.md) {
-            DashboardCard {
+            // Ambas as colunas esticam até a altura da linha: quem for mais alta manda, e
+            // nenhuma das duas precisa de altura fixa.
+            DashboardCard(fillsHeight: true) {
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     HStack(alignment: .firstTextBaseline, spacing: Theme.Space.sm) {
                         SectionHeader(L("Hoje"))
@@ -108,13 +110,19 @@ struct AnalyticsDashboardView: View {
                         Spacer(minLength: 0)
                     }
                 }
-                // O card grande da esquerda dita a altura da linha; o tile de pico
-                // estica por dentro (`fillsHeight`) para as duas colunas terminarem na
-                // mesma linha, sem ninguém fixar altura.
                 StatTile(
                     title: L("Pico diário"),
                     value: analytics.effectivePeakDailyTokens.map(TokenAnalytics.compactTokens) ?? "—",
-                    caption: analytics.longestRunningTurnSeconds.map { LF("tarefa mais longa: %@", TokenAnalytics.durationLabel($0)) },
+                    caption: analytics.longestRunningTurnSeconds.map { LF("tarefa mais longa: %@", TokenAnalytics.durationLabel($0)) }
+                )
+                // Terceiro tile: antes a coluna tinha dois cards magros e o "Pico diário"
+                // era esticado sozinho até a altura do card da esquerda — mais da metade
+                // dele saía vazia. Com um número a mais a coluna se preenche de conteúdo
+                // real, e só o último tile absorve a sobra de altura.
+                StatTile(
+                    title: L("Últimos 30 dias"),
+                    value: TokenAnalytics.compactTokens(analytics.tokensLast30Days),
+                    caption: analytics.effectiveLifetimeTokens.map { LF("total: %@", TokenAnalytics.compactTokens($0)) },
                     fillsHeight: true
                 )
             }
