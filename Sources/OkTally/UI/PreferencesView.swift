@@ -624,7 +624,15 @@ private struct GeneralPane: View {
     @State private var percentSteps: Set<Double> = []
     @State private var lowBalanceText = ""
     @State private var savedFlash = false
+    /// Texto EM EDIÇÃO do percentual de cada parada, por id.
+    ///
+    /// O campo não pode ler direto do modelo: a escala se reordena a cada gravação, e
+    /// gravar a cada tecla faria a linha saltar de posição no meio da digitação de "85"
+    /// (o "8" sozinho já a mandaria para o começo). O rascunho segura o texto até o
+    /// Enter ou a perda de foco, que é a mesma regra de auto-save do resto da tela.
+    @State private var percentDrafts: [UUID: String] = [:]
     @FocusState private var lowBalanceFocused: Bool
+    @FocusState private var focusedStop: UUID?
 
     /// 50/70/80/90/100 — nenhuma migração necessária: `alertPercentThresholds` já persiste
     /// uma lista arbitrária de frações e o `AlertEngine` mapeia qualquer lista, então quem
@@ -635,6 +643,32 @@ private struct GeneralPane: View {
         VStack(spacing: 0) {
             brandHero
             Form {
+                // Primeira seção da tela de propósito: é a única cujo efeito se vê na
+                // hora, e o dono é visual — a barra de preview logo abaixo do herói é o
+                // que faz a escala ser entendida sem ler uma linha de texto.
+                Section(L("Escala de cores")) {
+                    VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                        UsageScalePreviewBar(scale: appModel.usageColorScale)
+                        Text(L("A cor de cada percentual RESTANTE. Entre duas paradas a cor migra suavemente — a barra acima é a escala inteira, ao vivo."))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    ForEach(appModel.usageColorScale.stops) { stop in
+                        stopRow(stop)
+                    }
+                    HStack(spacing: Theme.Space.sm) {
+                        Button(L("Adicionar parada")) {
+                            appModel.usageColorScale = appModel.usageColorScale.addingStop()
+                        }
+                        .controlSize(.small)
+                        Spacer()
+                        Button(L("Restaurar padrão")) {
+                            appModel.usageColorScale = .standard
+                            percentDrafts = [:]
+                        }
+                        .controlSize(.small)
+                    }
+                }
+
                 Section(L("Barra de menu")) {
                     if appModel.menuBarPins.isEmpty {
                         Text(L("Nada fixado — a barra mostra automaticamente a janela mais próxima do limite."))
@@ -794,6 +828,75 @@ private struct GeneralPane: View {
         }
     }
 
+    /// Uma parada: percentual, seletor de cor nativo e o botão de remover.
+    private func stopRow(_ stop: UsageColorStop) -> some View {
+        HStack(spacing: Theme.Space.sm) {
+            // Amostra da própria parada à esquerda: sem ela a linha é um número e um
+            // controle do sistema, e o dono teria que abrir o seletor para saber que cor
+            // ele já escolheu.
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(Color(usage: stop.color))
+                .frame(width: 22, height: 14)
+                .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(Theme.border()))
+            TextField("", text: percentBinding(stop))
+                .textFieldStyle(.roundedBorder)
+                .labelsHidden()
+                .frame(width: 56)
+                .multilineTextAlignment(.trailing)
+                .monospacedDigit()
+                .focused($focusedStop, equals: stop.id)
+                .onSubmit { commitPercent(stop) }
+                .onChange(of: focusedStop) { previous, _ in
+                    if previous == stop.id { commitPercent(stop) }
+                }
+            Text(L("% restante")).font(.caption).foregroundStyle(.secondary)
+            Spacer(minLength: Theme.Space.sm)
+            // `ColorPicker` nativo: é o seletor do sistema, com a paleta, o conta-gotas e
+            // a favoritos que o dono já usa em todo lugar do macOS.
+            ColorPicker("", selection: colorBinding(stop), supportsOpacity: false)
+                .labelsHidden()
+            Button {
+                appModel.usageColorScale = appModel.usageColorScale.removing(id: stop.id)
+                percentDrafts[stop.id] = nil
+            } label: {
+                Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            // Duas paradas é o mínimo para existir degradê — abaixo disso a escala vira
+            // uma cor chapada.
+            .disabled(appModel.usageColorScale.stops.count <= UsageColorScale.minimumStops)
+            .help(L("Remover parada"))
+        }
+    }
+
+    private func percentBinding(_ stop: UsageColorStop) -> Binding<String> {
+        Binding(
+            get: { percentDrafts[stop.id] ?? PreferencesFieldCommit.percent(stop.percent) },
+            set: { percentDrafts[stop.id] = $0 }
+        )
+    }
+
+    /// Cor: grava na hora, sem rascunho. O `ColorPicker` já é um commit por si — e ver a
+    /// barra de preview mudar enquanto se arrasta o seletor é metade do ponto da seção.
+    private func colorBinding(_ stop: UsageColorStop) -> Binding<Color> {
+        Binding(
+            get: { Color(usage: stop.color) },
+            set: { appModel.usageColorScale = appModel.usageColorScale.replacingColor(id: stop.id, color: $0.usageRGB) }
+        )
+    }
+
+    /// Auto-save do percentual, pela mesma regra dos outros campos: vazio ou inalterado
+    /// não grava, lixo é recusado e o campo volta ao salvo, fora de 0–100 é grampeado.
+    private func commitPercent(_ stop: UsageColorStop) {
+        switch PreferencesFieldCommit.scalePercent(raw: percentDrafts[stop.id] ?? "", saved: stop.percent) {
+        case .ignored(let restore):
+            percentDrafts[stop.id] = restore
+        case .commit(let value, let display):
+            percentDrafts[stop.id] = display
+            appModel.usageColorScale = appModel.usageColorScale.replacingPercent(id: stop.id, percent: value)
+        }
+    }
+
     /// Um seletor de slot: "Automático" mais todas as janelas conhecidas agora.
     ///
     /// `Picker` nativo e não uma lista própria: é um menu de escolha única entre poucas
@@ -909,6 +1012,47 @@ private struct GeneralPane: View {
         Task {
             try? await Task.sleep(for: .seconds(1.5))
             withAnimation { savedFlash = false }
+        }
+    }
+}
+
+// MARK: - Preview da escala
+
+/// A escala inteira desenhada como um degradê, do 0% (esquerda) ao 100% (direita).
+///
+/// Não usa `LinearGradient` com as paradas do dono direto: o gradiente do SwiftUI
+/// interpola em RGB, e é justamente esse caminho que passa por um cinza lavado entre o
+/// azul e o amarelo — o preview mostraria uma escala que o app não desenha. Aqui a barra
+/// é AMOSTRADA da mesma função que pinta os números (`UsageColorScale.color(atPercent:)`),
+/// de dois em dois por cento, então o que se vê é literalmente o que o app usa.
+struct UsageScalePreviewBar: View {
+    let scale: UsageColorScale
+    /// Traço, não layout — a mesma convenção da `QuotaCapsuleBar` e da barra do notch: a
+    /// espessura É a identidade do elemento, e ele não tem conteúdo para se dimensionar.
+    var height: CGFloat = 18
+
+    private var gradient: Gradient {
+        Gradient(stops: stride(from: 0.0, through: 100.0, by: 2.0).map { percent in
+            Gradient.Stop(color: Color(usage: scale.color(atPercent: percent)), location: percent / 100)
+        })
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            LinearGradient(gradient: gradient, startPoint: .leading, endPoint: .trailing)
+                .frame(height: height)
+                .clipShape(Capsule())
+                .overlay(Capsule().strokeBorder(Theme.border()))
+            HStack {
+                Text("0%")
+                Spacer()
+                Text("50%")
+                Spacer()
+                Text("100%")
+            }
+            .font(.system(size: 9, weight: .semibold))
+            .monospacedDigit()
+            .foregroundStyle(.tertiary)
         }
     }
 }

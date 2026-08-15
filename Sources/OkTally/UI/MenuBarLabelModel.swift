@@ -8,6 +8,11 @@ struct MenuBarSegment: Equatable {
     let providerId: String?
     let text: String
     let danger: DangerLevel
+    /// A sobra 0…1, quando a janela tem percentual. Carregada junto porque quem PINTA o
+    /// segmento (a barra de menu e as asas do notch) agora precisa da posição exata na
+    /// escala de cor, e não mais de um degrau — `DangerLevel` continua existindo para as
+    /// decisões que ainda são categóricas.
+    var remaining: Double? = nil
 }
 
 /// Cálculo puro do que a barra de menu mostra — fora da view/renderer para as regras
@@ -55,7 +60,10 @@ enum MenuBarLabelModel {
                               text: hasAnyError ? "!" : "OK", danger: .neutral)
     }
 
-    /// Mesmas faixas de `QuotaPresentation.color(remaining:)`.
+    /// Classificação CATEGÓRICA da sobra, para o que ainda precisa de um degrau em vez
+    /// de um tom (o estado que o painel do notch carrega junto de cada barra). A COR não
+    /// sai mais daqui: ela vem da escala contínua (`QuotaPresentation.color`), que os
+    /// segmentos alimentam com `remaining`.
     static func danger(remaining: Double) -> DangerLevel {
         if remaining <= 0.10 { return .critical }
         if remaining <= 0.30 { return .warn }
@@ -113,7 +121,8 @@ enum MenuBarLabelModel {
         if let remaining = QuotaPresentation.remainingFraction(shape) {
             return MenuBarSegment(glyph: glyph, providerId: providerId,
                                   text: String(Int((remaining * 100).rounded())),
-                                  danger: danger(remaining: remaining))
+                                  danger: danger(remaining: remaining),
+                                  remaining: remaining)
         }
         switch shape {
         case .creditBalance(let remaining, _):

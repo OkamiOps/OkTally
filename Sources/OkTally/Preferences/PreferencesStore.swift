@@ -36,6 +36,7 @@ final class PreferencesStore {
         static let notchTrailingSlot = "notchTrailingSlot"
         static let notchBottomSlot = "notchBottomSlot"
         static let popoverHeroSlot = "popoverHeroSlot"
+        static let usageColorScale = "usageColorScale"
         static let alertPercentThresholds = "alertPercentThresholds"
         static let alertLowBalanceThreshold = "alertLowBalanceThreshold"
         static func refreshInterval(_ providerId: String) -> String { "refreshInterval.\(providerId)" }
@@ -223,6 +224,17 @@ final class PreferencesStore {
     var popoverHeroSlot: QuotaSlot {
         get { QuotaSlot(stored: store.string(forKey: Keys.popoverHeroSlot)) }
         set { store.set(newValue.stored.isEmpty ? nil : newValue.stored, forKey: Keys.popoverHeroSlot) }
+    }
+
+    // MARK: - Escala de cor do uso
+
+    /// As paradas da escala de cor, na codificação estável do próprio tipo
+    /// (`"7:F5384A,23:FF9D00,…"`). Nada gravado — ou gravado inválido — vale como o
+    /// padrão ditado pelo dono: uma escala quebrada tiraria a cor do app inteiro, então
+    /// o parser recusa o lixo em silêncio em vez de propagá-lo.
+    var usageColorScale: UsageColorScale {
+        get { UsageColorScale(encoded: store.string(forKey: Keys.usageColorScale)) ?? .standard }
+        set { store.set(newValue.encoded, forKey: Keys.usageColorScale) }
     }
 
     // MARK: - Alert preferences

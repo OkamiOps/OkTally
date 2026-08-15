@@ -261,3 +261,11 @@
 "%@ (indisponível)" = "%@ (unavailable)";
 "Em automático, o lado esquerdo mostra a cota mais apertada e o direito a seguinte; a barra inferior mostra sempre a mais apertada; o destaque do menu mostra a mais crítica entre todas. Uma cota escolhida que deixe de existir volta para automático sozinha." = "In automatic mode the left side shows the tightest quota and the right side the next one; the bottom bar always shows the tightest; the menu highlight shows the most critical of all. A chosen quota that stops existing quietly falls back to automatic.";
 "Destacar" = "Highlight";
+
+/* Escala de cor do uso (Preferências → Geral) */
+"Escala de cores" = "Color scale";
+"A cor de cada percentual RESTANTE. Entre duas paradas a cor migra suavemente — a barra acima é a escala inteira, ao vivo." = "The color for every REMAINING percentage. Between two stops the color migrates smoothly — the bar above is the whole scale, live.";
+"Adicionar parada" = "Add stop";
+"Restaurar padrão" = "Restore default";
+"% restante" = "% left";
+"Remover parada" = "Remove stop";

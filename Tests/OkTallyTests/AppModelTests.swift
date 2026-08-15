@@ -201,7 +201,7 @@ final class AppModelTests: XCTestCase {
 
         // 88% usado → 12% restante, faixa de alerta. A barra carrega UM segmento só.
         XCTAssertEqual(model.menuBarSegment,
-                       MenuBarSegment(glyph: "C", providerId: "claude", text: "12", danger: .warn))
+                       MenuBarSegment(glyph: "C", providerId: "claude", text: "12", danger: .warn, remaining: 0.12))
         // E o painel do notch, a mesma cota — a barra é um recorte do painel, não outra
         // fonte de verdade.
         XCTAssertEqual(model.notchEntries.map(\.providerId), ["claude"])

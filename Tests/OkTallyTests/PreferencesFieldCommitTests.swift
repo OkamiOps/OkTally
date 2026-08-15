@@ -116,4 +116,32 @@ final class PreferencesFieldCommitTests: XCTestCase {
         XCTAssertEqual(PreferencesFieldCommit.used(raw: "nan", saved: 123), .ignored(restore: "123"))
         XCTAssertEqual(PreferencesFieldCommit.used(raw: "abc", saved: 123), .ignored(restore: "123"))
     }
+
+    // MARK: - Percentual de uma parada da escala de cor
+
+    func test_percentualVazioNaoMoveAParada() {
+        XCTAssertEqual(PreferencesFieldCommit.scalePercent(raw: "", saved: 85),
+                       .ignored(restore: "85"))
+        XCTAssertEqual(PreferencesFieldCommit.scalePercent(raw: "  ", saved: 85),
+                       .ignored(restore: "85"))
+    }
+
+    func test_percentualForaDaFaixaEGrampeado() {
+        // Grampeia em vez de recusar: quem digita 150 quis dizer "o topo".
+        XCTAssertEqual(PreferencesFieldCommit.scalePercent(raw: "150", saved: 85),
+                       .commit(value: 100, display: "100"))
+        XCTAssertEqual(PreferencesFieldCommit.scalePercent(raw: "-3", saved: 85),
+                       .ignored(restore: "85"), "negativo é recusado pelo parser antes de chegar ao grampo")
+    }
+
+    func test_percentualAceitaFracaoEVirgula() {
+        XCTAssertEqual(PreferencesFieldCommit.scalePercent(raw: "12,5", saved: 85),
+                       .commit(value: 12.5, display: "12.5"))
+    }
+
+    func test_percentualRecusaLixoENotacaoCientifica() {
+        XCTAssertEqual(PreferencesFieldCommit.scalePercent(raw: "abc", saved: 85), .ignored(restore: "85"))
+        XCTAssertEqual(PreferencesFieldCommit.scalePercent(raw: "1e2", saved: 85), .ignored(restore: "85"))
+        XCTAssertEqual(PreferencesFieldCommit.scalePercent(raw: "85", saved: 85), .ignored(restore: "85"))
+    }
 }

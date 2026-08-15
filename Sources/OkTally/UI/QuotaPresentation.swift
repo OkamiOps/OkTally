@@ -57,32 +57,63 @@ enum QuotaPresentation {
         return fmt.string(from: now, to: reset)
     }
 
-    /// Escala de perigo NA PALETA DA MARCA: Volt Cyan com folga, Heat Orange no meio,
-    /// Neon Magenta no fim. Substitui verde/laranja/vermelho do sistema — que, além de
-    /// não ser da marca, pintava o app inteiro de verde (quase toda cota está folgada) e
-    /// deixava a tela monocromática justamente onde ela deveria ser categórica.
+    /// A cor da escala de uso para esta sobra. **Ponto único de cor por percentual do
+    /// app inteiro** — popover, herói, asas do notch, barra contínua, barra de menu,
+    /// tabela da Visão geral e detalhe passam por aqui.
     ///
-    /// Magenta no lugar do vermelho é deliberado: contra a base quase preta o vermelho
-    /// puro escurece e some, e o magenta da marca é a cor mais alta em saturação — é o
-    /// alarme que se enxerga de longe.
+    /// Antes eram três degraus (ciano com folga, Heat Orange abaixo de 30%, Neon Magenta
+    /// abaixo de 10%). Como quase toda cota está folgada quase sempre, o app ficava
+    /// "sempre azul" e a cor não dizia nada de relance. Agora a cor é CONTÍNUA: cada
+    /// percentual tem o seu tom, e o olho lê o estado sem ler o número. Os tons e os
+    /// pontos de virada vêm da escala, que o dono edita em Preferências
+    /// (`UsageColorScale`).
+    ///
+    /// Sem percentual (saldo puro em dólares) não há posição na escala — fica o acento.
     static func color(remaining: Double?) -> Color {
         guard let remaining else { return Theme.accent }
-        if remaining <= 0.10 { return Theme.Brand.neonMagenta }
-        if remaining <= 0.30 { return Theme.Brand.heatOrange }
-        return Theme.accent
+        return Color(usage: UsageColorScaleHolder.current.color(atRemaining: remaining))
     }
 
-    /// Cor do NÚMERO numa lista: neutro quando há folga, cor da escala quando aperta.
+    /// Cor do NÚMERO num contexto que já se sabe ESCURO — hoje só o painel do notch, que
+    /// é preto sólido independentemente do tema do sistema. Quem desenha em superfície
+    /// que muda com o tema usa `valueStyle`.
     ///
-    /// `color(remaining:)` sozinho pintava toda a lista de ciano — quase toda cota está
-    /// folgada, então a tela virava monocromática e a cor deixava de significar coisa
-    /// alguma. Aqui a regra é a das referências: neutro é o normal, cor é a exceção que
-    /// pede atenção. A variedade cromática da tela vem dos chips e das barras de
-    /// identidade, que são categóricos por natureza.
+    /// Existia para manter o número neutro com folga e colorir só na exceção — regra que
+    /// fazia sentido enquanto a escala tinha três degraus, e que é justamente o que
+    /// deixava a tela sem informação de cor. Com a escala contínua o número colorido É a
+    /// leitura rápida.
     static func valueColor(remaining: Double?) -> Color {
-        guard let remaining else { return .primary }
-        return remaining > 0.30 ? .primary : color(remaining: remaining)
+        color(remaining: remaining)
     }
+
+    /// A cor do número **resolvida pelo tema**: a mesma da escala no escuro, escurecida
+    /// no claro.
+    ///
+    /// Existe porque a escala tem tons claros (amarelo, verde) e no tema claro eles
+    /// caem sobre um card BRANCO — o amarelo dá 1,3:1 ali, ou seja, some. No escuro nada
+    /// muda. É um `ShapeStyle` e não uma `Color` porque só o `resolve(in:)` enxerga o
+    /// `colorScheme`; um `Color` calculado fora da view não tem como saber o tema (foi
+    /// exatamente essa a armadilha que fez o app inteiro ser julgado no tema errado uma
+    /// vez — ver `ThemeColor`).
+    static func valueStyle(remaining: Double?) -> AnyShapeStyle {
+        AnyShapeStyle(UsageValueStyle(remaining: remaining))
+    }
+
+    /// A mesma cor, legível sobre a barra de menu do sistema.
+    ///
+    /// A barra clara é o único fundo CLARO onde a escala aparece — e é onde o amarelo da
+    /// escala sumiria. Sobre a barra escura a cor sai intacta.
+    static func menuBarColor(remaining: Double?, onDarkBar: Bool) -> Color {
+        guard let remaining else { return MenuBarInk.color(onDarkBar: onDarkBar) }
+        let base = UsageColorScaleHolder.current.color(atRemaining: remaining)
+        guard !onDarkBar else { return Color(usage: base) }
+        // A barra clara do macOS é praticamente branca; é contra ela que o amarelo da
+        // escala precisa de 4,5:1 para continuar sendo um número e não um borrão.
+        return Color(usage: base.darkened(againstBackground: Self.lightMenuBar))
+    }
+
+    /// Aproximação da barra de menu clara do sistema.
+    private static let lightMenuBar = UsageRGB(red: 0.95, green: 0.95, blue: 0.95)
 
     /// Worst (lowest-remaining) status color across a provider's windows, for its tab dot.
     static func providerColor(_ snapshot: ProviderSnapshot?) -> Color {
@@ -95,5 +126,19 @@ enum QuotaPresentation {
     private static func format(_ d: Decimal) -> String {
         let n = NSDecimalNumber(decimal: d)
         return String(format: "%.2f", n.doubleValue)
+    }
+}
+
+/// Ver `QuotaPresentation.valueStyle(remaining:)`.
+private struct UsageValueStyle: ShapeStyle {
+    let remaining: Double?
+
+    func resolve(in environment: EnvironmentValues) -> Color {
+        let base = QuotaPresentation.color(remaining: remaining)
+        guard environment.colorScheme == .light else { return base }
+        // 4:1 e não 4,5:1 — o número é bold de 15pt para cima, a faixa de "texto grande"
+        // da WCAG; exigir 4,5 escureceria o amarelo até virar marrom.
+        return Color(usage: base.usageRGB.darkened(
+            againstBackground: UsageRGB(red: 1, green: 1, blue: 1), minRatio: 4.0))
     }
 }

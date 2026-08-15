@@ -197,7 +197,7 @@ struct NotchWing: View {
                 Text(segment.text)
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(Self.color(for: segment.danger))
+                    .foregroundStyle(Self.color(for: segment))
                     .lineLimit(1)
                     .fixedSize()
             }
@@ -207,16 +207,12 @@ struct NotchWing: View {
         }
     }
 
-    /// Número NEUTRO com folga, cor quando aperta — a mesma regra do resto do app
-    /// (`QuotaPresentation.valueColor`), com o off-white do painel no lugar do `.primary`,
-    /// que sobre preto sólido dependeria do tema do sistema. Um número permanentemente
-    /// verde ensinaria o olho a ignorar a cor justo quando ela finalmente muda.
-    private static func color(for danger: DangerLevel) -> Color {
-        switch danger {
-        case .ok, .neutral: return NotchPalette.ink
-        case .warn: return Theme.Brand.heatOrange
-        case .critical: return Theme.Brand.neonMagenta
-        }
+    /// Número na cor da escala contínua (`QuotaPresentation.valueColor`). Sem percentual
+    /// — saldo em dólares — não há posição na escala e fica o off-white do painel, que
+    /// sobre preto sólido não depende do tema do sistema.
+    private static func color(for segment: MenuBarSegment) -> Color {
+        guard segment.remaining != nil else { return NotchPalette.ink }
+        return QuotaPresentation.valueColor(remaining: segment.remaining)
     }
 }
 
@@ -297,12 +293,11 @@ private struct NotchQuotaRow: View {
 
     private var remaining: Double? { entry.remaining }
 
-    /// Número neutro quando há folga, cor quando aperta — mesma regra do
-    /// `QuotaPresentation.valueColor`, mas com o off-white do painel no lugar do
-    /// `.primary` (que sobre preto sólido dependeria do tema do sistema).
+    /// Número na cor da escala, sempre — `QuotaPresentation.valueColor`. Só o saldo puro
+    /// (sem percentual, sem posição na escala) fica no off-white do painel.
     private var valueColor: Color {
-        guard let remaining else { return NotchPalette.ink }
-        return remaining > 0.30 ? NotchPalette.ink : QuotaPresentation.color(remaining: remaining)
+        guard remaining != nil else { return NotchPalette.ink }
+        return QuotaPresentation.valueColor(remaining: remaining)
     }
 
     var body: some View {

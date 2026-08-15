@@ -346,7 +346,10 @@ private struct HeroBlock: View {
     let onPin: (String) -> Void
     let onHighlight: (String) -> Void
 
-    private var danger: Color { QuotaPresentation.color(remaining: remaining) }
+    /// Cor do bloco. Já `heroTint`ada: o glifo do chip é desenhado NELA sobre um chip
+    /// off-white, então ele precisa do mesmo escurecimento que o fundo recebe — senão o
+    /// amarelo da escala vira uma letra invisível dentro de um selo branco.
+    private var danger: Color { Theme.heroTint(QuotaPresentation.color(remaining: remaining)) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -481,7 +484,7 @@ private struct ProviderQuotaRow: View {
                         Text(QuotaPresentation.remainingValueText(primary.shape))
                             .font(.system(size: 15, weight: .bold, design: .rounded))
                             .monospacedDigit()
-                            .foregroundStyle(QuotaPresentation.valueColor(remaining: remaining))
+                            .foregroundStyle(QuotaPresentation.valueStyle(remaining: remaining))
                             .frame(minWidth: 44, alignment: .trailing)
                             .layoutPriority(2)
                     }
@@ -613,7 +616,7 @@ private struct SecondaryWindowLine: View {
             Text(QuotaPresentation.remainingValueText(window.shape))
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(onHero ? Theme.onHero : QuotaPresentation.valueColor(remaining: remaining))
+                .foregroundStyle(onHero ? AnyShapeStyle(Theme.onHero) : QuotaPresentation.valueStyle(remaining: remaining))
                 .frame(minWidth: 44, alignment: .trailing)
                 .layoutPriority(2)
             PinButton(isPinned: isPinned, identity: identity, onHero: onHero, onPin: onPin, onHighlight: onHighlight)

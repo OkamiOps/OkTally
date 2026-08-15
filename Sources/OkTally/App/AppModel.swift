@@ -92,6 +92,22 @@ final class AppModel: ObservableObject {
     /// popover observa este modelo, e trocar o picker tem que repintar o card na hora.
     @Published var popoverHeroSlot: QuotaSlot { didSet { preferences.popoverHeroSlot = popoverHeroSlot } }
 
+    /// A escala de cor do uso. `@Published` pelo mesmo motivo dos slots: editar as
+    /// paradas em Preferências tem que repintar TODA a tela na hora, e as views observam
+    /// este modelo.
+    ///
+    /// O `didSet` mantém três coisas em sincronia: o disco (`PreferencesStore`), o holder
+    /// global que `QuotaPresentation` consulta (`UsageColorScaleHolder`, que é o único
+    /// caminho possível para um enum estático chamado de dentro do `ImageRenderer` da
+    /// barra de menu) e a própria publicação. A fonte de verdade é esta propriedade;
+    /// ninguém mais escreve no holder.
+    @Published var usageColorScale: UsageColorScale {
+        didSet {
+            preferences.usageColorScale = usageColorScale
+            UsageColorScaleHolder.current = usageColorScale
+        }
+    }
+
     private static let menuBarPinsKey = "menuBarPins"
     private static let legacyMenuBarPinKey = "menuBarPin"
     private let defaults: UserDefaults
@@ -140,6 +156,7 @@ final class AppModel: ObservableObject {
         self.notchBottomSlot = preferences.notchBottomSlot
         self.menuBarSlot = preferences.menuBarSlot
         self.popoverHeroSlot = preferences.popoverHeroSlot
+        self.usageColorScale = preferences.usageColorScale
         if let joined = defaults.string(forKey: Self.menuBarPinsKey) {
             self.menuBarPins = joined.split(separator: "\u{2}").compactMap { MenuBarPin(stored: String($0)) }
         } else if let legacy = MenuBarPin(stored: defaults.string(forKey: Self.legacyMenuBarPinKey)) {
@@ -159,6 +176,9 @@ final class AppModel: ObservableObject {
                 refreshHistory(providerId: provider.id)
             }
         }
+        // O holder só é povoado depois de `self` estar inteiro (o `didSet` não roda para
+        // atribuições feitas dentro do `init`).
+        UsageColorScaleHolder.current = usageColorScale
         scheduler.onResult = { [weak self] result in
             Task { @MainActor in self?.apply(result) }
         }

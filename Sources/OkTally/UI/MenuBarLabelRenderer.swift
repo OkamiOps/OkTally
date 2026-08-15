@@ -47,7 +47,8 @@ struct MenuBarLabelView: View {
             Text(segment.text)
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(color(for: segment.danger))
+                .foregroundStyle(QuotaPresentation.menuBarColor(remaining: segment.remaining,
+                                                                onDarkBar: onDarkBar))
         }
         .padding(.horizontal, 1)
         .fixedSize()
@@ -66,17 +67,13 @@ struct MenuBarLabelView: View {
             .foregroundStyle(ink)
     }
 
-    /// Escala de perigo da marca. Com folga o número é NEUTRO de propósito: quase toda
-    /// cota está folgada, e um número verde permanente ensina o olho a ignorar a cor —
-    /// aí, quando ela finalmente muda, ninguém percebe. Cor aqui é exceção, igual ao
-    /// `QuotaPresentation.valueColor` do resto do app.
-    private func color(for danger: DangerLevel) -> Color {
-        switch danger {
-        case .ok, .neutral: return ink
-        case .warn: return Theme.Brand.heatOrange
-        case .critical: return Theme.Brand.neonMagenta
-        }
-    }
+    // A cor do número sai de `QuotaPresentation.menuBarColor`: a escala contínua, com o
+    // escurecimento que a barra CLARA exige (o amarelo da escala tem 1,3:1 contra uma
+    // barra branca — some). O símbolo continua na tinta neutra: ele é identidade, não
+    // estado, e um símbolo colorido brigaria com o número ao lado.
+    //
+    // O número era neutro com folga e só ganhava cor abaixo de 30%. Era essa regra, boa
+    // para três degraus, que fazia a barra não dizer nada durante 90% do tempo.
 }
 
 /// A tinta do rótulo da barra de menu — símbolo e números sem alarme.

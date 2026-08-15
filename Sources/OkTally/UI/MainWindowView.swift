@@ -172,7 +172,9 @@ struct OverviewScreen: View {
     /// o número e a contagem regressiva — o bloco tinha cor, mas não tinha composição.
     private func bottleneckHero(_ worst: QuotaLedgerEntry) -> some View {
         let remaining = worst.remaining ?? 0
-        let danger = QuotaPresentation.color(remaining: remaining)
+        // `heroTint` porque o glifo do chip é escrito NESTA cor sobre off-white — ver
+        // a nota gêmea no herói do popover.
+        let danger = Theme.heroTint(QuotaPresentation.color(remaining: remaining))
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: Theme.Space.sm) {
                 SectionHeader(L("Gargalo"), onHero: true)
@@ -229,7 +231,9 @@ struct OverviewScreen: View {
                 summaryLine(L("Provedores"), "\(entries.count)")
                 summaryLine(L("Janelas"), "\(allWindows.count)")
                 summaryLine(L("Sob pressão"), "\(tight)",
-                            tint: tight > 0 ? Theme.Brand.neonMagenta : nil)
+                            // Mesma cor do grupo "Sob pressão" da tabela ao lado, pela
+                            // escala — e não um magenta cravado que divergiria dela.
+                            tint: tight > 0 ? QuotaPressure.tight.tint : nil)
                 if let cost = totalEstimatedCost {
                     summaryLine(L("Custo 30d"),
                                 "$" + String(format: "%.2f", (cost as NSDecimalNumber).doubleValue))

@@ -107,8 +107,14 @@ enum Theme {
     /// "pop" das referências: um card com cor cheia no meio de cards neutros. A versão
     /// antiga (`color.opacity(0.18) → 0.05`) era um tingimento tão fraco que sumia contra
     /// o fundo — o dono viu um dashboard cinza com números coloridos, não um destaque.
+    ///
+    /// A tinta passa por `heroTint` antes de virar gradiente: desde que a cor do bloco
+    /// saiu de uma escala CONTÍNUA, ela pode chegar aqui como amarelo ou verde-claro, e
+    /// o off-white que escreve por cima (`onHero`) sumiria. O clamp mora aqui, e não em
+    /// cada herói, porque é aqui que a tinta vira fundo.
     static func heroFill(_ color: Color) -> LinearGradient {
-        LinearGradient(
+        let color = heroTint(color)
+        return LinearGradient(
             colors: [color.heroTop, color.heroBottom],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -251,5 +257,60 @@ extension Color {
     var isLight: Bool {
         let c = NSColor(self).usingColorSpace(.sRGB) ?? .white
         return (0.2126 * c.redComponent + 0.7152 * c.greenComponent + 0.0722 * c.blueComponent) > 0.6
+    }
+}
+
+// MARK: - Ponte com a escala de uso
+
+extension Color {
+    init(usage: UsageRGB) {
+        self.init(.sRGB, red: usage.red, green: usage.green, blue: usage.blue, opacity: 1)
+    }
+
+    /// Componentes de volta, para o `ColorPicker` das Preferências poder virar uma parada
+    /// persistível. Cor fora do sRGB (o seletor do sistema abre em Display P3) é
+    /// convertida; se a conversão falhar, cai no cinza médio em vez de derrubar a tela.
+    var usageRGB: UsageRGB {
+        guard let c = NSColor(self).usingColorSpace(.sRGB) else {
+            return UsageRGB(red: 0.5, green: 0.5, blue: 0.5)
+        }
+        return UsageRGB(red: c.redComponent, green: c.greenComponent, blue: c.blueComponent)
+    }
+}
+
+extension Theme {
+    /// Luminância do TOPO do gradiente do herói para o Volt Cyan — a referência de
+    /// legibilidade do app.
+    ///
+    /// Não é um número inventado: é o contraste que o herói ciano com texto off-white já
+    /// tem hoje e que o dono aprovou. Ele serve de teto para os tons CLAROS da escala
+    /// (amarelo e verde), que sem isso deixariam o off-white ilegível justamente no bloco
+    /// de 44pt que é a primeira coisa lida na tela.
+    static let heroTopLuminanceReference = Brand.voltCyan.usageRGB.scalingBrightness(1.10).relativeLuminance
+
+    /// A cor do herói para uma tinta da escala: a própria cor, escurecida só o quanto for
+    /// preciso para o topo do gradiente não passar da referência acima.
+    ///
+    /// Escurecer em vez de trocar a tinta do texto: `Theme.onHero` está em quinze lugares
+    /// dentro dos blocos-herói (número, rótulos, chip, barra, linhas secundárias), e
+    /// inverter a tinta em função do fundo faria cada um desses lugares precisar saber a
+    /// cor do bloco. Escurecendo, o amarelo continua amarelo — só vira âmbar profundo — e
+    /// nada mais na composição muda.
+    static func heroTint(_ color: Color) -> Color {
+        let base = color.usageRGB
+        func topLuminance(_ rgb: UsageRGB) -> Double {
+            rgb.scalingBrightness(1.10).relativeLuminance
+        }
+        guard topLuminance(base) > heroTopLuminanceReference else { return color }
+        var low = 0.0, high = 1.0
+        for _ in 0..<20 {
+            let mid = (low + high) / 2
+            if topLuminance(base.scalingBrightness(mid)) > heroTopLuminanceReference {
+                high = mid
+            } else {
+                low = mid
+            }
+        }
+        return Color(usage: base.scalingBrightness(low))
     }
 }

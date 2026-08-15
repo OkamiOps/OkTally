@@ -29,6 +29,25 @@ enum QuotaPressure: Int, CaseIterable {
         return .comfortable
     }
 
+    /// O ponto da faixa que REPRESENTA o grupo na escala de cor — o meio de cada faixa,
+    /// não a fronteira. Com a escala contínua o ponto da faixa não pode mais ser uma cor
+    /// cravada (magenta/laranja/ciano): ele tem que sair do mesmo degradê que pinta os
+    /// números, senão o rótulo do grupo diz uma cor e as linhas dentro dele dizem outra.
+    var representativeRemaining: Double? {
+        switch self {
+        case .tight: return 0.15
+        case .watch: return 0.45
+        case .comfortable: return 0.80
+        case .balance: return nil
+        }
+    }
+
+    /// Cor do grupo, pelo ponto único do app.
+    var tint: Color {
+        guard representativeRemaining != nil else { return .secondary }
+        return QuotaPresentation.color(remaining: representativeRemaining)
+    }
+
     var title: String {
         switch self {
         case .tight: return L("Sob pressão")
@@ -99,18 +118,9 @@ private struct GroupBanner: View {
     let pressure: QuotaPressure
     let count: Int
 
-    private var tint: Color {
-        switch pressure {
-        case .tight: return Theme.Brand.neonMagenta
-        case .watch: return Theme.Brand.heatOrange
-        case .comfortable: return Theme.accent
-        case .balance: return .secondary
-        }
-    }
-
     var body: some View {
         HStack(spacing: Theme.Space.sm) {
-            Circle().fill(tint).frame(width: 6, height: 6)
+            Circle().fill(pressure.tint).frame(width: 6, height: 6)
             SectionHeader(pressure.title)
             Text("\(count)")
                 .font(.system(size: 9, weight: .bold))
@@ -191,7 +201,7 @@ struct QuotaLedgerRow: View {
             Text(QuotaPresentation.remainingValueText(entry.window.shape))
                 .font(.system(size: 15, weight: .bold, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(onHero ? Theme.onHero : QuotaPresentation.valueColor(remaining: entry.remaining))
+                .foregroundStyle(onHero ? AnyShapeStyle(Theme.onHero) : QuotaPresentation.valueStyle(remaining: entry.remaining))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .frame(width: 64, alignment: .trailing)

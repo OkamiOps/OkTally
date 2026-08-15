@@ -148,7 +148,7 @@ final class QuotaSlotResolverTests: XCTestCase {
         let segment = MenuBarLabelModel.segment(
             slot: .window(providerId: "claude", windowLabel: "5h"),
             pins: [], snapshots: snapshots, hasAnyError: false)
-        XCTAssertEqual(segment, MenuBarSegment(glyph: "C", providerId: "claude", text: "78", danger: .ok))
+        XCTAssertEqual(segment, MenuBarSegment(glyph: "C", providerId: "claude", text: "78", danger: .ok, remaining: 0.78))
     }
 
     func test_menuBarSlot_automaticKeepsTheCriticalRule() {

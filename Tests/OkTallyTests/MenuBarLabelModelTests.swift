@@ -15,7 +15,7 @@ final class MenuBarLabelModelTests: XCTestCase {
             pins: [.init(providerId: "claude", windowLabel: "5h")],
             snapshots: ["claude": snapshot("claude", [window("5h", usedPercent: 22)])],
             hasAnyError: false)
-        XCTAssertEqual(segment, MenuBarSegment(glyph: "C", providerId: "claude", text: "78", danger: .ok))
+        XCTAssertEqual(segment, MenuBarSegment(glyph: "C", providerId: "claude", text: "78", danger: .ok, remaining: 0.78))
     }
 
     func test_dangerLevels_matchQuotaPresentationThresholds() {
@@ -40,7 +40,7 @@ final class MenuBarLabelModelTests: XCTestCase {
                    .init(providerId: "claude", windowLabel: "5h")],
             snapshots: ["claude": snapshot("claude", [window("5h", usedPercent: 95)])],
             hasAnyError: false)
-        XCTAssertEqual(segment, MenuBarSegment(glyph: "C", providerId: "claude", text: "5", danger: .critical))
+        XCTAssertEqual(segment, MenuBarSegment(glyph: "C", providerId: "claude", text: "5", danger: .critical, remaining: 0.05))
     }
 
     /// A barra carrega UM número — e é o do PINO mais apertado, não o da janela mais
@@ -67,7 +67,7 @@ final class MenuBarLabelModelTests: XCTestCase {
                         "codex": snapshot("codex", [window("semanal", usedPercent: 44)]),
                         "cursor": snapshot("cursor", [window("percent", usedPercent: 93)])],
             hasAnyError: false)
-        XCTAssertEqual(segment, MenuBarSegment(glyph: "▹", providerId: "cursor", text: "7", danger: .critical))
+        XCTAssertEqual(segment, MenuBarSegment(glyph: "▹", providerId: "cursor", text: "7", danger: .critical, remaining: 0.07))
     }
 
     /// Empate de sobra desempata pelo reset mais próximo: entre duas cotas igualmente
@@ -90,7 +90,7 @@ final class MenuBarLabelModelTests: XCTestCase {
         let snapshots = ["claude": snapshot("claude", [window("5h", usedPercent: 22)]),
                          "codex": snapshot("codex", [window("semanal", usedPercent: 80)])]
         XCTAssertEqual(MenuBarLabelModel.criticalSegment(pins: [], snapshots: snapshots, hasAnyError: false),
-                       MenuBarSegment(glyph: "X", providerId: "codex", text: "20", danger: .warn))
+                       MenuBarSegment(glyph: "X", providerId: "codex", text: "20", danger: .warn, remaining: 0.2))
     }
 
     /// Um saldo em dólares não tem "aperto" comparável a uma porcentagem, então ele só

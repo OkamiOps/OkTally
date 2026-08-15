@@ -47,6 +47,24 @@ enum PreferencesFieldCommit {
         return .commit(value: value, display: credits(value))
     }
 
+    /// Percentual de uma parada da escala de cor. Fora de 0–100 é GRAMPEADO, não
+    /// recusado: quem digita "150" quis dizer "o topo", e devolver o campo ao valor
+    /// antigo pareceria que a edição foi ignorada. Lixo (e notação científica) continua
+    /// sendo recusado pelo `FieldCommit.amount`.
+    static func scalePercent(raw: String, saved: Double) -> FieldCommitOutcome<Double> {
+        let stored = percent(saved)
+        guard let candidate = FieldCommit.sanitized(raw, previous: stored),
+              let value = FieldCommit.amount(candidate) else {
+            return .ignored(restore: stored)
+        }
+        let clamped = min(100, max(0, value))
+        return .commit(value: clamped, display: percent(clamped))
+    }
+
+    /// Mesma poda do ".0" dos créditos — um percentual inteiro é o caso comum e "85.0"
+    /// num campo de 3 dígitos é ruído.
+    static func percent(_ value: Double) -> String { credits(value) }
+
     /// Mesma renderização em `load()` e nos commits — se divergissem, "valor inalterado"
     /// nunca bateria e todo blur gravaria de novo.
     ///

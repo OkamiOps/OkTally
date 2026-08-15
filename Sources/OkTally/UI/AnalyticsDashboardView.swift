@@ -322,7 +322,7 @@ struct AnalyticsDashboardView: View {
                                     Text(QuotaPresentation.remainingText(entry.window.shape))
                                         .font(.system(size: 11, weight: .semibold))
                                         .monospacedDigit()
-                                        .foregroundStyle(QuotaPresentation.valueColor(remaining: entry.remaining))
+                                        .foregroundStyle(QuotaPresentation.valueStyle(remaining: entry.remaining))
                                 }
                                 // Identidade na barra, perigo no número — a mesma divisão
                                 // de canais do popover, para as cinco linhas não saírem
