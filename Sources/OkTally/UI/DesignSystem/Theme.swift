@@ -52,8 +52,9 @@ enum Theme {
 }
 
 /// Liquid Glass, restrito a cromo (headers, barras de ação, a faixa flutuante do
-/// popover). Vidro atrás de número ou gráfico prejudica a leitura, então nada de
-/// conteúdo denso usa isto.
+/// popover). Fica fora dos dashboards e dos cards de detalhe, onde ficaria atrás de
+/// número e gráfico densos e prejudicaria a leitura. A faixa "Hoje" é a exceção
+/// deliberada: tem número e sparkline, mas é uma tira fina e flutuante, lida como cromo.
 ///
 /// Usa `glassEffect(_:in:)` de verdade — a API do macOS 26, confirmada com a assinatura
 /// `glassEffect(_ glass: Glass = .regular, in shape: some Shape)` no
