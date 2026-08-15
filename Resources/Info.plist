@@ -20,5 +20,18 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>Personal use.</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.oktally.app.menubarpin</string>
+			<key>UTTypeDescription</key>
+			<string>OkTally menu bar pin</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
