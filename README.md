@@ -4,7 +4,7 @@
 
 **Every AI coding subscription quota, in your macOS menu bar — before you hit the wall.**
 
-[![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-black?style=flat&logo=apple)](https://www.apple.com/macos/)
+[![Platform](https://img.shields.io/badge/platform-macOS%2026%2B-black?style=flat&logo=apple)](https://www.apple.com/macos/)
 [![Swift](https://img.shields.io/badge/Swift-5.9-F05138?style=flat&logo=swift&logoColor=white)](https://swift.org)
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat)](LICENSE)
@@ -114,13 +114,15 @@ Every provider is a plugin conforming to a single `UsageProvider` protocol and n
 
 ### DMG (recommended)
 
+Requires macOS 26 (Tahoe) or later. Older macOS versions are no longer supported and will not receive updates.
+
 1. Download `OkTally-0.9.1.dmg` from the [Releases page](https://github.com/OkamiOps/OkTally/releases).
 2. Open it and drag **OkTally** to Applications.
 3. The app is not notarized: on first launch, right-click (Ctrl-click) `OkTally.app` → **Open** → **Open**.
 
 ### Build from source
 
-Requires Xcode Command Line Tools with Swift 5.9 or newer.
+Requires Xcode Command Line Tools with Swift 6.2 or newer (the manifest declares `swift-tools-version: 6.2`).
 
 ```bash
 git clone https://github.com/OkamiOps/OkTally.git

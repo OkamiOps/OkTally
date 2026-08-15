@@ -38,17 +38,27 @@ final class ReadmeAssetRenderer: XCTestCase {
                     .frame(width: 760)
                     .background(Color(nsColor: .windowBackgroundColor)),
                   to: "overview.png")
-        try write(view: AnalyticsSection(analytics: demoAnalytics())
+        try write(view: AnalyticsDashboardView(appModel: model)
                     .padding(24)
-                    .frame(width: 560)
+                    .frame(width: 860)
                     .background(Color(nsColor: .windowBackgroundColor)),
                   to: "analytics.png")
     }
 
     /// Deterministic pseudo-random daily buckets (LCG) so re-rendering doesn't churn
-    /// the committed PNG.
-    private func demoAnalytics() -> TokenAnalytics {
-        var state: UInt64 = 0x5DEECE66D
+    /// the committed PNG. `seed` e `scale` dão a cada provider um perfil próprio, para o
+    /// empilhado e o donut da aba Análise não saírem com três séries idênticas.
+    private func demoAnalytics(
+        seed: UInt64 = 0x5DEECE66D,
+        scale: Double = 1.0,
+        idleOdds: UInt64 = 4,
+        lifetimeTokens: Int = 2_200_000_000,
+        peakDailyTokens: Int = 385_400_000,
+        currentStreakDays: Int = 6,
+        longestStreakDays: Int = 8,
+        longestRunningTurnSeconds: Int = 2673
+    ) -> TokenAnalytics {
+        var state: UInt64 = seed
         func next() -> UInt64 {
             state = state &* 6364136223846793005 &+ 1442695040888963407
             return state >> 33
@@ -57,15 +67,15 @@ final class ReadmeAssetRenderer: XCTestCase {
         for offset in stride(from: 180, through: 0, by: -1) {
             let date = Calendar.current.date(byAdding: .day, value: -offset, to: Date())!
             let roll = next() % 10
-            let tokens = roll < 4 ? 0 : Int(next() % 90_000_000) + 100_000
-            buckets.append(DailyTokens(day: TokenAnalytics.dayKey(date), tokens: tokens))
+            let raw = roll < idleOdds ? 0 : Int(next() % 90_000_000) + 100_000
+            buckets.append(DailyTokens(day: TokenAnalytics.dayKey(date), tokens: Int(Double(raw) * scale)))
         }
         return TokenAnalytics(
-            lifetimeTokens: 2_200_000_000,
-            peakDailyTokens: 385_400_000,
-            currentStreakDays: 6,
-            longestStreakDays: 8,
-            longestRunningTurnSeconds: 2673,
+            lifetimeTokens: lifetimeTokens,
+            peakDailyTokens: peakDailyTokens,
+            currentStreakDays: currentStreakDays,
+            longestStreakDays: longestStreakDays,
+            longestRunningTurnSeconds: longestRunningTurnSeconds,
             dailyBuckets: buckets
         )
     }
@@ -105,6 +115,14 @@ final class ReadmeAssetRenderer: XCTestCase {
             ]),
             ("mimo", "MiMo", [
                 QuotaWindow(label: "mensal", shape: rolling(6, hours: 500))
+            ]),
+            // OpenCode expõe janelas de orçamento estimadas a partir dos tokens locais —
+            // é assim que o provider real monta o snapshot, e é também a terceira fonte
+            // de analytics da aba Análise.
+            ("opencode", "OpenCode", [
+                QuotaWindow(label: "mensal", shape: .estimated(
+                    used: 38.4, limit: 100, basis: .localTokenCount,
+                    resetAt: now.addingTimeInterval(11 * 24 * 3600)))
             ])
         ]
         for (id, name, quotas) in entries {
@@ -144,6 +162,27 @@ final class ReadmeAssetRenderer: XCTestCase {
         let model = AppModel(registry: registry, scheduler: scheduler, storage: storage, defaults: defaults)
         await model.refreshNow()
         try await Task.sleep(nanoseconds: 200_000_000) // let onResult callbacks land
+        // As três fontes de analytics reais do app (Codex, Claude Code, OpenCode). Sem
+        // loaders, a aba Análise renderiza só o estado vazio.
+        model.analyticsLoaders["claude"] = { [self] in
+            demoAnalytics(seed: 0x5DEECE66D, scale: 1.0,
+                          lifetimeTokens: 2_200_000_000, peakDailyTokens: 385_400_000,
+                          currentStreakDays: 6, longestStreakDays: 8,
+                          longestRunningTurnSeconds: 2673)
+        }
+        model.analyticsLoaders["codex"] = { [self] in
+            demoAnalytics(seed: 0x1B0CA55E7, scale: 0.55, idleOdds: 3,
+                          lifetimeTokens: 940_000_000, peakDailyTokens: 158_200_000,
+                          currentStreakDays: 11, longestStreakDays: 19,
+                          longestRunningTurnSeconds: 1412)
+        }
+        model.analyticsLoaders["opencode"] = { [self] in
+            demoAnalytics(seed: 0x7F4A7C15, scale: 0.22, idleOdds: 6,
+                          lifetimeTokens: 310_000_000, peakDailyTokens: 46_800_000,
+                          currentStreakDays: 2, longestStreakDays: 5,
+                          longestRunningTurnSeconds: 604)
+        }
+        await model.loadAllAnalyticsIfStale()
         model.menuBarPins = [
             .init(providerId: "claude", windowLabel: "5h"),
             .init(providerId: "codex", windowLabel: "semanal"),

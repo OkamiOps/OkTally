@@ -85,6 +85,14 @@
 "Últimos 30 dias" = "Last 30 days";
 "%@: sem uso" = "%@: no usage";
 "%@: %@ tokens" = "%@: %@ tokens";
+"menos" = "less";
+"mais" = "more";
+
+/* Charts */
+"Dia" = "Day";
+"Tokens" = "Tokens";
+"Provedor" = "Provider";
+"total" = "total";
 
 /* Preferences */
 "Geral" = "General";
@@ -189,3 +197,15 @@
 "Login do IDE Antigravity detectado" = "Antigravity IDE login detected";
 "Nenhum login do Antigravity encontrado" = "No Antigravity login found";
 "Nada a configurar — detectado automaticamente a partir do login do IDE Antigravity neste Mac." = "Nothing to configure — detected automatically from the Antigravity IDE login on this Mac.";
+
+/* Aba Análise — grade bento */
+"ontem: %@" = "yesterday: %@";
+"recorde: %d dias" = "record: %d days";
+"tarefa mais longa: %@" = "longest task: %@";
+"Tendência de uso" = "Usage trend";
+"Ver como barras" = "Show as bars";
+"Ver como heatmap" = "Show as heatmap";
+"Por provedor" = "By provider";
+"Participação" = "Share";
+"Cotas mais apertadas" = "Tightest quotas";
+"Sem dados no período" = "No data in this period";
