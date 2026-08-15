@@ -106,10 +106,10 @@ Troque a versão citada por macOS 26 (Tahoe) em cada um, no idioma do arquivo. S
 No topo de `CHANGELOG.md`, dentro da seção não lançada (crie `## [Unreleased]` se não existir):
 
 ```markdown
-### Alterado
-- **Requisito de sistema agora é macOS 26 (Tahoe).** Versões anteriores do macOS não
-  recebem mais atualizações — a mudança libera Liquid Glass e as APIs novas de Swift
-  Charts usadas no redesign da interface.
+### Changed
+- **Minimum system requirement is now macOS 26 (Tahoe).** Earlier macOS versions no longer
+  receive updates — the bump unlocks Liquid Glass and the newer Swift Charts APIs used by
+  the interface redesign.
 ```
 
 - [ ] **Step 7: Commit**
@@ -2094,16 +2094,19 @@ Expected: todos passam.
 Em `CHANGELOG.md`, na seção não lançada criada na Task 1:
 
 ```markdown
-### Adicionado
-- Aba Análise redesenhada como dashboard: bloco-herói com o uso de hoje, gráfico de
-  barras empilhado por provedor (30 d / 90 d / 12 m), donut de participação e faixa das
-  cotas mais apertadas.
-- Heatmap de uso agora preenche a largura disponível e ganhou legenda.
+### Added
+- Analytics tab redesigned as a dashboard: hero block with today's usage, per-provider
+  stacked bar chart (30 d / 90 d / 12 m), share donut, and a strip of the tightest quotas.
+- The usage heatmap now fills the available width and gained a legend.
 
-### Alterado
-- Preferências reconstruídas com formulários agrupados nativos; campos salvam sozinhos
-  (os botões "Salvar" saíram) e os limiares de alerta agora incluem 50 % e 80 %.
-- Popover, Visão geral e Preferências passam a compartilhar o mesmo design system.
+### Changed
+- Preferences rebuilt with native grouped forms; fields save on their own (the "Save"
+  buttons are gone) and the alert thresholds now include 50 % and 80 %.
+- Popover, Overview, and Preferences now share the same design system.
+
+### Fixed
+- The `[Unreleased]` entry added when the deployment target was raised was written in
+  Portuguese; it is now in English, matching the rest of this file.
 ```
 
 - [ ] **Step 4: Construir e instalar**
