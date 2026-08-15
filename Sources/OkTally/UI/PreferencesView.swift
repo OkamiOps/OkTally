@@ -454,9 +454,9 @@ struct PreferencesView: View {
 
 // MARK: - General pane
 
-/// Ajustes gerais: pinos da barra de menu, alertas e atualização. Refresh intervals were
-/// deliberately left out: the store's per-provider interval is not wired into the
-/// Scheduler, so a UI for it would lie.
+/// Ajustes gerais: pinos da barra de menu, alertas e atualização. Os intervalos de refresh
+/// ficaram de fora de propósito: o intervalo por provedor do store não está ligado ao
+/// Scheduler, então uma UI para ele mentiria.
 private struct GeneralPane: View {
     @ObservedObject var appModel: AppModel
     let preferencesStore: PreferencesStore
@@ -484,7 +484,10 @@ private struct GeneralPane: View {
                         pinRow(pin)
                     }
                 }
-                Text(L("Arraste para reordenar. Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra."))
+                // Sem pinos não há o que arrastar — o rodapé não promete reordenação.
+                Text(appModel.menuBarPins.isEmpty
+                     ? L("Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra.")
+                     : L("Arraste para reordenar. Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra."))
                     .font(.caption).foregroundStyle(.secondary)
             }
 
@@ -506,6 +509,9 @@ private struct GeneralPane: View {
                     Text(L("Saldo baixo (USD):")).font(.caption).foregroundStyle(.secondary)
                     TextField("5.00", text: $lowBalanceText)
                         .textFieldStyle(.roundedBorder)
+                        // Dentro do `Form` o título do TextField vira rótulo visível, e o
+                        // "5.00" aparecia duas vezes ao lado do campo.
+                        .labelsHidden()
                         .frame(width: 80)
                         .focused($lowBalanceFocused)
                         .onSubmit(saveLowBalance)
@@ -579,14 +585,13 @@ private struct GeneralPane: View {
         }
     }
 
-    /// Move o pino arrastado para o índice do alvo, preservando a ordem dos demais.
+    /// Move o pino arrastado para a posição do alvo. A regra vive em `PinReorder`, que é
+    /// coberta por teste — o cálculo do índice aqui dentro já saiu errado uma vez.
     private func movePin(stored: String, toPositionOf target: AppModel.MenuBarPin) -> Bool {
-        guard let from = appModel.menuBarPins.firstIndex(where: { $0.stored == stored }) else { return false }
-        var pins = appModel.menuBarPins
-        let moved = pins.remove(at: from)
-        guard let to = pins.firstIndex(where: { $0.stored == target.stored }) else { return false }
-        pins.insert(moved, at: to)
-        appModel.menuBarPins = pins
+        guard let order = PinReorder.reordered(appModel.menuBarPins.map(\.stored),
+                                               dragging: stored,
+                                               onto: target.stored) else { return false }
+        appModel.menuBarPins = order.compactMap { AppModel.MenuBarPin(stored: $0) }
         return true
     }
 
