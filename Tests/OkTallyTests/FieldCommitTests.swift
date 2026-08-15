@@ -30,4 +30,11 @@ final class FieldCommitTests: XCTestCase {
         XCTAssertNil(FieldCommit.lowBalance("abc"))
         XCTAssertNil(FieldCommit.lowBalance(""))
     }
+
+    func test_lowBalanceRejectsScientificNotation() {
+        // "1e3" vira 1000.0 silenciosamente com Double(_:) puro — um limiar de alerta
+        // errado, digitado ou colado por engano, sem nenhum sinal de erro.
+        XCTAssertNil(FieldCommit.lowBalance("1e3"))
+        XCTAssertNil(FieldCommit.lowBalance("2E-1"))
+    }
 }
