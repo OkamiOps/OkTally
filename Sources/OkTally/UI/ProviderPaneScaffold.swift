@@ -57,7 +57,11 @@ struct ProviderPaneScaffold<Connection: View, Details: View>: View {
                 }
             }
             Section(L("Conexão")) { connection }
-            Section { details }
+            // Cursor, Copilot e Antigravity não têm detalhe algum (`details: EmptyView()`).
+            // Sem esta guarda o `Form` agrupado desenhava um cartão vazio no fim da tela.
+            if Details.self != EmptyView.self {
+                Section { details }
+            }
         }
         .formStyle(.grouped)
     }

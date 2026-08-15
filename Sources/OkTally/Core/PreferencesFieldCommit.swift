@@ -49,5 +49,14 @@ enum PreferencesFieldCommit {
 
     /// Mesma renderização em `load()` e nos commits — se divergissem, "valor inalterado"
     /// nunca bateria e todo blur gravaria de novo.
-    static func credits(_ value: Double) -> String { String(value) }
+    ///
+    /// `String(value)` sozinho mostrava "500.0" e "0.0" no campo. Créditos inteiros são
+    /// o caso comum, então o ".0" é podado; frações continuam intactas ("750.5"). O
+    /// ida-e-volta segue válido porque `Double("500") == 500`.
+    static func credits(_ value: Double) -> String {
+        if value.isFinite, value == value.rounded(), abs(value) < 1e15 {
+            return String(Int64(value))
+        }
+        return String(value)
+    }
 }

@@ -160,7 +160,7 @@ struct PreferencesView: View {
         case .provider("openrouter"):
             keyPane("openrouter",
                     text: $openRouterAPIKey,
-                    status: openRouterAPIKey.isEmpty ? L("Sem chave") : L("Chave salva"),
+                    hasSavedKey: !(preferencesStore.openRouterAPIKey ?? "").isEmpty,
                     save: {
                         saveSecret("OpenRouter", previous: preferencesStore.openRouterAPIKey ?? "", raw: $openRouterAPIKey) {
                             try preferencesStore.setOpenRouterAPIKey($0)
@@ -175,7 +175,7 @@ struct PreferencesView: View {
         case .provider("opencode"):
             keyPane("opencode",
                     text: $openCodeAPIKey,
-                    status: openCodeAPIKey.isEmpty ? L("Sem chave") : L("Chave salva"),
+                    hasSavedKey: !(preferencesStore.openCodeAPIKey ?? "").isEmpty,
                     save: {
                         saveSecret("OpenCode", previous: preferencesStore.openCodeAPIKey ?? "", raw: $openCodeAPIKey) {
                             try preferencesStore.setOpenCodeAPIKey($0)
@@ -332,20 +332,24 @@ struct PreferencesView: View {
     /// não apague a chave que está no Keychain.
     private func keyPane(_ id: String,
                          text: Binding<String>,
-                         status: String,
+                         hasSavedKey: Bool,
                          save: @escaping () -> Void,
                          remove: @escaping () -> Void) -> some View {
         ProviderPaneScaffold(
             providerId: id,
             name: providerName(id),
-            status: text.wrappedValue.isEmpty ? .notConfigured(status) : .connected(status)
+            status: hasSavedKey ? .connected(L("Chave salva")) : .notConfigured(L("Sem chave"))
         ) {
             AutoSaveField(placeholder: "API Key", text: text, isSecure: true, onCommit: save)
                 .frame(maxWidth: 380)
             // Esvaziar o campo não apaga nada (é a regra do auto-save), então revogar a
             // credencial precisa de um gesto deliberado — sem este botão não haveria
             // nenhuma forma de desconectar o provedor pelo app.
-            if !text.wrappedValue.isEmpty {
+            //
+            // A condição é o valor *salvo*, nunca o texto do campo: quem quer revogar
+            // seleciona tudo e apaga, e o botão sumiria exatamente aí. O espelho também
+            // importa — digitar num provedor sem chave não pode anunciar "Chave salva".
+            if hasSavedKey {
                 HStack {
                     Button(L("Remover chave"), role: .destructive, action: remove)
                         .buttonStyle(.bordered)
@@ -359,14 +363,16 @@ struct PreferencesView: View {
     }
 
     private var minimaxPane: some View {
-        ProviderPaneScaffold(
+        // Mesma regra do `keyPane`: pill e botão seguem o Keychain, não o texto do campo.
+        let hasSavedKey = !(preferencesStore.minimaxAPIKey ?? "").isEmpty
+        return ProviderPaneScaffold(
             providerId: "minimax",
             name: providerName("minimax"),
-            status: minimaxAPIKey.isEmpty ? .notConfigured(L("Sem chave")) : .connected(L("Chave salva"))
+            status: hasSavedKey ? .connected(L("Chave salva")) : .notConfigured(L("Sem chave"))
         ) {
             AutoSaveField(placeholder: "API Key", text: $minimaxAPIKey, isSecure: true, onCommit: saveMinimaxKey)
                 .frame(maxWidth: 380)
-            if !minimaxAPIKey.isEmpty {
+            if hasSavedKey {
                 HStack {
                     Button(L("Remover chave"), role: .destructive) {
                         removeSecret("MiniMax", raw: $minimaxAPIKey) {

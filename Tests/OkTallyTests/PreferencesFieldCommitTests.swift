@@ -41,18 +41,18 @@ final class PreferencesFieldCommitTests: XCTestCase {
         // O bug que esta task tinha de fechar: `= Double(mimoAllowance)` com campo vazio
         // gravava `nil` e apagava a franquia.
         XCTAssertEqual(PreferencesFieldCommit.allowance(raw: "", saved: 500),
-                       .ignored(restore: "500.0"))
+                       .ignored(restore: "500"))
         XCTAssertEqual(PreferencesFieldCommit.allowance(raw: "   ", saved: 500),
-                       .ignored(restore: "500.0"))
+                       .ignored(restore: "500"))
     }
 
     func test_franquiaComLixoNaoApagaOValorSalvo() {
         XCTAssertEqual(PreferencesFieldCommit.allowance(raw: "abc", saved: 500),
-                       .ignored(restore: "500.0"))
+                       .ignored(restore: "500"))
         XCTAssertEqual(PreferencesFieldCommit.allowance(raw: "1e3", saved: 500),
-                       .ignored(restore: "500.0"))
+                       .ignored(restore: "500"))
         XCTAssertEqual(PreferencesFieldCommit.allowance(raw: "inf", saved: 500),
-                       .ignored(restore: "500.0"))
+                       .ignored(restore: "500"))
     }
 
     func test_franquiaAceitaVirgulaEGravaOTextoQueOCampoMostra() {
@@ -63,7 +63,7 @@ final class PreferencesFieldCommitTests: XCTestCase {
     func test_franquiaZeroERecusada() {
         // Franquia zero não mede nada — e recusá-la não pode apagar a que está salva.
         XCTAssertEqual(PreferencesFieldCommit.allowance(raw: "0", saved: 500),
-                       .ignored(restore: "500.0"))
+                       .ignored(restore: "500"))
     }
 
     func test_franquiaInalteradaNaoRegrava() {
@@ -76,23 +76,44 @@ final class PreferencesFieldCommitTests: XCTestCase {
                        .ignored(restore: display))
     }
 
+    func test_creditosInteirosNaoMostramOPontoZero() {
+        // A UI mostrava "500.0" e "0.0" no campo. Inteiro é o caso comum; fração fica.
+        XCTAssertEqual(PreferencesFieldCommit.credits(500), "500")
+        XCTAssertEqual(PreferencesFieldCommit.credits(0), "0")
+        XCTAssertEqual(PreferencesFieldCommit.credits(750.5), "750.5")
+    }
+
+    func test_idaEVoltaDeInteiroNaoRegrava() {
+        // Regressão do formato: se `credits` e o parser divergissem, o valor exibido
+        // nunca casaria com o salvo e todo blur gravaria de novo em loop.
+        guard case .commit(let value, let display) = PreferencesFieldCommit.allowance(raw: "500", saved: 300) else {
+            return XCTFail("esperava commit")
+        }
+        XCTAssertEqual(value, 500)
+        XCTAssertEqual(display, "500")
+        XCTAssertEqual(PreferencesFieldCommit.allowance(raw: display, saved: value),
+                       .ignored(restore: display))
+        XCTAssertEqual(PreferencesFieldCommit.used(raw: display, saved: value),
+                       .ignored(restore: display))
+    }
+
     // MARK: - Créditos usados
 
     func test_usadosVaziosNaoApagamOValorSalvo() {
         XCTAssertEqual(PreferencesFieldCommit.used(raw: "", saved: 123),
-                       .ignored(restore: "123.0"))
+                       .ignored(restore: "123"))
     }
 
     func test_usadosAceitamZero() {
         // Mês recém-começado: zero é legítimo aqui, ao contrário da franquia.
         XCTAssertEqual(PreferencesFieldCommit.used(raw: "0", saved: 123),
-                       .commit(value: 0, display: "0.0"))
+                       .commit(value: 0, display: "0"))
     }
 
     func test_usadosRecusamNegativoInfinitoELixo() {
-        XCTAssertEqual(PreferencesFieldCommit.used(raw: "-5", saved: 123), .ignored(restore: "123.0"))
-        XCTAssertEqual(PreferencesFieldCommit.used(raw: "inf", saved: 123), .ignored(restore: "123.0"))
-        XCTAssertEqual(PreferencesFieldCommit.used(raw: "nan", saved: 123), .ignored(restore: "123.0"))
-        XCTAssertEqual(PreferencesFieldCommit.used(raw: "abc", saved: 123), .ignored(restore: "123.0"))
+        XCTAssertEqual(PreferencesFieldCommit.used(raw: "-5", saved: 123), .ignored(restore: "123"))
+        XCTAssertEqual(PreferencesFieldCommit.used(raw: "inf", saved: 123), .ignored(restore: "123"))
+        XCTAssertEqual(PreferencesFieldCommit.used(raw: "nan", saved: 123), .ignored(restore: "123"))
+        XCTAssertEqual(PreferencesFieldCommit.used(raw: "abc", saved: 123), .ignored(restore: "123"))
     }
 }

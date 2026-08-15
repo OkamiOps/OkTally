@@ -60,20 +60,20 @@
 "Custo estimado" = "Estimated cost";
 "últimos 30 dias" = "last 30 days";
 "Uso nos últimos 7 dias" = "Usage over the last 7 days";
-"TODOS OS PROVEDORES" = "ALL PROVIDERS";
 "Nenhuma fonte de análise disponível — conecte Codex, Claude Code ou OpenCode." = "No analytics source available — connect Codex, Claude Code, or OpenCode.";
 "Carregando estatísticas de uso…" = "Loading usage statistics…";
-"POR PROVEDOR" = "BY PROVIDER";
-"· %@ em 30d" = "· %@ in 30d";
 "Sem dados" = "No data";
 "Codex: estatísticas da conta (API). Claude Code e OpenCode: estimativa local dos transcritos/banco desta máquina, incluindo tokens de cache." = "Codex: account statistics (API). Claude Code and OpenCode: local estimate from this machine's transcripts/database, including cache tokens.";
 "Atualizado %@" = "Updated %@";
-"USO — 7 DIAS" = "USAGE — 7 DAYS";
 "Uso — 7 dias" = "Usage — 7 days";
 "Custo estimado: $%@ nos últimos 30 dias" = "Estimated cost: $%@ over the last 30 days";
 
 /* Analytics */
 "TENDÊNCIA DE USO" = "USAGE TREND";
+/* Rótulos do seletor de período (TrendWindow.label). */
+"30 d" = "30 d";
+"90 d" = "90 d";
+"12 m" = "12 mo";
 "Tokens totais" = "Total tokens";
 "Pico diário" = "Daily peak";
 "Tarefa mais longa" = "Longest task";
@@ -118,7 +118,6 @@
 "Login do Copilot/gh CLI detectado" = "Copilot/gh CLI login detected";
 "Nenhum login do Copilot/gh CLI encontrado" = "No Copilot/gh CLI login found";
 "Nada a configurar — detectado automaticamente a partir do login do Copilot ou do gh CLI neste Mac." = "Nothing to configure — detected automatically from the Copilot or gh CLI login on this Mac.";
-"Salvar" = "Save";
 "Região China (minimaxi.com)" = "China region (minimaxi.com)";
 "Sessão ativa — uso automático" = "Session active — automatic usage";
 "Sem sessão (usa estimativa manual)" = "No session (uses manual estimate)";
