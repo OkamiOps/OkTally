@@ -4,7 +4,7 @@
 
 **Todas as cotas das suas assinaturas de IA na barra de menu do macOS — antes de bater no limite.**
 
-[![Platform](https://img.shields.io/badge/plataforma-macOS%2013%2B-black?style=flat&logo=apple)](https://www.apple.com/macos/)
+[![Platform](https://img.shields.io/badge/plataforma-macOS%2026%2B-black?style=flat&logo=apple)](https://www.apple.com/macos/)
 [![Swift](https://img.shields.io/badge/Swift-5.9-F05138?style=flat&logo=swift&logoColor=white)](https://swift.org)
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/licen%C3%A7a-MIT-blue?style=flat)](LICENSE)
@@ -113,6 +113,8 @@ Cada provedor é um plugin que implementa um único protocolo `UsageProvider` e 
 ## Instalação
 
 ### DMG (recomendado)
+
+Requer macOS 26 (Tahoe) ou mais recente. Versões anteriores do macOS não são mais suportadas e não recebem atualizações.
 
 1. Baixe `OkTally-0.9.1.dmg` na [página de Releases](https://github.com/OkamiOps/OkTally/releases).
 2. Abra e arraste **OkTally** para Aplicativos.

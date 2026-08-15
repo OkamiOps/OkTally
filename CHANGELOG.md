@@ -4,6 +4,14 @@ All notable changes to OkTally are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Alterado
+
+- **Requisito de sistema agora é macOS 26 (Tahoe).** Versões anteriores do macOS não
+  recebem mais atualizações — a mudança libera Liquid Glass e as APIs novas de Swift
+  Charts usadas no redesign da interface.
+
 ## [0.9.1-beta] — 2026-08-12
 
 ### Added

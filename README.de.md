@@ -4,7 +4,7 @@
 
 **Jedes KI-Abo-Kontingent in der macOS-Menüleiste — bevor du gegen die Wand läufst.**
 
-[![Platform](https://img.shields.io/badge/Plattform-macOS%2013%2B-black?style=flat&logo=apple)](https://www.apple.com/macos/)
+[![Platform](https://img.shields.io/badge/Plattform-macOS%2026%2B-black?style=flat&logo=apple)](https://www.apple.com/macos/)
 [![Swift](https://img.shields.io/badge/Swift-5.9-F05138?style=flat&logo=swift&logoColor=white)](https://swift.org)
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/Lizenz-MIT-blue?style=flat)](LICENSE)
@@ -91,6 +91,8 @@ Der **Analyse**-Tab summiert alle Quellen in eine Heatmap + Chips (Gesamt, Tages
 ## Installation
 
 ### DMG (empfohlen)
+
+Erfordert macOS 26 (Tahoe) oder neuer. Ältere macOS-Versionen werden nicht mehr unterstützt und erhalten keine Updates mehr.
 
 1. `OkTally-0.9.1.dmg` von der [Releases-Seite](https://github.com/OkamiOps/OkTally/releases) laden.
 2. Öffnen und **OkTally** nach Programme ziehen.

@@ -4,7 +4,7 @@
 
 **Tous les quotas de vos abonnements IA dans la barre de menus macOS — avant de heurter le mur.**
 
-[![Platform](https://img.shields.io/badge/plateforme-macOS%2013%2B-black?style=flat&logo=apple)](https://www.apple.com/macos/)
+[![Platform](https://img.shields.io/badge/plateforme-macOS%2026%2B-black?style=flat&logo=apple)](https://www.apple.com/macos/)
 [![Swift](https://img.shields.io/badge/Swift-5.9-F05138?style=flat&logo=swift&logoColor=white)](https://swift.org)
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/licence-MIT-blue?style=flat)](LICENSE)
@@ -91,6 +91,8 @@ L'onglet **Análise** somme toutes les sources dans une heatmap + chips (total, 
 ## Installation
 
 ### DMG (recommandé)
+
+Nécessite macOS 26 (Tahoe) ou ultérieur. Les versions antérieures de macOS ne sont plus prises en charge et ne recevront plus de mises à jour.
 
 1. Téléchargez `OkTally-0.9.1.dmg` depuis la [page Releases](https://github.com/OkamiOps/OkTally/releases).
 2. Ouvrez-le et glissez **OkTally** dans Applications.
