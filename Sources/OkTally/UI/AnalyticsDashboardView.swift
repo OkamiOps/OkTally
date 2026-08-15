@@ -65,32 +65,42 @@ struct AnalyticsDashboardView: View {
         return HStack(alignment: .top, spacing: Theme.Space.md) {
             // Ambas as colunas esticam até a altura da linha: quem for mais alta manda, e
             // nenhuma das duas precisa de altura fixa.
-            DashboardCard(fillsHeight: true) {
-                VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                    HStack(alignment: .firstTextBaseline, spacing: Theme.Space.sm) {
-                        SectionHeader(L("Hoje"))
-                        DeltaBadge(fraction: TrendSeries.delta(current: today, previous: yesterday))
-                        Spacer(minLength: 0)
-                    }
-                    Text(TokenAnalytics.compactTokens(today))
-                        .font(Theme.Font.metricHero)
-                        .monospacedDigit()
-                    Text(LF("ontem: %@", TokenAnalytics.compactTokens(yesterday)))
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                    Spacer(minLength: Theme.Space.sm)
-                    // Uma área toda em zero desenha uma reta colada no eixo, que parece
-                    // um gráfico quebrado; melhor dizer que não houve uso.
-                    if hasVolume {
-                        DailyTokensAreaChart(points: totals, color: .accentColor)
-                            .frame(height: 72)
-                    } else {
-                        emptyPeriod.frame(height: 72)
-                    }
+            // ESTE é o card de destaque da aba: gradiente saturado em Volt Cyan, no meio
+            // de cards neutros. A grade bento já tinha a assimetria certa, mas todos os
+            // blocos eram da mesma superfície cinza — faltava o bloco que diz "olhe aqui
+            // primeiro". Só um por tela: os três tiles da direita continuam neutros de
+            // propósito, senão o destaque deixa de ser destaque.
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                HStack(alignment: .firstTextBaseline, spacing: Theme.Space.sm) {
+                    SectionHeader(L("Hoje"), onHero: true)
+                    DeltaBadge(fraction: TrendSeries.delta(current: today, previous: yesterday), onHero: true)
+                    Spacer(minLength: 0)
                 }
-                .frame(maxHeight: .infinity, alignment: .topLeading)
+                Text(TokenAnalytics.compactTokens(today))
+                    .font(Theme.Font.metricHero)
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.onHero)
+                Text(LF("ontem: %@", TokenAnalytics.compactTokens(yesterday)))
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.onHero.opacity(0.7))
+                // Uma área toda em zero desenha uma reta colada no eixo, que parece
+                // um gráfico quebrado; melhor dizer que não houve uso.
+                //
+                // `minHeight` + `maxHeight: .infinity` em vez de `Spacer` + altura fixa:
+                // a coluna da direita tem três cards e é ela que manda na altura da linha,
+                // então o card-herói sobrava uns 150pt de azul vazio no meio. Quem absorve
+                // a folga agora é o gráfico, que não tem altura intrínseca nenhuma — o
+                // `minHeight` é só o piso para ele não colapsar quando a linha for baixa.
+                if hasVolume {
+                    DailyTokensAreaChart(points: totals, color: Theme.onHero)
+                        .frame(minHeight: 72, maxHeight: .infinity)
+                } else {
+                    emptyPeriod.frame(minHeight: 72, maxHeight: .infinity)
+                }
             }
-            .frame(maxWidth: .infinity)
+            .padding(Theme.Space.lg)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .heroSurface(Theme.accent)
 
             VStack(spacing: Theme.Space.md) {
                 DashboardCard(padding: Theme.Space.md) {
@@ -242,11 +252,7 @@ struct AnalyticsDashboardView: View {
         let fraction = total > 0 ? Double(entry.tokens) / Double(total) : 0
         return VStack(alignment: .leading, spacing: Theme.Space.xs) {
             HStack(spacing: Theme.Space.sm) {
-                Text(ProviderPalette.glyph(forId: entry.providerId))
-                    .font(.system(size: 10, weight: .heavy))
-                    .foregroundStyle(color)
-                    .padding(.horizontal, 5).padding(.vertical, 2)
-                    .background(RoundedRectangle(cornerRadius: 5).fill(color.opacity(0.16)))
+                IconChip(glyph: ProviderPalette.glyph(forId: entry.providerId), color: color, size: 20)
                 Text(providerName(entry.providerId)).font(Theme.Font.body)
                 Spacer(minLength: Theme.Space.sm)
                 if let cost = appModel.estimatedCostByProvider[entry.providerId] {
@@ -298,7 +304,6 @@ struct AnalyticsDashboardView: View {
                     VStack(alignment: .leading, spacing: Theme.Space.sm) {
                         SectionHeader(L("Cotas mais apertadas"))
                         ForEach(Array(top.enumerated()), id: \.offset) { _, entry in
-                            let danger = QuotaPresentation.color(remaining: entry.remaining)
                             VStack(alignment: .leading, spacing: 3) {
                                 HStack(spacing: Theme.Space.sm) {
                                     Text("\(entry.provider.displayName) · \(WindowLabelCatalog.displayLabel(entry.window.label))")
@@ -311,9 +316,13 @@ struct AnalyticsDashboardView: View {
                                     Text(QuotaPresentation.remainingText(entry.window.shape))
                                         .font(.system(size: 11, weight: .semibold))
                                         .monospacedDigit()
-                                        .foregroundStyle(danger)
+                                        .foregroundStyle(QuotaPresentation.valueColor(remaining: entry.remaining))
                                 }
-                                QuotaCapsuleBar(remaining: entry.remaining, color: danger, height: 6)
+                                // Identidade na barra, perigo no número — a mesma divisão
+                                // de canais do popover, para as cinco linhas não saírem
+                                // todas da mesma cor.
+                                QuotaCapsuleBar(remaining: entry.remaining,
+                                                color: ProviderPalette.color(for: entry.provider.id), height: 6)
                             }
                         }
                     }

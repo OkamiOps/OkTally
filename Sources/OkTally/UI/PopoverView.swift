@@ -23,6 +23,7 @@ struct PopoverView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
+            BrandMark(size: 15)
             Text("OkTally").font(.system(size: 14, weight: .bold))
             if let update = appModel.availableUpdate {
                 Button {
@@ -31,8 +32,8 @@ struct PopoverView: View {
                     Label(LF("%@ disponível", update.version), systemImage: "arrow.down.circle.fill")
                         .font(.system(size: 10, weight: .semibold))
                         .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(Capsule().fill(Color.orange.opacity(0.15)))
-                        .foregroundStyle(.orange)
+                        .background(Capsule().fill(Theme.Brand.heatOrange.opacity(0.18)))
+                        .foregroundStyle(Theme.Brand.heatOrange)
                 }
                 .buttonStyle(.plain)
                 .help(L("Abrir a página da nova versão no GitHub"))
@@ -152,13 +153,11 @@ struct PopoverContentView: View {
             let today = totals.last?.tokens ?? 0
             if today > 0 {
                 HStack(spacing: Theme.Space.sm) {
-                    Text(L("Hoje"))
-                        .font(Theme.Font.label)
-                        .foregroundStyle(.secondary)
+                    SectionHeader(L("Hoje"))
                     Text(TokenAnalytics.compactTokens(today))
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
                         .monospacedDigit()
-                    DailyTokensAreaChart(points: totals, color: .accentColor)
+                    DailyTokensAreaChart(points: totals, color: Theme.accent)
                         .frame(height: 18)
                 }
                 .padding(.horizontal, Theme.Space.md)
@@ -182,7 +181,6 @@ struct PopoverContentView: View {
             if withData.isEmpty && !problems.isEmpty && problems.allSatisfy({ $0.kind == .notConfigured || $0.kind == nil }) {
                 OnboardingEmptyState()
             }
-            todayStrip
             if let hero {
                 HeroBlock(
                     provider: hero.provider,
@@ -195,9 +193,18 @@ struct PopoverContentView: View {
                     onPin: { appModel.togglePin(providerId: hero.provider.id, windowLabel: $0) }
                 )
             }
+            // Abaixo do herói, não acima: a posição mais valiosa da tela é o topo, e ela
+            // pertence ao número dominante. Com a faixa em cima, a primeira coisa que o
+            // olho encontrava era uma tira de vidro cinza. A faixa continua existindo,
+            // com o mesmo conteúdo e o mesmo `glassChrome` — só deixou de disputar o topo.
+            todayStrip
             if !listed.isEmpty {
-                SectionHeader(L("Outras cotas"))
-                VStack(alignment: .leading, spacing: 12) {
+                // As linhas agora moram DENTRO de um card, não soltas sobre a página.
+                // É o agrupamento por proximidade das referências: o bloco-herói (cor
+                // cheia) e a lista (superfície neutra) viram dois objetos, em vez de um
+                // retângulo colorido seguido de texto flutuando no vazio.
+                VStack(alignment: .leading, spacing: 11) {
+                    SectionHeader(L("Outras cotas"))
                     ForEach(listed, id: \.provider.id) { entry in
                         ProviderQuotaRow(
                             provider: entry.provider,
@@ -208,6 +215,9 @@ struct PopoverContentView: View {
                         )
                     }
                 }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .cardSurface()
             }
             if !problems.isEmpty {
                 ProblemsSection(problems: problems, onOpenPreferences: { providerId in
@@ -216,6 +226,11 @@ struct PopoverContentView: View {
             }
         }
         .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Base quase preta explícita: é o chão contra o qual os cards são "um degrau
+        // mais claros". Sem ela o popover herda o cinza da janela e todo o contraste de
+        // superfície que o resto do desenho supõe deixa de existir.
+        .background(Theme.pageBackground)
         .task { await appModel.loadAllAnalyticsIfStale() }
     }
 }
@@ -248,13 +263,16 @@ enum PopoverLayout {
 private struct PinButton: View {
     let isPinned: Bool
     let identity: Color
+    /// Sobre o gradiente do herói o estado "não fixado" não pode ser `.secondary` (cinza
+    /// do sistema, invisível sobre cor saturada) — vira off-white rebaixado.
+    var onHero: Bool = false
     let onPin: () -> Void
 
     var body: some View {
         Button(action: onPin) {
             Image(systemName: isPinned ? "pin.fill" : "pin")
                 .font(.system(size: 9))
-                .foregroundStyle(isPinned ? identity : Color.secondary.opacity(0.45))
+                .foregroundStyle(isPinned ? identity : (onHero ? Theme.onHero.opacity(0.5) : Color.secondary.opacity(0.45)))
         }
         .buttonStyle(.plain)
         .help(isPinned ? L("Remover da barra de menu") : L("Fixar esta janela na barra de menu"))
@@ -267,15 +285,12 @@ private struct PinButton: View {
 /// tells two rows apart at a glance, since the danger color is reserved for the numbers.
 private struct IdentityChip: View {
     let provider: UsageProvider
-    var size: CGFloat = 10
+    var size: CGFloat = 22
 
     var body: some View {
-        let color = ProviderPalette.color(for: provider.id)
-        Text(ProviderPalette.glyph(for: provider))
-            .font(.system(size: size, weight: .heavy))
-            .foregroundStyle(color)
-            .frame(width: size + 8, height: size + 6)
-            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(color.opacity(0.16)))
+        IconChip(glyph: ProviderPalette.glyph(for: provider),
+                 color: ProviderPalette.color(for: provider.id),
+                 size: size)
     }
 }
 
@@ -300,50 +315,63 @@ private struct HeroBlock: View {
     private var danger: Color { QuotaPresentation.color(remaining: remaining) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 7) {
-                IdentityChip(provider: provider)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                // Chip em off-white sobre a cor do bloco: a identidade do provedor já
+                // está dita pela linha abaixo, e um chip colorido sobre gradiente
+                // colorido vira mancha.
+                Text(ProviderPalette.glyph(for: provider))
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundStyle(danger)
+                    .frame(width: 22, height: 22)
+                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Theme.onHero))
                 Text(provider.displayName)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.onHero)
                 Text("· " + WindowLabelCatalog.displayLabel(window.label))
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.onHero.opacity(0.75))
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 PinButton(isPinned: isPinned(window.label),
-                          identity: ProviderPalette.color(for: provider.id),
+                          identity: Theme.onHero,
+                          onHero: true,
                           onPin: { onPin(window.label) })
             }
-            HStack(alignment: .lastTextBaseline, spacing: 5) {
+            // Número dominante do popover: 44pt contra rótulos de 9–11pt. É o contraste
+            // de TAMANHO que cria a hierarquia — o bloco poderia ser monocromático e
+            // ainda assim se leria primeiro.
+            HStack(alignment: .lastTextBaseline, spacing: 6) {
                 Text(QuotaPresentation.remainingValueText(window.shape))
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
+                    .font(.system(size: 44, weight: .bold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(danger)
+                    .foregroundStyle(Theme.onHero)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
                 Text(L("restante"))
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.onHero.opacity(0.8))
                 Spacer(minLength: 6)
                 if let reset = QuotaPresentation.resetText(window.shape) {
                     Text(reset)
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.onHero.opacity(0.8))
                         .lineLimit(1)
                 }
             }
-            QuotaCapsuleBar(remaining: remaining, color: danger, height: 8)
+            QuotaCapsuleBar(remaining: remaining, color: Theme.onHero, height: 8,
+                            track: AnyShapeStyle(Color.black.opacity(0.22)))
             ForEach(others, id: \.label) { other in
                 SecondaryWindowLine(window: other,
-                                    identity: ProviderPalette.color(for: provider.id),
+                                    identity: Theme.onHero,
+                                    onHero: true,
                                     isPinned: isPinned(other.label),
                                     onPin: { onPin(other.label) })
             }
         }
-        .padding(11)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
-            .fill(Theme.surfaceAccent(danger)))
-        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
-            .strokeBorder(danger.opacity(0.28)))
+        .heroSurface(danger)
         .help(window.shape.isEstimated ? L("Estimativa local, não confirmada pelo provedor") : "")
     }
 }
@@ -397,9 +425,9 @@ private struct ProviderQuotaRow: View {
                     // in one column down the list so the eye scans them without
                     // re-anchoring. A balance ("19.82 USD") simply spills to the left.
                     Text(QuotaPresentation.remainingValueText(primary.shape))
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(remaining != nil ? QuotaPresentation.color(remaining: remaining) : .primary)
+                        .foregroundStyle(QuotaPresentation.valueColor(remaining: remaining))
                         .frame(minWidth: 44, alignment: .trailing)
                         .layoutPriority(2)
                     PinButton(isPinned: isPinned(primary.label), identity: identity,
@@ -413,7 +441,9 @@ private struct ProviderQuotaRow: View {
             // read as a rule *between* rows and stole the following secondary line.
             if let remaining {
                 QuotaCapsuleBar(remaining: remaining, color: identity, height: 4)
-                    .padding(.leading, 25)
+                    // 30 = chip (22) + o spacing (7) da HStack acima, arredondado: a barra
+                    // começa na coluna do NOME, não na do chip.
+                    .padding(.leading, 30)
                     // Asymmetric on purpose: the bar hugs the line it measures and keeps
                     // its distance from the provider's secondary window below.
                     .padding(.bottom, 2)
@@ -472,6 +502,7 @@ private struct ProviderQuotaRow: View {
 private struct SecondaryWindowLine: View {
     let window: QuotaWindow
     let identity: Color
+    var onHero: Bool = false
     let isPinned: Bool
     let onPin: () -> Void
 
@@ -480,27 +511,27 @@ private struct SecondaryWindowLine: View {
         HStack(spacing: 6) {
             Text(WindowLabelCatalog.displayLabel(window.label))
                 .font(.system(size: 10))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(onHero ? AnyShapeStyle(Theme.onHero.opacity(0.75)) : AnyShapeStyle(HierarchicalShapeStyle.secondary))
                 .lineLimit(1)
             Spacer(minLength: 4)
             if let reset = QuotaPresentation.resetCompactText(window.shape) {
                 Text(reset)
                     .font(.system(size: 9))
                     .monospacedDigit()
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(onHero ? AnyShapeStyle(Theme.onHero.opacity(0.6)) : AnyShapeStyle(HierarchicalShapeStyle.tertiary))
                     .layoutPriority(1)
             }
             Text(QuotaPresentation.remainingValueText(window.shape))
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(remaining != nil ? QuotaPresentation.color(remaining: remaining) : .primary)
+                .foregroundStyle(onHero ? Theme.onHero : QuotaPresentation.valueColor(remaining: remaining))
                 .frame(minWidth: 44, alignment: .trailing)
                 .layoutPriority(2)
-            PinButton(isPinned: isPinned, identity: identity, onPin: onPin)
+            PinButton(isPinned: isPinned, identity: identity, onHero: onHero, onPin: onPin)
         }
-        // Deeper than the provider name's 25pt column: the extra step is what says this
+        // Deeper than the provider name's column: the extra step is what says this
         // window hangs off the row above instead of starting a new provider.
-        .padding(.leading, 34)
+        .padding(.leading, 30)
     }
 }
 // MARK: - Problems
@@ -513,12 +544,9 @@ private struct ProblemsSection: View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(problems, id: \.provider.id) { entry in
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(ProviderPalette.glyph(for: entry.provider))
-                        .font(.system(size: 9, weight: .heavy))
-                        .foregroundStyle(ProviderPalette.color(for: entry.provider.id).opacity(0.7))
-                        .padding(.horizontal, 4).padding(.vertical, 1)
-                        .background(RoundedRectangle(cornerRadius: 4)
-                            .fill(ProviderPalette.color(for: entry.provider.id).opacity(0.10)))
+                    IconChip(glyph: ProviderPalette.glyph(for: entry.provider),
+                             color: ProviderPalette.color(for: entry.provider.id).opacity(0.55),
+                             size: 16)
                     Text(entry.provider.displayName)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
@@ -540,9 +568,9 @@ private struct ProblemsSection: View {
                 }
             }
         }
-        .padding(10)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.03)))
+        .cardSurface()
     }
 
     /// Reconexão e configuração inicial têm remédio nas Preferências; erro genérico
@@ -558,8 +586,8 @@ private struct ProblemsSection: View {
     private func color(for kind: ProviderErrorPresentation?) -> Color {
         switch kind {
         case .notConfigured: return .secondary
-        case .needsReauth: return .orange
-        case .error: return .red
+        case .needsReauth: return Theme.Brand.heatOrange
+        case .error: return Theme.Brand.neonMagenta
         case nil: return .secondary
         }
     }
@@ -573,10 +601,10 @@ private struct OnboardingEmptyState: View {
     var body: some View {
         VStack(spacing: 10) {
             ZStack {
-                Circle().fill(Color.accentColor.opacity(0.12)).frame(width: 56, height: 56)
+                Circle().fill(Theme.accent.opacity(0.16)).frame(width: 56, height: 56)
                 Image(systemName: "gauge.with.needle")
                     .font(.system(size: 24))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(Theme.accent)
             }
             Text(L("Conecte seu primeiro provedor"))
                 .font(.system(size: 13, weight: .semibold))
@@ -588,8 +616,8 @@ private struct OnboardingEmptyState: View {
                 Text(L("Abrir Preferências"))
                     .font(.system(size: 11, weight: .semibold))
                     .padding(.horizontal, 12).padding(.vertical, 5)
-                    .background(Capsule().fill(Color.accentColor))
-                    .foregroundStyle(.white)
+                    .background(Capsule().fill(Theme.accent))
+                    .foregroundStyle(Theme.Brand.charcoal)
             }
         }
         .frame(maxWidth: .infinity)

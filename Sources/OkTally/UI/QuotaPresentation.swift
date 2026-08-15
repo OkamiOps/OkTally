@@ -57,12 +57,31 @@ enum QuotaPresentation {
         return fmt.string(from: now, to: reset)
     }
 
-    /// Green when plenty remains, amber mid, red when nearly exhausted.
+    /// Escala de perigo NA PALETA DA MARCA: Volt Cyan com folga, Heat Orange no meio,
+    /// Neon Magenta no fim. Substitui verde/laranja/vermelho do sistema — que, além de
+    /// não ser da marca, pintava o app inteiro de verde (quase toda cota está folgada) e
+    /// deixava a tela monocromática justamente onde ela deveria ser categórica.
+    ///
+    /// Magenta no lugar do vermelho é deliberado: contra a base quase preta o vermelho
+    /// puro escurece e some, e o magenta da marca é a cor mais alta em saturação — é o
+    /// alarme que se enxerga de longe.
     static func color(remaining: Double?) -> Color {
-        guard let remaining else { return .accentColor }
-        if remaining <= 0.10 { return .red }
-        if remaining <= 0.30 { return .orange }
-        return .green
+        guard let remaining else { return Theme.accent }
+        if remaining <= 0.10 { return Theme.Brand.neonMagenta }
+        if remaining <= 0.30 { return Theme.Brand.heatOrange }
+        return Theme.accent
+    }
+
+    /// Cor do NÚMERO numa lista: neutro quando há folga, cor da escala quando aperta.
+    ///
+    /// `color(remaining:)` sozinho pintava toda a lista de ciano — quase toda cota está
+    /// folgada, então a tela virava monocromática e a cor deixava de significar coisa
+    /// alguma. Aqui a regra é a das referências: neutro é o normal, cor é a exceção que
+    /// pede atenção. A variedade cromática da tela vem dos chips e das barras de
+    /// identidade, que são categóricos por natureza.
+    static func valueColor(remaining: Double?) -> Color {
+        guard let remaining else { return .primary }
+        return remaining > 0.30 ? .primary : color(remaining: remaining)
     }
 
     /// Worst (lowest-remaining) status color across a provider's windows, for its tab dot.

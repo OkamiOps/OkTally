@@ -754,9 +754,11 @@ private struct GeneralPane: View {
                 .monospacedDigit()
                 .padding(.horizontal, Theme.Space.md)
                 .padding(.vertical, Theme.Space.xs)
-                .background(Capsule().fill(selected ? Color.accentColor.opacity(0.25) : Theme.surface()))
-                .overlay(Capsule().strokeBorder(selected ? Color.accentColor.opacity(0.6) : Theme.border()))
-                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                // `AnyShapeStyle` porque os dois ramos têm tipos diferentes desde que as
+                // superfícies viraram tokens dependentes do esquema (`ThemeColor`).
+                .background(Capsule().fill(selected ? AnyShapeStyle(Theme.accent.opacity(0.25)) : AnyShapeStyle(Theme.surface())))
+                .overlay(Capsule().strokeBorder(selected ? AnyShapeStyle(Theme.accent.opacity(0.6)) : AnyShapeStyle(Theme.border())))
+                .foregroundStyle(selected ? Theme.accent : Color.secondary)
         }
         .buttonStyle(.plain)
     }

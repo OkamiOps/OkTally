@@ -205,13 +205,15 @@ struct TokenHeatmapView: View {
         return days
     }
 
+    /// Escala do heatmap no acento da marca (Volt Cyan), não no `.blue` do sistema — era
+    /// a última superfície grande do app pintada com cor que não é nossa.
     private func color(level: Int) -> Color {
         switch level {
-        case 1: return .blue.opacity(0.30)
-        case 2: return .blue.opacity(0.50)
-        case 3: return .blue.opacity(0.75)
-        case 4: return .blue
-        default: return Color.primary.opacity(0.06)
+        case 1: return Theme.accent.opacity(0.28)
+        case 2: return Theme.accent.opacity(0.50)
+        case 3: return Theme.accent.opacity(0.75)
+        case 4: return Theme.accent
+        default: return Color.primary.opacity(0.07)
         }
     }
 

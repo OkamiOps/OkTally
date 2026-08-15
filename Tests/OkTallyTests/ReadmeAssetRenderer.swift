@@ -6,6 +6,20 @@
 //
 //   RENDER_README_ASSETS=1 swift test --filter ReadmeAssetRenderer
 //
+// IMPORTANTE — o harness renderiza em TEMA ESCURO. Ele nasceu sem forçar esquema e
+// pintando `.windowBackgroundColor` por baixo; dentro do processo de teste isso resolvia
+// para CLARO. Ou seja: todo o design do app foi julgado num contexto que o dono nunca
+// usa (ele roda no escuro, e as referências visuais dele são dashboards escuros). Duas
+// coisas são necessárias e nenhuma sozinha basta:
+//
+//   1. `.environment(\.colorScheme, .dark)` — governa `.primary`/`.secondary` e o resto
+//      da hierarquia semântica do SwiftUI;
+//   2. `NSAppearance(named: .darkAqua).performAsCurrentDrawingAppearance` — governa a
+//      resolução dos `NSColor(name:dynamicProvider:)` que estão por trás dos tokens de
+//      superfície do `Theme`. O ambiente do SwiftUI não alcança esses.
+//
+// O fundo também é explícito (`Theme.pageBackground`): `.windowBackgroundColor` é cinza
+// de sistema e não é a base quase preta da identidade.
 import XCTest
 import SwiftUI
 @testable import OkTally
@@ -18,49 +32,54 @@ final class ReadmeAssetRenderer: XCTestCase {
             .appendingPathComponent("docs/assets")
     }
 
+    /// Variante clara, fora do caminho que o README referencia — serve de conferência de
+    /// legibilidade, não de material de divulgação.
+    private var lightDir: URL { assetsDir.appendingPathComponent("light") }
+
     func test_renderReadmeAssets() async throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["RENDER_README_ASSETS"] == "1")
         try FileManager.default.createDirectory(at: assetsDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: lightDir, withIntermediateDirectories: true)
 
         let model = try await demoModel()
-        try write(view: PopoverContentView(appModel: model)
-                    .environment(\.isStaticRender, true)
-                    .frame(width: 360)
-                    .background(Color(nsColor: .windowBackgroundColor)),
-                  to: "popover.png")
-        try write(view: menuBarStrip(model), to: "menubar.png")
-        try write(view: OverviewScreen(
-                        appModel: model,
-                        entries: model.orderedProviders.compactMap { provider in
-                            model.snapshotsByProvider[provider.id].map { (provider, $0) }
-                        },
-                        onSelect: { _ in })
-                    .padding(24)
-                    .frame(width: 760)
-                    .background(Color(nsColor: .windowBackgroundColor)),
-                  to: "overview.png")
-        // `isStaticRender` troca só os controles do AppKit por um desenho equivalente:
-        // o `ImageRenderer` não sabe desenhá-los e o PNG sairia com um retângulo amarelo
-        // no lugar do seletor de janela. O app não liga essa flag.
-        try write(view: AnalyticsDashboardView(appModel: model)
-                    .environment(\.isStaticRender, true)
-                    .padding(24)
-                    .frame(width: 860)
-                    .background(Color(nsColor: .windowBackgroundColor)),
-                  to: "analytics.png")
-        // Detalhe do provedor: era a única das quatro telas sem PNG — e justamente a que
-        // carregava a inconsistência de cromo com a aba Análise. `ProviderDetailScreen`
-        // deixou de ser `private` só para isto.
-        if let claude = model.orderedProviders.first(where: { $0.id == "claude" }),
-           let snapshot = model.snapshotsByProvider["claude"] {
+        // O escuro é o que vale para julgar o design; o claro é gerado junto só para
+        // provar que continua legível (o app suporta os dois temas).
+        for scheme in [ColorScheme.dark, .light] {
+            try write(view: PopoverContentView(appModel: model)
+                        .environment(\.isStaticRender, true)
+                        .frame(width: 360),
+                      to: "popover.png", scheme: scheme)
+            try write(view: menuBarStrip(model), to: "menubar.png", scheme: scheme)
+            try write(view: OverviewScreen(
+                            appModel: model,
+                            entries: model.orderedProviders.compactMap { provider in
+                                model.snapshotsByProvider[provider.id].map { (provider, $0) }
+                            },
+                            onSelect: { _ in })
+                        .padding(24)
+                        .frame(width: 760),
+                      to: "overview.png", scheme: scheme)
+            // `isStaticRender` troca só os controles do AppKit por um desenho equivalente:
+            // o `ImageRenderer` não sabe desenhá-los e o PNG sairia com um retângulo amarelo
+            // no lugar do seletor de janela. O app não liga essa flag.
+            try write(view: AnalyticsDashboardView(appModel: model)
+                        .environment(\.isStaticRender, true)
+                        .padding(24)
+                        .frame(width: 860),
+                      to: "analytics.png", scheme: scheme)
+            // Detalhe do provedor: era a única das quatro telas sem PNG — e justamente a que
+            // carregava a inconsistência de cromo com a aba Análise. `ProviderDetailScreen`
+            // deixou de ser `private` só para isto.
+            guard let claude = model.orderedProviders.first(where: { $0.id == "claude" }),
+                  let snapshot = model.snapshotsByProvider["claude"] else {
+                XCTFail("demo model sem snapshot do Claude para o PNG de detalhe")
+                return
+            }
             try write(view: ProviderDetailScreen(appModel: model, provider: claude, snapshot: snapshot)
                         .environment(\.isStaticRender, true)
                         .padding(24)
-                        .frame(width: 760)
-                        .background(Color(nsColor: .windowBackgroundColor)),
-                      to: "provider-detail.png")
-        } else {
-            XCTFail("demo model sem snapshot do Claude para o PNG de detalhe")
+                        .frame(width: 760),
+                      to: "provider-detail.png", scheme: scheme)
         }
         // O `ProviderPaneScaffold` ficou de fora de propósito: o `ImageRenderer` não
         // desenha `Form` agrupado (o mesmo motivo pelo qual o pane Geral também não é
@@ -225,17 +244,32 @@ final class ReadmeAssetRenderer: XCTestCase {
 
     // MARK: - Rendering
 
-    private func write<V: View>(view: V, to filename: String) throws {
-        let renderer = ImageRenderer(content: view)
-        renderer.scale = 2
-        guard let image = renderer.nsImage,
-              let tiff = image.tiffRepresentation,
-              let rep = NSBitmapImageRep(data: tiff),
-              let png = rep.representation(using: .png, properties: [:]) else {
-            XCTFail("failed to render \(filename)")
+    private func write<V: View>(view: V, to filename: String, scheme: ColorScheme = .dark) throws {
+        // Dois eixos, porque o SwiftUI e o AppKit resolvem cor por caminhos diferentes:
+        // o `environment` governa `.primary`/`.secondary`, e a aparência corrente governa
+        // os `NSColor` dinâmicos dos tokens do `Theme`.
+        // Ordem importa: o `.background` precisa estar DENTRO do `.environment`, senão
+        // ele vira uma camada irmã, resolvida no esquema de fora — o primeiro corte saiu
+        // com texto claro (esquema aplicado) sobre fundo off-white (esquema ignorado).
+        let content = view
+            .background(Theme.pageBackground)
+            .environment(\.colorScheme, scheme)
+        let appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)!
+        var png: Data?
+        appearance.performAsCurrentDrawingAppearance {
+            let renderer = ImageRenderer(content: content)
+            renderer.scale = 2
+            if let image = renderer.nsImage,
+               let tiff = image.tiffRepresentation,
+               let rep = NSBitmapImageRep(data: tiff) {
+                png = rep.representation(using: .png, properties: [:])
+            }
+        }
+        guard let png else {
+            XCTFail("failed to render \(filename) (\(scheme))")
             return
         }
-        let url = assetsDir.appendingPathComponent(filename)
+        let url = (scheme == .dark ? assetsDir : lightDir).appendingPathComponent(filename)
         try png.write(to: url)
         print("wrote \(url.path)")
     }
