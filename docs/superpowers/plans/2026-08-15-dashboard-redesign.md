@@ -1098,8 +1098,10 @@ struct AnalyticsDashboardView: View {
 
     private func heroRow(_ analytics: TokenAnalytics) -> some View {
         let totals = TrendSeries.dailyTotals(analytics, lastDays: 14)
-        let today = totals.first?.tokens ?? 0
-        let yesterday = totals.dropFirst().first?.tokens ?? 0
+        // `dailyTotals` devolve em ordem cronológica (mais antigo primeiro): hoje é o
+        // último elemento, ontem o penúltimo.
+        let today = totals.last?.tokens ?? 0
+        let yesterday = totals.dropLast().last?.tokens ?? 0
         let streak = analytics.effectiveCurrentStreakDays() ?? 0
         let longest = analytics.effectiveLongestStreakDays ?? max(streak, 1)
         return HStack(alignment: .top, spacing: Theme.Space.md) {
@@ -1116,7 +1118,7 @@ struct AnalyticsDashboardView: View {
                     Text(LF("ontem: %@", TokenAnalytics.compactTokens(yesterday)))
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
-                    DailyTokensAreaChart(points: Array(totals.reversed()), color: .accentColor)
+                    DailyTokensAreaChart(points: totals, color: .accentColor)
                         .frame(height: 64)
                 }
             }
@@ -1239,7 +1241,7 @@ struct AnalyticsDashboardView: View {
                 ShareBar(fraction: fraction, color: color)
                 if let analytics = byProvider[entry.providerId] {
                     DailyTokensAreaChart(
-                        points: Array(TrendSeries.dailyTotals(analytics, lastDays: 14).reversed()),
+                        points: TrendSeries.dailyTotals(analytics, lastDays: 14),
                         color: color
                     )
                     .frame(width: 70, height: 18)
@@ -1475,7 +1477,8 @@ Em `PopoverContentView`, adicione a propriedade e insira-a como primeiro element
     @ViewBuilder private var todayStrip: some View {
         if let analytics = appModel.aggregatedAnalytics {
             let totals = TrendSeries.dailyTotals(analytics, lastDays: 14)
-            let today = totals.first?.tokens ?? 0
+            // Cronológico: hoje é o último elemento.
+            let today = totals.last?.tokens ?? 0
             if today > 0 {
                 HStack(spacing: Theme.Space.sm) {
                     VStack(alignment: .leading, spacing: 0) {
@@ -1484,7 +1487,7 @@ Em `PopoverContentView`, adicione a propriedade e insira-a como primeiro element
                             .font(Theme.Font.metricMedium)
                             .monospacedDigit()
                     }
-                    DailyTokensAreaChart(points: Array(totals.reversed()), color: .accentColor)
+                    DailyTokensAreaChart(points: totals, color: .accentColor)
                         .frame(height: 28)
                 }
                 .padding(.horizontal, Theme.Space.md)
