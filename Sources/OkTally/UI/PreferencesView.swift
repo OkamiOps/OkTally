@@ -622,14 +622,15 @@ private struct GeneralPane: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
-            // O toggle mestre vive numa `Section` PRÓPRIA, sozinho. Não é estilo: é a
-            // garantia estrutural de que ele nunca cai dentro de uma subárvore
-            // desabilitada. `.disabled(true)` propaga para os descendentes e nenhum filho
-            // pode revertê-lo — quando este toggle dividia a seção com os detalhes, um
-            // `.disabled` na seção o desligava junto e não havia como religar as
-            // notificações pela UI (só por `defaults write`). Enquanto ele estiver sozinho
-            // aqui, esse bug não pode voltar, e é por isso que as duas seções não devem
-            // ser reunidas de novo.
+            // Quem impede o bug é o `.disabled` estar no `Group` dos detalhes, mais
+            // abaixo — não esta separação. Ela é uma segunda barreira barata: enquanto o
+            // toggle mestre estiver sozinho na própria `Section`, um `.disabled` aplicado
+            // à seção dos detalhes não tem como alcançá-lo.
+            //
+            // O bug que isso previne: `.disabled(true)` propaga para os descendentes e
+            // nenhum filho pode revertê-lo. Quando o toggle dividia a seção com os
+            // detalhes, desligar as notificações apagava o próprio switch e não havia como
+            // religá-las pela UI — só por `defaults write`.
             Section(L("Alertas")) {
                 Toggle(L("Notificações de cota"), isOn: $alertsEnabled)
                     .toggleStyle(.switch)
