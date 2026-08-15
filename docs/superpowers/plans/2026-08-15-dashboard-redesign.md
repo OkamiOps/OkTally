@@ -786,7 +786,7 @@ git commit -m "feat(ui): fundação do design system — tokens e componentes"
 - Produces:
   - `struct DailyTokensAreaChart: View` — `init(points: [DailyTokens], color: Color, showsAxes: Bool = false)`.
   - `struct StackedProviderBarChart: View` — `init(points: [TrendPoint], providerName: @escaping (String) -> String)`.
-  - `struct ProviderShareDonut: View` — `init(share: [(providerId: String, tokens: Int)], providerName: @escaping (String) -> String)`.
+  - `struct ProviderShareDonut: View` — `init(share: [(providerId: String, tokens: Int)])`. Sem `providerName`: o donut identifica as fatias por cor, e o rótulo viria da linha "Por provedor" ao lado.
 
 - [ ] **Step 1: Criar o gráfico de área**
 
@@ -856,10 +856,11 @@ struct StackedProviderBarChart: View {
                 x: .value(L("Dia"), TokenAnalytics.date(fromDay: point.day) ?? Date(), unit: .day),
                 y: .value(L("Tokens"), point.tokens)
             )
-            .foregroundStyle(by: .value(L("Provedor"), point.providerId))
+            // Categoria é o nome exibido, não o id: senão a legenda mostra "codex" cru.
+            .foregroundStyle(by: .value(L("Provedor"), providerName(point.providerId)))
         }
         .chartForegroundStyleScale(
-            domain: providerIds,
+            domain: providerIds.map(providerName),
             range: providerIds.map { ProviderPalette.color(for: $0) }
         )
         .chartLegend(position: .bottom, spacing: Theme.Space.sm)
@@ -891,7 +892,6 @@ import Charts
 /// Participação de cada provider no período — a leitura instantânea de quem consome o quê.
 struct ProviderShareDonut: View {
     let share: [(providerId: String, tokens: Int)]
-    let providerName: (String) -> String
 
     private var total: Int { share.reduce(0) { $0 + $1.tokens } }
 
@@ -1116,7 +1116,7 @@ struct AnalyticsDashboardView: View {
                     Text(LF("ontem: %@", TokenAnalytics.compactTokens(yesterday)))
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
-                    DailyTokensAreaChart(points: totals.reversed(), color: .accentColor)
+                    DailyTokensAreaChart(points: Array(totals.reversed()), color: .accentColor)
                         .frame(height: 64)
                 }
             }
@@ -1200,7 +1200,7 @@ struct AnalyticsDashboardView: View {
             DashboardCard {
                 VStack(spacing: Theme.Space.sm) {
                     SectionHeader(L("Participação"))
-                    ProviderShareDonut(share: share, providerName: providerName)
+                    ProviderShareDonut(share: share)
                         .frame(height: 150)
                 }
             }
@@ -1239,7 +1239,7 @@ struct AnalyticsDashboardView: View {
                 ShareBar(fraction: fraction, color: color)
                 if let analytics = byProvider[entry.providerId] {
                     DailyTokensAreaChart(
-                        points: TrendSeries.dailyTotals(analytics, lastDays: 14).reversed(),
+                        points: Array(TrendSeries.dailyTotals(analytics, lastDays: 14).reversed()),
                         color: color
                     )
                     .frame(width: 70, height: 18)
@@ -1484,7 +1484,7 @@ Em `PopoverContentView`, adicione a propriedade e insira-a como primeiro element
                             .font(Theme.Font.metricMedium)
                             .monospacedDigit()
                     }
-                    DailyTokensAreaChart(points: totals.reversed(), color: .accentColor)
+                    DailyTokensAreaChart(points: Array(totals.reversed()), color: .accentColor)
                         .frame(height: 28)
                 }
                 .padding(.horizontal, Theme.Space.md)
