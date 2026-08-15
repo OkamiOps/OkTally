@@ -1,6 +1,7 @@
 # OkTally — Redesign do dashboard (janela principal + popover) — 2026-08-15
 
-Aprovado pelo dono em 2026-08-15. Escopo escolhido: **janela principal + popover da barra**.
+Aprovado pelo dono em 2026-08-15. Escopo escolhido: **janela principal + popover da barra**,
+ampliado no mesmo dia para incluir **a tela de Preferências**.
 Direção visual: **dashboard rico com cor aplicada com critério** — hierarquia forte e
 gráficos coloridos por provider, mas ainda um app macOS nativo, não uma página web.
 
@@ -108,7 +109,50 @@ Mesmos tokens, densidade maior. Ganha uma faixa "hoje" no topo (número compacto
 `DailyTokensAreaChart` de 14 dias) antes dos cards de cota. A hierarquia cota-primeiro
 aprovada no redesign de 2026-08-10 é preservada — este trabalho apenas reveste.
 
-## 5. Testes e verificação
+## 5. Preferências
+
+### Problemas específicos desta tela
+
+1. `GeneralPane` é um `VStack` com títulos em negrito simulando seções. O macOS 13 já
+   tem `Form` + `.formStyle(.grouped)`, o idioma nativo de Ajustes.
+2. O campo "Saldo baixo (USD)" tem **botão Salvar** — estranho em Ajustes do macOS.
+3. Pins são reordenados por setinhas ▲▼ em vez de arrastar.
+4. `sidebarRow` está duplicado entre `PreferencesView` e `MainWindowView`.
+5. Os dez painéis de provider montam cabeçalho e botões cada um do seu jeito.
+6. Janela fixa em 640×460, não redimensionável.
+
+### Estrutura nova
+
+Todos os panes passam a usar `Form`/`.formStyle(.grouped)`, com o cabeçalho usando os
+tokens do tema.
+
+**Pane Geral**, três seções:
+- *Barra de menu* — `List` com `.onMove` (arrastar para reordenar); as setinhas somem.
+- *Alertas* — toggle mestre; limiares como chips selecionáveis; saldo baixo com
+  auto-save.
+- *Atualizações* — o aviso de nova versão, hoje só um badge no popover, ganha lugar fixo.
+
+**Painéis de provider:** um `ProviderPaneScaffold` único — cabeçalho (ícone, nome, pill
+de status, badge de plano), seção *Conexão* com a ação primária, seção *Detalhes*. Os dez
+panes preenchem o scaffold em vez de montar layout próprio.
+
+**Sidebar:** `ProviderSidebarRow` compartilhado com `MainWindowView`, eliminando a
+duplicação. A seção "Contas" exibe quantas precisam de atenção.
+
+**Janela:** redimensionável, mínimo 680×520.
+
+### Decisões de comportamento (aprovadas pelo dono)
+
+- **Auto-save em todos os campos**, incluindo chaves de API: commit em `onSubmit` e ao
+  perder o foco. Os botões "Salvar" são removidos. Feedback passa a ser um selo
+  "Salvo" transitório em vez do `statusMessage` no rodapé.
+- **Limiares de alerta passam a 50/70/80/90/100 %.** *Nenhuma migração é necessária*:
+  `PreferencesStore.alertPercentThresholds` já persiste uma lista arbitrária de frações
+  (string separada por vírgula) e `AlertEngine.defaultThresholds` mapeia qualquer lista
+  recebida. Quem já tem 70/90/100 salvo permanece com 70/90/100; o default para quem
+  nunca tocou continua `[0.7, 0.9, 1.0]`.
+
+## 6. Testes e verificação
 
 - Lógica pura nova ganha testes unitários: construção das séries por janela (30/90/365),
   cálculo de delta hoje-vs-ontem, e a matemática de célula do heatmap responsivo
@@ -125,3 +169,6 @@ aprovada no redesign de 2026-08-10 é preservada — este trabalho apenas revest
   diretamente, como o harness já faz com `PopoverContentView`.
 - **Densidade do popover:** 360 pt é apertado para gráficos. Se a faixa "hoje" espremer
   os cards de cota, ela é cortada — a cota tem prioridade.
+- **Auto-save de chave de API:** salvar a cada blur pode gravar uma chave colada pela
+  metade. Mitigação: só grava quando o valor mudou e não está vazio, e o selo "Salvo"
+  confirma visualmente; a chave antiga nunca é apagada por um campo vazio.
