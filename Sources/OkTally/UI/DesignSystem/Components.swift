@@ -24,6 +24,12 @@ struct StatTile: View {
     var caption: String?
     var tint: Color = .accentColor
     var emphasis: Emphasis = .regular
+    /// Faz o tile ocupar toda a altura oferecida, com o conteúdo ancorado no topo. É
+    /// preciso ser opção interna: um `.frame(maxHeight: .infinity)` aplicado por fora
+    /// cresce o frame mas não o `.background`, que já foi desenhado no tamanho ideal —
+    /// o card fica pequeno dentro de uma caixa grande. Colunas de bento usam isto para
+    /// terminar na mesma linha que o card vizinho.
+    var fillsHeight: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
@@ -42,7 +48,7 @@ struct StatTile: View {
             }
         }
         .padding(Theme.Space.lg)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: .topLeading)
         .background {
             let shape = RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
             switch emphasis {

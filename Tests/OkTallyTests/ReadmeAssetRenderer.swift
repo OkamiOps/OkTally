@@ -38,7 +38,11 @@ final class ReadmeAssetRenderer: XCTestCase {
                     .frame(width: 760)
                     .background(Color(nsColor: .windowBackgroundColor)),
                   to: "overview.png")
+        // `isStaticRender` troca só os controles do AppKit por um desenho equivalente:
+        // o `ImageRenderer` não sabe desenhá-los e o PNG sairia com um retângulo amarelo
+        // no lugar do seletor de janela. O app não liga essa flag.
         try write(view: AnalyticsDashboardView(appModel: model)
+                    .environment(\.isStaticRender, true)
                     .padding(24)
                     .frame(width: 860)
                     .background(Color(nsColor: .windowBackgroundColor)),
