@@ -19,11 +19,22 @@ enum FieldCommit {
     /// esse formato e converteria silenciosamente para um limiar de alerta inesperado —
     /// exatamente o "valor aceito errado gera alerta errado" que este campo evita.
     static func lowBalance(_ raw: String) -> Double? {
+        guard let value = amount(raw), value > 0 else { return nil }
+        return value
+    }
+
+    /// Quantidade não negativa, aceitando vírgula decimal — os campos de crédito do MiMo,
+    /// onde "usados = 0" é um valor legítimo e não pode ser recusado como o saldo baixo é.
+    /// Mesma recusa de notação científica.
+    static func amount(_ raw: String) -> Double? {
         let normalized = raw
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: ",", with: ".")
         guard normalized.lowercased().contains("e") == false else { return nil }
-        guard let value = Double(normalized), value > 0 else { return nil }
+        // `Double("inf")` devolve +infinito e `Double("nan")` devolve NaN — ambos passariam
+        // por um `>= 0` ingênuo (o NaN não, mas por acidente) e virariam uma franquia
+        // infinita gravada em disco.
+        guard let value = Double(normalized), value.isFinite, value >= 0 else { return nil }
         return value
     }
 }

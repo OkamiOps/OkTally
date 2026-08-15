@@ -10,11 +10,7 @@ struct AnalyticsDashboardView: View {
     @State private var window: TrendWindow = .days30
     @State private var showsHeatmap = false
 
-    /// Altura da linha-herói. Precisa ser explícita: sem altura proposta, as duas colunas
-    /// se dimensionam pelo ideal de cada uma, a da direita fica mais baixa que a do
-    /// gráfico e sobra um buraco no canto — `maxHeight: .infinity` não estica dentro de
-    /// uma proposta nula.
-    private let heroHeight: CGFloat = 210
+    @Environment(\.isStaticRender) private var isStaticRender
 
     private var byProvider: [String: TokenAnalytics] {
         appModel.analyticsByProvider
@@ -67,7 +63,9 @@ struct AnalyticsDashboardView: View {
         let streak = analytics.effectiveCurrentStreakDays() ?? 0
         let longest = analytics.effectiveLongestStreakDays ?? max(streak, 1)
         return HStack(alignment: .top, spacing: Theme.Space.md) {
-            DashboardCard {
+            // Ambas as colunas esticam até a altura da linha: quem for mais alta manda, e
+            // nenhuma das duas precisa de altura fixa.
+            DashboardCard(fillsHeight: true) {
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     HStack(alignment: .firstTextBaseline, spacing: Theme.Space.sm) {
                         SectionHeader(L("Hoje"))
@@ -117,11 +115,19 @@ struct AnalyticsDashboardView: View {
                     value: analytics.effectivePeakDailyTokens.map(TokenAnalytics.compactTokens) ?? "—",
                     caption: analytics.longestRunningTurnSeconds.map { LF("tarefa mais longa: %@", TokenAnalytics.durationLabel($0)) }
                 )
-                .frame(maxHeight: .infinity, alignment: .topLeading)
+                // Terceiro tile: antes a coluna tinha dois cards magros e o "Pico diário"
+                // era esticado sozinho até a altura do card da esquerda — mais da metade
+                // dele saía vazia. Com um número a mais a coluna se preenche de conteúdo
+                // real, e só o último tile absorve a sobra de altura.
+                StatTile(
+                    title: L("Últimos 30 dias"),
+                    value: TokenAnalytics.compactTokens(analytics.tokensLast30Days),
+                    caption: analytics.effectiveLifetimeTokens.map { LF("total: %@", TokenAnalytics.compactTokens($0)) },
+                    fillsHeight: true
+                )
             }
             .frame(width: 230)
         }
-        .frame(height: heroHeight)
     }
 
     // MARK: - Linha 2: tendência
@@ -139,6 +145,7 @@ struct AnalyticsDashboardView: View {
                     }
                     .toggleStyle(.button)
                     .help(showsHeatmap ? L("Ver como barras") : L("Ver como heatmap"))
+                    .accessibilityLabel(showsHeatmap ? L("Ver como barras") : L("Ver como heatmap"))
                 }
                 if showsHeatmap, let aggregated {
                     TokenHeatmapView(analytics: aggregated)
@@ -152,25 +159,41 @@ struct AnalyticsDashboardView: View {
         }
     }
 
-    /// Segmentado próprio em vez de `Picker(.segmented)`: o controle do AppKit não sai no
-    /// `ImageRenderer` (vira um retângulo amarelo com o símbolo de proibido nos PNGs do
-    /// README) e o estilo nativo destoa das cápsulas do resto do painel.
+    /// Segmentado nativo: é ele que dá semântica de seleção ao VoiceOver, navegação por
+    /// setas dentro do grupo e o estilo do sistema. O `ImageRenderer` não sabe desenhar
+    /// controles do AppKit, então — e só então — cai num substituto estático; o problema
+    /// é do harness de render, não do produto.
+    @ViewBuilder
     private var windowPicker: some View {
+        if isStaticRender {
+            staticWindowPicker
+        } else {
+            Picker("", selection: $window) {
+                ForEach(TrendWindow.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 190)
+        }
+    }
+
+    /// Desenho equivalente do segmentado, sem interação — existe apenas para os PNGs.
+    private var staticWindowPicker: some View {
         HStack(spacing: 2) {
             ForEach(TrendWindow.allCases, id: \.self) { option in
                 let selected = option == window
-                Button { window = option } label: {
-                    Text(option.label)
-                        .font(.system(size: 11, weight: selected ? .semibold : .regular))
-                        .foregroundStyle(selected ? Color.primary : Color.secondary)
-                        .frame(width: 46, height: 20)
-                        .background {
-                            if selected {
-                                Capsule().fill(Theme.surfaceRaised())
-                            }
+                Text(option.label)
+                    .font(.system(size: 11, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? Color.primary : Color.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, Theme.Space.md)
+                    .frame(height: 20)
+                    .background {
+                        if selected {
+                            Capsule().fill(Theme.surfaceRaised())
                         }
-                }
-                .buttonStyle(.plain)
+                    }
             }
         }
         .padding(2)

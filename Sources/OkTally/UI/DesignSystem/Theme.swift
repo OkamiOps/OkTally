@@ -32,6 +32,15 @@ enum Theme {
     static func surfaceRaised() -> Color { Color.primary.opacity(0.075) }
     static func border() -> Color { Color.primary.opacity(0.07) }
 
+    /// Grampeia uma fração em 0…1 tratando `NaN`/infinito como zero. Existe porque em
+    /// Swift `max(0, min(1, .nan))` devolve `1.0` — qualquer divisão por zero que escape
+    /// de um call site desenharia a barra ou o anel CHEIOS, que é a leitura oposta da
+    /// verdadeira. A guarda mora no componente, não só no aviso do ledger.
+    static func clampFraction(_ value: Double) -> Double {
+        guard value.isFinite else { return 0 }
+        return max(0, min(1, value))
+    }
+
     /// Fundo tingido do bloco-herói.
     static func surfaceAccent(_ color: Color) -> LinearGradient {
         LinearGradient(
@@ -42,10 +51,42 @@ enum Theme {
     }
 }
 
+/// Liquid Glass, restrito a cromo (headers, barras de ação, a faixa flutuante do
+/// popover). Fica fora dos dashboards e dos cards de detalhe, onde ficaria atrás de
+/// número e gráfico densos e prejudicaria a leitura. A faixa "Hoje" é a exceção
+/// deliberada: tem número e sparkline, mas é uma tira fina e flutuante, lida como cromo.
+///
+/// Usa `glassEffect(_:in:)` de verdade — a API do macOS 26, confirmada com a assinatura
+/// `glassEffect(_ glass: Glass = .regular, in shape: some Shape)` no
+/// `SwiftUICore.swiftinterface` do SDK instalado. Nasceu com `.regularMaterial` só
+/// porque o nome da API ainda não estava confirmado quando o plano começou.
+///
+/// O vidro precisa do compositor vivo: sob `ImageRenderer` ele não só deixa de desenhar
+/// o fundo como apaga a subárvore inteira — os PNGs de `docs/assets` perdiam a faixa
+/// "Hoje" com número e sparkline. Por isso o render estático cai no material, pelo mesmo
+/// `isStaticRender` que já troca os controles do AppKit. O app nunca liga essa flag.
+private struct GlassChrome<S: Shape>: ViewModifier {
+    let shape: S
+    @Environment(\.isStaticRender) private var isStaticRender
+
+    func body(content: Content) -> some View {
+        if isStaticRender {
+            content.background(.regularMaterial, in: shape)
+        } else {
+            content.glassEffect(.regular, in: shape)
+        }
+    }
+}
+
 extension View {
-    /// Liquid Glass, restrito a cromo (headers, barras de ação). Vidro atrás de número ou
-    /// gráfico prejudica a leitura, então nada de conteúdo denso usa isto.
+    /// Vidro na cápsula/retângulo arredondado padrão (faixa flutuante).
     func glassChrome() -> some View {
-        self.background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous))
+        modifier(GlassChrome(shape: RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)))
+    }
+
+    /// Vidro numa faixa que encosta nas bordas — header e barra de ações do popover, onde
+    /// um canto arredondado deixaria um vinco visível contra a moldura da janela.
+    func glassChrome<S: Shape>(in shape: S) -> some View {
+        modifier(GlassChrome(shape: shape))
     }
 }

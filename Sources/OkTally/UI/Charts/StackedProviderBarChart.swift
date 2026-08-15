@@ -59,16 +59,6 @@ struct StackedProviderBarChart: View {
     }
 }
 
-// Synthesize automático de `Hashable` exige a conformidade no mesmo arquivo do tipo
-// original (`TrendSeries.swift`); daqui, precisa da implementação manual.
-extension TrendPoint: Hashable {
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(day)
-        hasher.combine(providerId)
-        hasher.combine(tokens)
-    }
-}
-
 /// `TrendPoint` com a data já parseada — o que o `Chart` de fato itera, para não repetir
 /// o parsing de `day` por mark. Declarado e conformado a `Hashable` neste mesmo arquivo,
 /// então a sintetização automática funciona sem implementação manual.

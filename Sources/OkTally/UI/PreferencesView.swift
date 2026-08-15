@@ -42,31 +42,52 @@ struct PreferencesView: View {
             List(selection: $pane) {
                 Label(L("Geral"), systemImage: "slider.horizontal.3")
                     .tag(PreferencesPane.general)
-                Section(L("Contas")) {
+                Section {
                     ForEach(providerIds, id: \.self) { id in
                         sidebarRow(id).tag(PreferencesPane.provider(id))
+                    }
+                } header: {
+                    HStack {
+                        Text(L("Contas"))
+                        Spacer()
+                        let attention = providerIds.filter { appModel.errorKindByProvider[$0] == .needsReauth }.count
+                        if attention > 0 {
+                            Text("\(attention)")
+                                .font(.system(size: 9, weight: .bold))
+                                .monospacedDigit()
+                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .background(Capsule().fill(Color.orange.opacity(0.25)))
+                                .foregroundStyle(.orange)
+                                .help(L("Contas com credencial expirada"))
+                        }
                     }
                 }
             }
             .navigationSplitViewColumnWidth(min: 170, ideal: 180, max: 200)
         } detail: {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+            // Geral e os panes de provider são `Form` agrupados, que já rolam sozinhos —
+            // o `ScrollView` que os panes de provider tinham daria rolagem aninhada.
+            if case .general = pane {
+                GeneralPane(appModel: appModel, preferencesStore: preferencesStore, providerName: providerName)
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
                     detailContent
                     if !statusMessage.isEmpty {
-                        Text(statusMessage).font(.caption).foregroundStyle(.secondary)
+                        Text(statusMessage)
+                            .font(.caption).foregroundStyle(.secondary)
+                            .padding(.horizontal, Theme.Space.xl)
+                            .padding(.bottom, Theme.Space.md)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .frame(width: 640, height: 460)
+        .frame(minWidth: 680, idealWidth: 720, minHeight: 520, idealHeight: 560)
         .onAppear {
             load()
             consumeRequestedPane()
         }
-        .onChange(of: appModel.requestedPreferencesPane) { _ in
+        .onChange(of: appModel.requestedPreferencesPane) { _, _ in
             consumeRequestedPane()
         }
     }
@@ -83,20 +104,12 @@ struct PreferencesView: View {
     // MARK: - Sidebar
 
     private func sidebarRow(_ id: String) -> some View {
-        let identity = ProviderPalette.color(for: id)
-        return HStack(spacing: 8) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)).frame(width: 20, height: 20)
-                Text(ProviderPalette.glyph(forId: id))
-                    .font(.system(size: 10, weight: .heavy)).foregroundStyle(identity)
-            }
-            Text(providerName(id)).font(.system(size: 12))
-            Spacer()
-            Circle()
-                .fill(statusDotColor(id))
-                .frame(width: 7, height: 7)
-                .help(statusDotHelp(id))
-        }
+        ProviderSidebarRow(
+            providerId: id,
+            name: providerName(id),
+            statusColor: statusDotColor(id),
+            statusHelp: statusDotHelp(id)
+        )
     }
 
     /// Tri-state (spec do redesign, agora completo): verde conectado, âmbar precisa
@@ -137,7 +150,7 @@ struct PreferencesView: View {
     @ViewBuilder private var detailContent: some View {
         switch pane {
         case .general:
-            GeneralPane(appModel: appModel, preferencesStore: preferencesStore, providerName: providerName)
+            EmptyView() // tratado no branch anterior do detalhe, por rolar sozinho
         case .provider("claude"): claudePane
         case .provider("codex"): codexPane
         case .provider("supergrok"): superGrokPane
@@ -145,41 +158,47 @@ struct PreferencesView: View {
         case .provider("copilot"): copilotPane
         case .provider("antigravity"): antigravityPane
         case .provider("openrouter"):
-            keyPane("openrouter", text: $openRouterAPIKey, status: openRouterAPIKey.isEmpty ? L("Sem chave") : L("Chave salva")) {
-                saveSecret("OpenRouter") { try preferencesStore.setOpenRouterAPIKey(openRouterAPIKey) }
-            }
+            keyPane("openrouter",
+                    text: $openRouterAPIKey,
+                    hasSavedKey: !(preferencesStore.openRouterAPIKey ?? "").isEmpty,
+                    save: {
+                        saveSecret("OpenRouter", previous: preferencesStore.openRouterAPIKey ?? "", raw: $openRouterAPIKey) {
+                            try preferencesStore.setOpenRouterAPIKey($0)
+                        }
+                    },
+                    remove: {
+                        removeSecret("OpenRouter", raw: $openRouterAPIKey) {
+                            try preferencesStore.setOpenRouterAPIKey(nil)
+                        }
+                    })
         case .provider("minimax"): minimaxPane
         case .provider("opencode"):
-            keyPane("opencode", text: $openCodeAPIKey, status: openCodeAPIKey.isEmpty ? L("Sem chave") : L("Chave salva")) {
-                saveSecret("OpenCode") { try preferencesStore.setOpenCodeAPIKey(openCodeAPIKey) }
-            }
+            keyPane("opencode",
+                    text: $openCodeAPIKey,
+                    hasSavedKey: !(preferencesStore.openCodeAPIKey ?? "").isEmpty,
+                    save: {
+                        saveSecret("OpenCode", previous: preferencesStore.openCodeAPIKey ?? "", raw: $openCodeAPIKey) {
+                            try preferencesStore.setOpenCodeAPIKey($0)
+                        }
+                    },
+                    remove: {
+                        removeSecret("OpenCode", raw: $openCodeAPIKey) {
+                            try preferencesStore.setOpenCodeAPIKey(nil)
+                        }
+                    })
         case .provider("mimo"): mimoPane
         case .provider: EmptyView()
         }
     }
 
-    private func paneHeader(_ id: String, status: String, active: Bool) -> some View {
-        HStack(spacing: 12) {
-            let identity = ProviderPalette.color(for: id)
-            ZStack {
-                RoundedRectangle(cornerRadius: 9).fill(identity.opacity(0.16)).frame(width: 40, height: 40)
-                Text(ProviderPalette.glyph(forId: id))
-                    .font(.system(size: 19, weight: .heavy)).foregroundStyle(identity)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(providerName(id)).font(.system(size: 16, weight: .bold))
-                Text(status).font(.caption).foregroundStyle(active ? .green : .secondary)
-            }
-            Spacer()
-        }
-        .padding(.bottom, 4)
-    }
-
     // MARK: - Provider panes
 
     private var claudePane: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            paneHeader("claude", status: claudeLoggedIn ? L("Conectado") : L("Não conectado"), active: claudeLoggedIn)
+        ProviderPaneScaffold(
+            providerId: "claude",
+            name: providerName("claude"),
+            status: claudeLoggedIn ? .connected(L("Conectado")) : .notConfigured(L("Não conectado"))
+        ) {
             HStack {
                 if claudeLoggedIn {
                     Button(L("Sair")) { logout(providerId: "claude", flag: $claudeLoggedIn); claudeSession = nil }
@@ -195,11 +214,15 @@ struct PreferencesView: View {
                 }
                 Spacer()
             }
+            // O código colado continua sendo um passo da conexão — fica na mesma seção
+            // dos botões para não virar um detalhe descolado do fluxo.
             if claudeSession != nil {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     Text(L("Autorize no navegador, copie o código e cole abaixo:"))
                         .font(.caption).foregroundStyle(.secondary)
-                    TextField("CÓDIGO#STATE", text: $claudePastedCode).textFieldStyle(.roundedBorder)
+                    TextField("CÓDIGO#STATE", text: $claudePastedCode)
+                        .textFieldStyle(.roundedBorder)
+                        .labelsHidden()
                     HStack {
                         Button(L("Concluir")) { completeClaudeLogin() }
                             .buttonStyle(.borderedProminent)
@@ -209,143 +232,209 @@ struct PreferencesView: View {
                     }
                 }
             }
+        } details: {
+            Text(L("O uso de cota vem da conta; o volume em tokens é estimado dos transcritos locais."))
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
     private var codexPane: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            paneHeader("codex", status: codexLoggedIn ? L("Conectado") : L("Não conectado"), active: codexLoggedIn)
-            HStack {
-                if codexLoggedIn {
-                    Button(L("Sair")) { logout(providerId: "codex", flag: $codexLoggedIn) }.buttonStyle(.bordered)
-                } else {
-                    Button(L("Entrar…")) { login(config: CodexOAuth.config, flag: $codexLoggedIn) }
-                        .buttonStyle(.borderedProminent)
-                }
-                Spacer()
+        ProviderPaneScaffold(
+            providerId: "codex",
+            name: providerName("codex"),
+            status: codexLoggedIn ? .connected(L("Conectado")) : .notConfigured(L("Não conectado"))
+        ) {
+            if codexLoggedIn {
+                Button(L("Sair")) { logout(providerId: "codex", flag: $codexLoggedIn) }.buttonStyle(.bordered)
+            } else {
+                Button(L("Entrar…")) { login(config: CodexOAuth.config, flag: $codexLoggedIn) }
+                    .buttonStyle(.borderedProminent)
             }
+        } details: {
+            Text(L("Estatísticas de uso vêm da API da conta."))
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
     private var superGrokPane: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            paneHeader("supergrok", status: superGrokLoggedIn ? L("Conectado") : L("Não conectado"), active: superGrokLoggedIn)
-            HStack {
-                if superGrokLoggedIn {
-                    Button(L("Sair")) { logout(providerId: SuperGrokOAuth.providerId, flag: $superGrokLoggedIn) }
-                        .buttonStyle(.bordered)
-                } else {
-                    Button(L("Entrar…")) { loginSuperGrok() }.buttonStyle(.borderedProminent)
-                }
-                Spacer()
+        ProviderPaneScaffold(
+            providerId: "supergrok",
+            name: providerName("supergrok"),
+            status: superGrokLoggedIn ? .connected(L("Conectado")) : .notConfigured(L("Não conectado"))
+        ) {
+            if superGrokLoggedIn {
+                Button(L("Sair")) { logout(providerId: SuperGrokOAuth.providerId, flag: $superGrokLoggedIn) }
+                    .buttonStyle(.bordered)
+            } else {
+                Button(L("Entrar…")) { loginSuperGrok() }.buttonStyle(.borderedProminent)
             }
+        } details: {
             if let info = superGrokDeviceCode {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
                     Text(LF("Abra %@ e digite:", info.verificationURL.absoluteString))
                         .font(.caption).foregroundStyle(.secondary)
                     Text(info.userCode).font(.title3.monospaced()).textSelection(.enabled)
                 }
+            } else {
+                Text(L("O login usa código de dispositivo: o navegador abre e você digita o código mostrado aqui."))
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
     }
 
     private var cursorPane: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            paneHeader("cursor", status: L("Lê a sessão do app Cursor automaticamente"), active: true)
+        ProviderPaneScaffold(
+            providerId: "cursor",
+            name: providerName("cursor"),
+            status: .connected(L("Lê a sessão do app Cursor automaticamente"))
+        ) {
             Text(L("Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho."))
                 .font(.caption).foregroundStyle(.secondary)
+        } details: {
+            EmptyView()
         }
     }
 
     private var copilotPane: some View {
         let detected = CopilotTokenReader().firstToken() != nil
-        return VStack(alignment: .leading, spacing: 12) {
-            paneHeader(
-                "copilot",
-                status: detected ? L("Login do Copilot/gh CLI detectado") : L("Nenhum login do Copilot/gh CLI encontrado"),
-                active: detected
-            )
+        return ProviderPaneScaffold(
+            providerId: "copilot",
+            name: providerName("copilot"),
+            status: detected
+                ? .connected(L("Login do Copilot/gh CLI detectado"))
+                : .notConfigured(L("Nenhum login do Copilot/gh CLI encontrado"))
+        ) {
             Text(L("Nada a configurar — detectado automaticamente a partir do login do Copilot ou do gh CLI neste Mac."))
                 .font(.caption).foregroundStyle(.secondary)
+        } details: {
+            EmptyView()
         }
     }
 
     private var antigravityPane: some View {
         let detected = AntigravityTokenReader().readTokens() != nil
-        return VStack(alignment: .leading, spacing: 12) {
-            paneHeader(
-                "antigravity",
-                status: detected ? L("Login do IDE Antigravity detectado") : L("Nenhum login do Antigravity encontrado"),
-                active: detected
-            )
+        return ProviderPaneScaffold(
+            providerId: "antigravity",
+            name: providerName("antigravity"),
+            status: detected
+                ? .connected(L("Login do IDE Antigravity detectado"))
+                : .notConfigured(L("Nenhum login do Antigravity encontrado"))
+        ) {
             Text(L("Nada a configurar — detectado automaticamente a partir do login do IDE Antigravity neste Mac."))
+                .font(.caption).foregroundStyle(.secondary)
+        } details: {
+            EmptyView()
+        }
+    }
+
+    /// Painel de chave de API. O botão "Salvar" saiu: o campo grava no Enter e ao perder
+    /// o foco, e `saveSecret` recusa campo vazio ou inalterado para que um blur acidental
+    /// não apague a chave que está no Keychain.
+    private func keyPane(_ id: String,
+                         text: Binding<String>,
+                         hasSavedKey: Bool,
+                         save: @escaping () -> Void,
+                         remove: @escaping () -> Void) -> some View {
+        ProviderPaneScaffold(
+            providerId: id,
+            name: providerName(id),
+            status: hasSavedKey ? .connected(L("Chave salva")) : .notConfigured(L("Sem chave"))
+        ) {
+            AutoSaveField(placeholder: "API Key", text: text, isSecure: true, onCommit: save)
+                .frame(maxWidth: 380)
+            // Esvaziar o campo não apaga nada (é a regra do auto-save), então revogar a
+            // credencial precisa de um gesto deliberado — sem este botão não haveria
+            // nenhuma forma de desconectar o provedor pelo app.
+            //
+            // A condição é o valor *salvo*, nunca o texto do campo: quem quer revogar
+            // seleciona tudo e apaga, e o botão sumiria exatamente aí. O espelho também
+            // importa — digitar num provedor sem chave não pode anunciar "Chave salva".
+            if hasSavedKey {
+                HStack {
+                    Button(L("Remover chave"), role: .destructive, action: remove)
+                        .buttonStyle(.bordered)
+                    Spacer()
+                }
+            }
+        } details: {
+            Text(L("A chave fica no Keychain desta máquina, nunca em texto puro."))
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
 
-    private func keyPane(_ id: String, text: Binding<String>, status: String, save: @escaping () -> Void) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            paneHeader(id, status: status, active: !text.wrappedValue.isEmpty)
-            SecureField("API Key", text: text).textFieldStyle(.roundedBorder).frame(maxWidth: 380)
-            HStack { Button(L("Salvar"), action: save).buttonStyle(.borderedProminent); Spacer() }
-        }
-    }
-
     private var minimaxPane: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            paneHeader("minimax", status: minimaxAPIKey.isEmpty ? L("Sem chave") : L("Chave salva"), active: !minimaxAPIKey.isEmpty)
-            SecureField("API Key", text: $minimaxAPIKey).textFieldStyle(.roundedBorder).frame(maxWidth: 380)
-            Toggle(L("Região China (minimaxi.com)"), isOn: $minimaxRegionIsChina)
-                .toggleStyle(.switch).controlSize(.small)
-            HStack {
-                Button(L("Salvar")) {
-                    saveSecret("MiniMax") { try preferencesStore.setMinimaxAPIKey(minimaxAPIKey) }
-                    preferencesStore.minimaxRegionRaw = minimaxRegionIsChina ? "china" : "global"
+        // Mesma regra do `keyPane`: pill e botão seguem o Keychain, não o texto do campo.
+        let hasSavedKey = !(preferencesStore.minimaxAPIKey ?? "").isEmpty
+        return ProviderPaneScaffold(
+            providerId: "minimax",
+            name: providerName("minimax"),
+            status: hasSavedKey ? .connected(L("Chave salva")) : .notConfigured(L("Sem chave"))
+        ) {
+            AutoSaveField(placeholder: "API Key", text: $minimaxAPIKey, isSecure: true, onCommit: saveMinimaxKey)
+                .frame(maxWidth: 380)
+            if hasSavedKey {
+                HStack {
+                    Button(L("Remover chave"), role: .destructive) {
+                        removeSecret("MiniMax", raw: $minimaxAPIKey) {
+                            try preferencesStore.setMinimaxAPIKey(nil)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    Spacer()
                 }
-                .buttonStyle(.borderedProminent)
-                Spacer()
             }
+            Toggle(L("Região China (minimaxi.com)"), isOn: $minimaxRegionIsChina)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                // A região é uma escolha binária: não há "valor vazio" que possa apagar
+                // nada, então grava direto na troca.
+                .onChange(of: minimaxRegionIsChina) { _, isChina in
+                    preferencesStore.minimaxRegionRaw = isChina ? "china" : "global"
+                }
+        } details: {
+            Text(L("A chave fica no Keychain desta máquina, nunca em texto puro."))
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
     private var mimoPane: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            paneHeader("mimo",
-                       status: mimoLoggedIn ? L("Sessão ativa — uso automático") : L("Sem sessão (usa estimativa manual)"),
-                       active: mimoLoggedIn)
-            HStack {
-                if mimoLoggedIn {
-                    Button(L("Sair")) {
-                        mimoSessionStore.isLoggedIn = false; mimoLoggedIn = false
-                        statusMessage = L("Sessão do MiMo removida.")
-                    }
-                    .buttonStyle(.bordered)
-                } else {
-                    Button(L("Entrar no MiMo…")) {
-                        MiMoWebSession.shared.presentLogin {
-                            mimoSessionStore.isLoggedIn = true
-                            mimoLoggedIn = true
-                            statusMessage = L("Sessão do MiMo ativa — uso automático.")
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
+        ProviderPaneScaffold(
+            providerId: "mimo",
+            name: providerName("mimo"),
+            status: mimoLoggedIn
+                ? .connected(L("Sessão ativa — uso automático"))
+                : .notConfigured(L("Sem sessão (usa estimativa manual)"))
+        ) {
+            if mimoLoggedIn {
+                Button(L("Sair")) {
+                    mimoSessionStore.isLoggedIn = false; mimoLoggedIn = false
+                    statusMessage = L("Sessão do MiMo removida.")
                 }
-                Spacer()
+                .buttonStyle(.bordered)
+            } else {
+                Button(L("Entrar no MiMo…")) {
+                    MiMoWebSession.shared.presentLogin {
+                        mimoSessionStore.isLoggedIn = true
+                        mimoLoggedIn = true
+                        statusMessage = L("Sessão do MiMo ativa — uso automático.")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
             }
+        } details: {
             if mimoLoggedIn {
                 Text(L("A sessão sobrevive a reinícios e se renova sozinha quando o console expira — só pede login de novo se a conta Xiaomi deslogar de verdade."))
                     .font(.caption).foregroundStyle(.secondary)
             } else {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
                     Text(L("Estimativa manual (sem sessão):")).font(.caption).foregroundStyle(.secondary)
-                    HStack(spacing: 8) {
-                        TextField(L("Franquia (Credits)"), text: $mimoAllowance).textFieldStyle(.roundedBorder)
-                        TextField(L("Usados"), text: $mimoUsed).textFieldStyle(.roundedBorder)
-                        Button(L("Salvar")) {
-                            preferencesStore.mimoMonthlyAllowanceCredits = Double(mimoAllowance)
-                            preferencesStore.mimoUsedCredits = Double(mimoUsed) ?? 0
-                        }
-                        .buttonStyle(.bordered)
+                    HStack(spacing: Theme.Space.sm) {
+                        AutoSaveField(placeholder: L("Franquia (Credits)"),
+                                      text: $mimoAllowance,
+                                      onCommit: saveMiMoAllowance)
+                        AutoSaveField(placeholder: L("Usados"),
+                                      text: $mimoUsed,
+                                      onCommit: saveMiMoUsed)
                     }
                     .frame(maxWidth: 420)
                 }
@@ -360,8 +449,9 @@ struct PreferencesView: View {
         minimaxAPIKey = preferencesStore.minimaxAPIKey ?? ""
         minimaxRegionIsChina = preferencesStore.minimaxRegionRaw == "china"
         openCodeAPIKey = preferencesStore.openCodeAPIKey ?? ""
-        mimoAllowance = preferencesStore.mimoMonthlyAllowanceCredits.map { String($0) } ?? ""
-        mimoUsed = String(preferencesStore.mimoUsedCredits)
+        mimoAllowance = preferencesStore.mimoMonthlyAllowanceCredits
+            .map { PreferencesFieldCommit.credits($0) } ?? ""
+        mimoUsed = PreferencesFieldCommit.credits(preferencesStore.mimoUsedCredits)
         claudeLoggedIn = tokenStore.load(providerId: "claude") != nil
         codexLoggedIn = tokenStore.load(providerId: "codex") != nil
         superGrokLoggedIn = tokenStore.load(providerId: SuperGrokOAuth.providerId) != nil
@@ -422,12 +512,66 @@ struct PreferencesView: View {
         }
     }
 
-    private func saveSecret(_ label: String, _ save: () throws -> Void) {
+    // MARK: - Auto-save
+
+    /// Gravação de credencial. A decisão inteira ("grava ou ignora, e para que texto o
+    /// campo volta") vive no `PreferencesFieldCommit`, que é coberto por teste; aqui só
+    /// sobra o efeito colateral no Keychain.
+    private func saveSecret(_ label: String, previous: String, raw: Binding<String>, _ save: (String) throws -> Void) {
+        switch PreferencesFieldCommit.secret(raw: raw.wrappedValue, saved: previous) {
+        case .ignored(let restore):
+            raw.wrappedValue = restore
+        case .commit(let value, let display):
+            do {
+                try save(value)
+                raw.wrappedValue = display
+                statusMessage = LF("%@: chave salva.", label)
+            } catch {
+                statusMessage = LF("%@: falha ao salvar chave — %@", label, error.localizedDescription)
+            }
+        }
+    }
+
+    /// Revogação explícita — o único caminho que apaga credencial. Fica atrás de um botão
+    /// justamente porque a regra do auto-save recusa campo vazio: um clique consciente não
+    /// é a mesma coisa que um blur acidental.
+    private func removeSecret(_ label: String, raw: Binding<String>, _ delete: () throws -> Void) {
         do {
-            try save()
-            statusMessage = LF("%@: chave salva.", label)
+            try delete()
+            raw.wrappedValue = ""
+            statusMessage = LF("%@: chave removida.", label)
         } catch {
-            statusMessage = LF("%@: falha ao salvar chave — %@", label, error.localizedDescription)
+            statusMessage = LF("%@: falha ao remover chave — %@", label, error.localizedDescription)
+        }
+    }
+
+    private func saveMinimaxKey() {
+        saveSecret("MiniMax", previous: preferencesStore.minimaxAPIKey ?? "", raw: $minimaxAPIKey) {
+            try preferencesStore.setMinimaxAPIKey($0)
+        }
+    }
+
+    /// Franquia do MiMo. Antes isto era `= Double(mimoAllowance)` atrás de um botão: com o
+    /// campo vazio virava `nil` e apagava a franquia salva.
+    private func saveMiMoAllowance() {
+        switch PreferencesFieldCommit.allowance(raw: mimoAllowance,
+                                                saved: preferencesStore.mimoMonthlyAllowanceCredits) {
+        case .ignored(let restore):
+            mimoAllowance = restore
+        case .commit(let value, let display):
+            preferencesStore.mimoMonthlyAllowanceCredits = value
+            mimoAllowance = display
+        }
+    }
+
+    /// Créditos usados. Zero é legítimo aqui (mês recém-começado).
+    private func saveMiMoUsed() {
+        switch PreferencesFieldCommit.used(raw: mimoUsed, saved: preferencesStore.mimoUsedCredits) {
+        case .ignored(let restore):
+            mimoUsed = restore
+        case .commit(let value, let display):
+            preferencesStore.mimoUsedCredits = value
+            mimoUsed = display
         }
     }
 
@@ -438,10 +582,12 @@ struct PreferencesView: View {
     }
 }
 
+
 // MARK: - General pane
 
-/// Menu bar pin management. Refresh intervals were deliberately left out: the store's
-/// per-provider interval is not wired into the Scheduler, so a UI for it would lie.
+/// Ajustes gerais: pinos da barra de menu, alertas e atualização. Os intervalos de refresh
+/// ficaram de fora de propósito: o intervalo por provedor do store não está ligado ao
+/// Scheduler, então uma UI para ele mentiria.
 private struct GeneralPane: View {
     @ObservedObject var appModel: AppModel
     let preferencesStore: PreferencesStore
@@ -450,77 +596,93 @@ private struct GeneralPane: View {
     @State private var alertsEnabled = true
     @State private var percentSteps: Set<Double> = []
     @State private var lowBalanceText = ""
+    @State private var savedFlash = false
+    @FocusState private var lowBalanceFocused: Bool
 
-    /// The selectable percentage crossings, mirroring Quotio's 10/20/30/50% picker but in
-    /// the "usado" convention this app already alerts on.
-    private static let percentOptions: [Double] = [0.7, 0.9, 1.0]
+    /// 50/70/80/90/100 — nenhuma migração necessária: `alertPercentThresholds` já persiste
+    /// uma lista arbitrária de frações e o `AlertEngine` mapeia qualquer lista, então quem
+    /// tinha 70/90/100 salvo continua com 70/90/100.
+    private static let percentOptions: [Double] = [0.5, 0.7, 0.8, 0.9, 1.0]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(L("Barra de menu")).font(.system(size: 16, weight: .bold))
-            if appModel.menuBarPins.isEmpty {
-                Text(L("Nada fixado — a barra mostra automaticamente a janela mais próxima do limite."))
+        Form {
+            Section(L("Barra de menu")) {
+                if appModel.menuBarPins.isEmpty {
+                    Text(L("Nada fixado — a barra mostra automaticamente a janela mais próxima do limite."))
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    ForEach(appModel.menuBarPins, id: \.stored) { pin in
+                        pinRow(pin)
+                    }
+                }
+                // Sem pinos não há o que arrastar — o rodapé não promete reordenação.
+                Text(appModel.menuBarPins.isEmpty
+                     ? L("Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra.")
+                     : L("Arraste para reordenar. Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra."))
                     .font(.caption).foregroundStyle(.secondary)
-            } else {
-                VStack(spacing: 6) {
-                    ForEach(Array(appModel.menuBarPins.enumerated()), id: \.element.stored) { index, pin in
-                        HStack(spacing: 8) {
-                            Text(ProviderPalette.glyph(forId: pin.providerId))
-                                .font(.system(size: 10, weight: .heavy))
-                                .foregroundStyle(ProviderPalette.color(for: pin.providerId))
-                                .padding(.horizontal, 5).padding(.vertical, 2)
-                                .background(RoundedRectangle(cornerRadius: 5)
-                                    .fill(ProviderPalette.color(for: pin.providerId).opacity(0.16)))
-                            Text("\(providerName(pin.providerId)) · \(WindowLabelCatalog.displayLabel(pin.windowLabel))")
-                                .font(.system(size: 12))
-                            Spacer()
-                            Button { move(index, by: -1) } label: { Image(systemName: "chevron.up") }
-                                .buttonStyle(.plain).disabled(index == 0)
-                            Button { move(index, by: 1) } label: { Image(systemName: "chevron.down") }
-                                .buttonStyle(.plain).disabled(index == appModel.menuBarPins.count - 1)
-                            Button { appModel.menuBarPins.remove(at: index) } label: {
-                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+            }
+
+            Section(L("Alertas")) {
+                Toggle(L("Notificações de cota"), isOn: $alertsEnabled)
+                    .toggleStyle(.switch)
+                    .onChange(of: alertsEnabled) { _, newValue in
+                        preferencesStore.alertsEnabled = newValue
+                    }
+                // O `.disabled` vale SÓ para os detalhes. Aplicado na `Section` inteira ele
+                // engloba o próprio toggle mestre acima, e `.disabled(true)` propaga para
+                // os descendentes sem que um filho possa revertê-lo: desligar as
+                // notificações apagaria o switch e não haveria como religá-lo pela UI.
+                // O `Group` mantém cada linha como uma linha independente do `Form`.
+                Group {
+                    VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                        Text(L("Avisar quando o uso cruzar:")).font(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: Theme.Space.sm) {
+                            ForEach(Self.percentOptions, id: \.self) { step in
+                                thresholdChip(step)
                             }
-                            .buttonStyle(.plain)
                         }
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.045)))
+                    }
+                    HStack(spacing: Theme.Space.sm) {
+                        Text(L("Saldo baixo (USD):")).font(.caption).foregroundStyle(.secondary)
+                        TextField("5.00", text: $lowBalanceText)
+                            .textFieldStyle(.roundedBorder)
+                            // Dentro do `Form` o título do TextField vira rótulo visível, e o
+                            // "5.00" aparecia duas vezes ao lado do campo.
+                            .labelsHidden()
+                            .frame(width: 80)
+                            .focused($lowBalanceFocused)
+                            .onSubmit(saveLowBalance)
+                            .onChange(of: lowBalanceFocused) { _, focused in
+                                // Auto-save também ao perder o foco: o botão "Salvar" saiu.
+                                if !focused { saveLowBalance() }
+                            }
+                        if savedFlash {
+                            Text(L("Salvo")).font(.caption).foregroundStyle(.green).transition(.opacity)
+                        }
                     }
                 }
-                .frame(maxWidth: 420)
+                .disabled(!alertsEnabled)
+                .opacity(alertsEnabled ? 1 : 0.5)
             }
-            Text(L("Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra."))
-                .font(.caption).foregroundStyle(.secondary)
 
-            Divider().padding(.vertical, 4)
-
-            Text(L("Alertas")).font(.system(size: 16, weight: .bold))
-            Toggle(L("Notificações de cota"), isOn: $alertsEnabled)
-                .toggleStyle(.switch).controlSize(.small)
-                .onChange(of: alertsEnabled) { newValue in
-                    preferencesStore.alertsEnabled = newValue
-                }
-            VStack(alignment: .leading, spacing: 6) {
-                Text(L("Avisar quando o uso cruzar:")).font(.caption).foregroundStyle(.secondary)
-                HStack(spacing: 14) {
-                    ForEach(Self.percentOptions, id: \.self) { step in
-                        Toggle("\(Int(step * 100))%", isOn: percentBinding(step))
-                            .toggleStyle(.checkbox)
+            Section(L("Atualizações")) {
+                if let update = appModel.availableUpdate {
+                    HStack(spacing: Theme.Space.sm) {
+                        Label(LF("Versão %@ disponível", update.version), systemImage: "arrow.down.circle.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.orange)
+                        Spacer()
+                        Button(L("Abrir no GitHub")) { NSWorkspace.shared.open(update.url) }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
                     }
-                }
-                HStack(spacing: 6) {
-                    Text(L("Saldo baixo (USD):")).font(.caption).foregroundStyle(.secondary)
-                    TextField("5.00", text: $lowBalanceText)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 70)
-                        .onSubmit(saveLowBalance)
-                    Button(L("Salvar"), action: saveLowBalance)
-                        .controlSize(.small)
+                } else {
+                    Text(L("Você está na versão mais recente."))
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
-            .disabled(!alertsEnabled)
-            .opacity(alertsEnabled ? 1 : 0.5)
         }
+        .formStyle(.grouped)
         .onAppear {
             alertsEnabled = preferencesStore.alertsEnabled
             percentSteps = Set(preferencesStore.alertPercentThresholds)
@@ -528,24 +690,84 @@ private struct GeneralPane: View {
         }
     }
 
-    private func percentBinding(_ step: Double) -> Binding<Bool> {
-        Binding(
-            get: { percentSteps.contains(step) },
-            set: { include in
-                if include { percentSteps.insert(step) } else { percentSteps.remove(step) }
-                preferencesStore.alertPercentThresholds = percentSteps.sorted()
+    /// Linha de pino. O reordenamento é por arrastar-e-soltar: as setinhas ▲▼ saíram, e um
+    /// `List` com `onMove` dentro do `Form` exigiria altura fixa — justamente o que este
+    /// redesign proíbe.
+    private func pinRow(_ pin: AppModel.MenuBarPin) -> some View {
+        HStack(spacing: Theme.Space.sm) {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 9))
+                .foregroundStyle(.tertiary)
+            Text(ProviderPalette.glyph(forId: pin.providerId))
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundStyle(ProviderPalette.color(for: pin.providerId))
+                .padding(.horizontal, 5).padding(.vertical, 2)
+                .background(RoundedRectangle(cornerRadius: 5)
+                    .fill(ProviderPalette.color(for: pin.providerId).opacity(0.16)))
+            Text("\(providerName(pin.providerId)) · \(WindowLabelCatalog.displayLabel(pin.windowLabel))")
+                .font(Theme.Font.body)
+            Spacer()
+            Button {
+                appModel.menuBarPins.removeAll { $0.stored == pin.stored }
+            } label: {
+                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
             }
-        )
+            .buttonStyle(.plain)
+            .help(L("Remover da barra de menu"))
+        }
+        .contentShape(Rectangle())
+        .draggable(pin.stored)
+        .dropDestination(for: String.self) { items, _ in
+            guard let dragged = items.first else { return false }
+            return movePin(stored: dragged, toPositionOf: pin)
+        }
     }
 
+    /// Move o pino arrastado para a posição do alvo. A regra vive em `PinReorder`, que é
+    /// coberta por teste — o cálculo do índice aqui dentro já saiu errado uma vez.
+    private func movePin(stored: String, toPositionOf target: AppModel.MenuBarPin) -> Bool {
+        guard let order = PinReorder.reordered(appModel.menuBarPins.map(\.stored),
+                                               dragging: stored,
+                                               onto: target.stored) else { return false }
+        appModel.menuBarPins = order.compactMap { AppModel.MenuBarPin(stored: $0) }
+        return true
+    }
+
+    /// Chip selecionável — substitui a checkbox solta.
+    private func thresholdChip(_ step: Double) -> some View {
+        let selected = percentSteps.contains(step)
+        return Button {
+            if selected { percentSteps.remove(step) } else { percentSteps.insert(step) }
+            preferencesStore.alertPercentThresholds = percentSteps.sorted()
+        } label: {
+            Text("\(Int(step * 100))%")
+                .font(.system(size: 11, weight: .semibold))
+                .monospacedDigit()
+                .padding(.horizontal, Theme.Space.md)
+                .padding(.vertical, Theme.Space.xs)
+                .background(Capsule().fill(selected ? Color.accentColor.opacity(0.25) : Theme.surface()))
+                .overlay(Capsule().strokeBorder(selected ? Color.accentColor.opacity(0.6) : Theme.border()))
+                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Auto-save do saldo baixo. Todo o parsing vive no `FieldCommit`: campo vazio ou
+    /// inalterado não grava nada, e lixo (inclusive notação científica como "1e3") é
+    /// recusado e o campo volta ao valor salvo.
     private func saveLowBalance() {
-        guard let value = Double(lowBalanceText.replacingOccurrences(of: ",", with: ".")), value > 0 else { return }
+        let stored = String(format: "%.2f", preferencesStore.alertLowBalanceThreshold)
+        guard let candidate = FieldCommit.sanitized(lowBalanceText, previous: stored),
+              let value = FieldCommit.lowBalance(candidate) else {
+            lowBalanceText = stored
+            return
+        }
         preferencesStore.alertLowBalanceThreshold = value
-    }
-
-    private func move(_ index: Int, by offset: Int) {
-        let target = index + offset
-        guard appModel.menuBarPins.indices.contains(target) else { return }
-        appModel.menuBarPins.swapAt(index, target)
+        lowBalanceText = String(format: "%.2f", value)
+        withAnimation { savedFlash = true }
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            withAnimation { savedFlash = false }
+        }
     }
 }

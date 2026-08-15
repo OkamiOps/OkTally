@@ -4,12 +4,18 @@ import SwiftUI
 /// Card padrão: substitui as seis cópias do mesmo fundo+borda.
 struct DashboardCard<Content: View>: View {
     var padding: CGFloat = Theme.Space.lg
+    /// Mesma escotilha do `StatTile.fillsHeight`, e pelo mesmo motivo: um
+    /// `.frame(maxHeight: .infinity)` aplicado por fora cresce o frame mas não o
+    /// `.background`, que já foi desenhado no tamanho ideal — o card fica pequeno dentro
+    /// de uma caixa grande. Grades e colunas de bento ligam isto para todos os cards de
+    /// uma linha terminarem na mesma altura, ancorados no topo.
+    var fillsHeight: Bool = false
     @ViewBuilder var content: Content
 
     var body: some View {
         content
             .padding(padding)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: .topLeading)
             .background(RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous).fill(Theme.surface()))
             .overlay(RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous).strokeBorder(Theme.border()))
     }
@@ -24,6 +30,12 @@ struct StatTile: View {
     var caption: String?
     var tint: Color = .accentColor
     var emphasis: Emphasis = .regular
+    /// Faz o tile ocupar toda a altura oferecida, com o conteúdo ancorado no topo. É
+    /// preciso ser opção interna: um `.frame(maxHeight: .infinity)` aplicado por fora
+    /// cresce o frame mas não o `.background`, que já foi desenhado no tamanho ideal —
+    /// o card fica pequeno dentro de uma caixa grande. Colunas de bento usam isto para
+    /// terminar na mesma linha que o card vizinho.
+    var fillsHeight: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
@@ -42,7 +54,7 @@ struct StatTile: View {
             }
         }
         .padding(Theme.Space.lg)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: .topLeading)
         .background {
             let shape = RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
             switch emphasis {
@@ -99,7 +111,7 @@ struct ShareBar: View {
                 Capsule().fill(Color.primary.opacity(0.08))
                 Capsule()
                     .fill(color.gradient)
-                    .frame(width: max(3, geo.size.width * max(0, min(1, fraction))))
+                    .frame(width: max(3, geo.size.width * Theme.clampFraction(fraction)))
             }
         }
         .frame(height: 6)
@@ -118,7 +130,7 @@ struct ProgressRing: View {
         ZStack {
             Circle().stroke(Color.primary.opacity(0.08), lineWidth: lineWidth)
             Circle()
-                .trim(from: 0, to: max(0, min(1, fraction)))
+                .trim(from: 0, to: Theme.clampFraction(fraction))
                 .stroke(color.gradient, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(.easeInOut(duration: 0.3), value: fraction)

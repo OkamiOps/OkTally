@@ -42,6 +42,9 @@ struct PopoverView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        // Cromo, não conteúdo: o vidro fica atrás do título e do chip de update, nunca
+        // atrás de número ou gráfico. `Rectangle` porque a faixa encosta nas bordas.
+        .glassChrome(in: Rectangle())
     }
 
     private var pinnedHint: String {
@@ -61,15 +64,8 @@ struct PopoverView: View {
                 NSApp.activate(ignoringOtherApps: true)
             }
             Spacer()
-            if #available(macOS 14.0, *) {
-                SettingsLink { Text(L("Preferências")) }
-                    .simultaneousGesture(TapGesture().onEnded { NSApp.activate(ignoringOtherApps: true) })
-            } else {
-                Button(L("Preferências")) {
-                    NSApp.activate(ignoringOtherApps: true)
-                    DispatchQueue.main.async { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) }
-                }
-            }
+            SettingsLink { Text(L("Preferências")) }
+                .simultaneousGesture(TapGesture().onEnded { NSApp.activate(ignoringOtherApps: true) })
             Button(L("Encerrar")) { NSApplication.shared.terminate(nil) }
         }
         .buttonStyle(.plain)
@@ -77,6 +73,7 @@ struct PopoverView: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
+        .glassChrome(in: Rectangle())
     }
 }
 
@@ -141,11 +138,43 @@ struct PopoverContentView: View {
         return best
     }
 
+    /// Volume de hoje + 14 dias, antes das cotas. Fix round 1: a versão original (label +
+    /// valor empilhados + gráfico de 28pt) tomava ~100pt e derrubava uma linha inteira de
+    /// cards de cota para fora dos 480pt visíveis sem rolar — reprovada em revisão. Esta
+    /// versão é uma única linha (~30pt): rótulo, valor e o gráfico viram um traço fino de
+    /// fundo em vez de um bloco com altura própria. A cota continua tendo prioridade: se
+    /// mesmo compacta ela ainda espremer os cards, o caminho é remover a faixa, não a
+    /// cota — ver relatório da task.
+    @ViewBuilder private var todayStrip: some View {
+        if let analytics = appModel.aggregatedAnalytics {
+            let totals = TrendSeries.dailyTotals(analytics, lastDays: 14)
+            // Cronológico: hoje é o último elemento.
+            let today = totals.last?.tokens ?? 0
+            if today > 0 {
+                HStack(spacing: Theme.Space.sm) {
+                    Text(L("Hoje"))
+                        .font(Theme.Font.label)
+                        .foregroundStyle(.secondary)
+                    Text(TokenAnalytics.compactTokens(today))
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                    DailyTokensAreaChart(points: totals, color: .accentColor)
+                        .frame(height: 18)
+                }
+                .padding(.horizontal, Theme.Space.md)
+                .padding(.vertical, Theme.Space.xs)
+                .glassChrome()
+                .padding(.horizontal, Theme.Space.md)
+            }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 10) {
             if withData.isEmpty && !problems.isEmpty && problems.allSatisfy({ $0.kind == .notConfigured || $0.kind == nil }) {
                 OnboardingEmptyState()
             }
+            todayStrip
             if let hero {
                 HeroCard(
                     provider: hero.provider,
@@ -155,7 +184,10 @@ struct PopoverContentView: View {
                     onPin: { appModel.togglePin(providerId: hero.provider.id, windowLabel: hero.window.label) }
                 )
             }
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+            // `alignment: .top` no `GridItem`: sem ele o grid centraliza verticalmente os
+            // cards de uma linha e o card mais curto flutua no meio.
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10, alignment: .top),
+                                GridItem(.flexible(), spacing: 10, alignment: .top)],
                       spacing: 10) {
                 ForEach(withData, id: \.provider.id) { entry in
                     ProviderGaugeCard(
@@ -175,6 +207,7 @@ struct PopoverContentView: View {
             }
         }
         .padding(12)
+        .task { await appModel.loadAllAnalyticsIfStale() }
     }
 }
 
@@ -249,76 +282,74 @@ private struct ProviderGaugeCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Text(ProviderPalette.glyph(for: provider))
-                    .font(.system(size: 10, weight: .heavy))
-                    .foregroundStyle(identity)
-                    .padding(.horizontal, 5).padding(.vertical, 2)
-                    .background(RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)))
-                Text(provider.displayName)
-                    .font(.system(size: 12, weight: .semibold))
-                    .lineLimit(1)
-                if let plan = snapshot.planLabel {
-                    PlanBadge(label: plan)
-                }
-                Spacer(minLength: 0)
-            }
-            HStack {
-                Spacer(minLength: 0)
-                if let worst {
-                    RingGauge(remaining: worst.remaining,
-                              size: 44,
-                              color: QuotaPresentation.color(remaining: worst.remaining),
-                              lineWidth: 5) {
-                        Text("\(Int((worst.remaining * 100).rounded()))")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(QuotaPresentation.color(remaining: worst.remaining))
+        DashboardCard(padding: Theme.Space.sm) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text(ProviderPalette.glyph(for: provider))
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(identity)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)))
+                    Text(provider.displayName)
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                    if let plan = snapshot.planLabel {
+                        PlanBadge(label: plan)
                     }
-                } else if let balance = snapshot.quotas.first {
-                    Text(QuotaPresentation.remainingText(balance.shape))
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(.primary)
-                        .frame(height: 44)
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(snapshot.quotas, id: \.label) { window in
-                    QuotaLine(
-                        window: window,
-                        identity: identity,
-                        isPinned: isPinned(window.label),
-                        onPin: { onPin(window.label) }
+                HStack {
+                    Spacer(minLength: 0)
+                    if let worst {
+                        RingGauge(remaining: worst.remaining,
+                                  size: 44,
+                                  color: QuotaPresentation.color(remaining: worst.remaining),
+                                  lineWidth: 5) {
+                            Text("\(Int((worst.remaining * 100).rounded()))")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(QuotaPresentation.color(remaining: worst.remaining))
+                        }
+                    } else if let balance = snapshot.quotas.first {
+                        Text(QuotaPresentation.remainingText(balance.shape))
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(.primary)
+                            .frame(height: 44)
+                    }
+                    Spacer(minLength: 0)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(snapshot.quotas, id: \.label) { window in
+                        QuotaLine(
+                            window: window,
+                            identity: identity,
+                            isPinned: isPinned(window.label),
+                            onPin: { onPin(window.label) }
+                        )
+                    }
+                }
+                if history.count >= 2 {
+                    SparklineView(
+                        points: history.map(\.usedPercent),
+                        color: worst.map { QuotaPresentation.color(remaining: $0.remaining) } ?? identity
                     )
+                    .help(L("Uso nas últimas 24h"))
                 }
-            }
-            if history.count >= 2 {
-                SparklineView(
-                    points: history.map(\.usedPercent),
-                    color: worst.map { QuotaPresentation.color(remaining: $0.remaining) } ?? identity
-                )
-                .help(L("Uso nas últimas 24h"))
-            }
-            if let estimatedCost {
-                Label(LF("Custo est.: $%@ (30d)", Self.costText(estimatedCost)), systemImage: "dollarsign.circle")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-                    .help(L("Estimativa: tokens locais × tabela de preços do OpenRouter"))
-            }
-            if let staleness = Self.stalenessText(fetchedAt: snapshot.fetchedAt) {
-                Label(staleness, systemImage: "clock")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-                    .help(L("Última atualização bem-sucedida — a busca mais recente falhou ou ainda não rodou"))
+                if let estimatedCost {
+                    Label(LF("Custo est.: $%@ (30d)", Self.costText(estimatedCost)), systemImage: "dollarsign.circle")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .help(L("Estimativa: tokens locais × tabela de preços do OpenRouter"))
+                }
+                if let staleness = Self.stalenessText(fetchedAt: snapshot.fetchedAt) {
+                    Label(staleness, systemImage: "clock")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .help(L("Última atualização bem-sucedida — a busca mais recente falhou ou ainda não rodou"))
+                }
             }
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.045)))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.07)))
     }
 
     static func costText(_ value: Decimal) -> String {
@@ -481,27 +512,18 @@ private struct OnboardingEmptyState: View {
     }
 }
 
-/// Botão reutilizável que abre a janela de Ajustes (SettingsLink no macOS 14+, seletor
-/// legado antes disso), executando `beforeOpen` primeiro — usado para deep-link do pane.
+/// Botão reutilizável que abre a janela de Ajustes via `SettingsLink`, executando
+/// `beforeOpen` primeiro — usado para deep-link do pane.
 private struct OpenSettingsButton<L: View>: View {
     let beforeOpen: () -> Void
     @ViewBuilder let label: () -> L
 
     var body: some View {
-        if #available(macOS 14.0, *) {
-            SettingsLink { label() }
-                .buttonStyle(.plain)
-                .simultaneousGesture(TapGesture().onEnded {
-                    beforeOpen()
-                    NSApp.activate(ignoringOtherApps: true)
-                })
-        } else {
-            Button {
+        SettingsLink { label() }
+            .buttonStyle(.plain)
+            .simultaneousGesture(TapGesture().onEnded {
                 beforeOpen()
                 NSApp.activate(ignoringOtherApps: true)
-                DispatchQueue.main.async { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) }
-            } label: { label() }
-                .buttonStyle(.plain)
-        }
+            })
     }
 }

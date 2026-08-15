@@ -76,19 +76,11 @@ struct MainWindowView: View {
     }
 
     private func sidebarRow(_ provider: UsageProvider, snapshot: ProviderSnapshot) -> some View {
-        let identity = ProviderPalette.color(for: provider.id)
-        return HStack(spacing: 8) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)).frame(width: 20, height: 20)
-                Text(ProviderPalette.glyph(for: provider))
-                    .font(.system(size: 10, weight: .heavy)).foregroundStyle(identity)
-            }
-            Text(provider.displayName).font(.system(size: 12))
-            Spacer()
-            Circle()
-                .fill(QuotaPresentation.providerColor(snapshot))
-                .frame(width: 7, height: 7)
-        }
+        ProviderSidebarRow(
+            providerId: provider.id,
+            name: provider.displayName,
+            statusColor: QuotaPresentation.providerColor(snapshot)
+        )
     }
 }
 
@@ -124,7 +116,13 @@ struct OverviewScreen: View {
                     .foregroundStyle(.secondary)
             } else {
                 kpiRow
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 14)], alignment: .leading, spacing: 14) {
+                // `LazyVGrid` centraliza os itens de uma linha verticalmente — o
+                // `alignment:` do próprio grid só governa o eixo horizontal. Quem ancora
+                // no topo é o `alignment:` do `GridItem`, que vale para a célula. Os cards
+                // ficam com a altura do próprio conteúdo: esticar todos até o mais alto
+                // encheria de vazio o card de quem só tem saldo (OpenRouter), o mesmo
+                // "enchimento" que o dono reprovou no herói da aba Análise.
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 14, alignment: .top)], alignment: .leading, spacing: 14) {
                     ForEach(entries, id: \.provider.id) { entry in
                         ProviderOverviewCard(
                             provider: entry.provider,
@@ -140,54 +138,31 @@ struct OverviewScreen: View {
     }
 
     private var kpiRow: some View {
-        HStack(spacing: 14) {
-            KPICard(title: L("Provedores"), value: "\(entries.count)", caption: L("com dados"), color: .accentColor)
+        HStack(spacing: Theme.Space.md) {
+            StatTile(title: L("Provedores"), value: "\(entries.count)", caption: L("com dados"))
+                .frame(width: 150)
             if let worst = worstOverall {
-                KPICard(
+                StatTile(
                     title: L("Gargalo"),
                     value: "\(Int((worst.remaining * 100).rounded()))%",
                     caption: "\(worst.provider.displayName) · \(WindowLabelCatalog.displayLabel(worst.window.label))",
-                    color: QuotaPresentation.color(remaining: worst.remaining)
+                    tint: QuotaPresentation.color(remaining: worst.remaining),
+                    emphasis: .hero
                 )
+                // Sem teto o herói esticava por toda a janela (~1080pt) com o número no
+                // primeiro terço. Ele continua o maior da linha, agora sem faixa vazia.
+                .frame(maxWidth: 300)
             }
             if let cost = totalEstimatedCost {
-                KPICard(
+                StatTile(
                     title: L("Custo estimado"),
                     value: "$" + String(format: "%.2f", (cost as NSDecimalNumber).doubleValue),
-                    caption: L("últimos 30 dias"),
-                    color: .secondary
+                    caption: L("últimos 30 dias")
                 )
+                .frame(width: 170)
             }
             Spacer(minLength: 0)
         }
-    }
-}
-
-private struct KPICard: View {
-    let title: String
-    let value: String
-    let caption: String
-    let color: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title.uppercased())
-                .font(.system(size: 9, weight: .semibold))
-                .tracking(0.5)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(color)
-            Text(caption)
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-        }
-        .padding(14)
-        .frame(minWidth: 130, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.045)))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.primary.opacity(0.07)))
     }
 }
 
@@ -212,47 +187,45 @@ private struct ProviderOverviewCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Text(ProviderPalette.glyph(for: provider))
-                    .font(.system(size: 10, weight: .heavy))
-                    .foregroundStyle(identity)
-                    .padding(.horizontal, 5).padding(.vertical, 2)
-                    .background(RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)))
-                Text(provider.displayName).font(.system(size: 13, weight: .semibold))
-                if let plan = snapshot.planLabel {
-                    PlanBadge(label: plan)
+        DashboardCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    Text(ProviderPalette.glyph(for: provider))
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(identity)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)))
+                    Text(provider.displayName).font(.system(size: 13, weight: .semibold))
+                    if let plan = snapshot.planLabel {
+                        PlanBadge(label: plan)
+                    }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
-            }
-            if let worst {
-                heroBlock(worst.window, remaining: worst.remaining)
-            } else if let balance = snapshot.quotas.first {
-                Text(QuotaPresentation.remainingText(balance.shape))
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-            }
-            ForEach(others, id: \.label) { window in
-                compactRow(window)
-            }
-            if history.count >= 2 {
-                SparklineView(
-                    points: history.map(\.usedPercent),
-                    color: worst.map { QuotaPresentation.color(remaining: $0.remaining) } ?? identity
-                )
-                .help(L("Uso nos últimos 7 dias"))
-            }
-            if let estimatedCost {
-                Label(LF("Custo est.: $%@ (30d)", String(format: "%.2f", (estimatedCost as NSDecimalNumber).doubleValue)),
-                      systemImage: "dollarsign.circle")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
+                if let worst {
+                    heroBlock(worst.window, remaining: worst.remaining)
+                } else if let balance = snapshot.quotas.first {
+                    Text(QuotaPresentation.remainingText(balance.shape))
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                }
+                ForEach(others, id: \.label) { window in
+                    compactRow(window)
+                }
+                if history.count >= 2 {
+                    SparklineView(
+                        points: history.map(\.usedPercent),
+                        color: worst.map { QuotaPresentation.color(remaining: $0.remaining) } ?? identity
+                    )
+                    .help(L("Uso nos últimos 7 dias"))
+                }
+                if let estimatedCost {
+                    Label(LF("Custo est.: $%@ (30d)", String(format: "%.2f", (estimatedCost as NSDecimalNumber).doubleValue)),
+                          systemImage: "dollarsign.circle")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.045)))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.primary.opacity(0.07)))
     }
 
     private func heroBlock(_ window: QuotaWindow, remaining: Double) -> some View {
@@ -300,7 +273,10 @@ private struct ProviderOverviewCard: View {
 
 // MARK: - Detalhe por provedor
 
-private struct ProviderDetailScreen: View {
+/// Internal (não `private`) só para o `ReadmeAssetRenderer` conseguir fotografar a tela —
+/// era a única das quatro sem PNG, e justamente a que carregava a inconsistência de
+/// cromo com a aba Análise.
+struct ProviderDetailScreen: View {
     @ObservedObject var appModel: AppModel
     let provider: UsageProvider
     let snapshot: ProviderSnapshot
@@ -339,16 +315,15 @@ private struct ProviderDetailScreen: View {
             }
             let history = appModel.history(providerId: provider.id, hours: 7 * 24)
             if history.count >= 2 {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(L("USO — 7 DIAS"))
-                        .font(.system(size: 9, weight: .semibold)).tracking(0.5)
-                        .foregroundStyle(.secondary)
-                    SparklineView(points: history.map(\.usedPercent), color: identity)
-                        .frame(height: 48)
+                DashboardCard {
+                    VStack(alignment: .leading, spacing: 6) {
+                        SectionHeader(L("Uso — 7 dias"))
+                        // Sem `.frame(height:)`: a `SparklineView` já fixa 20pt por
+                        // dentro, e os 48 viravam 28pt de vazio — além de divergir do
+                        // card da Visão geral, que não passa frame nenhum.
+                        SparklineView(points: history.map(\.usedPercent), color: identity)
+                    }
                 }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.045)))
             }
             if let cost = appModel.estimatedCostByProvider[provider.id] {
                 Label(LF("Custo estimado: $%@ nos últimos 30 dias", String(format: "%.2f", (cost as NSDecimalNumber).doubleValue)),
@@ -374,25 +349,25 @@ private struct ProviderDetailScreen: View {
     private func windowRow(_ window: QuotaWindow) -> some View {
         let remaining = QuotaPresentation.remainingFraction(window.shape)
         let danger = QuotaPresentation.color(remaining: remaining)
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(WindowLabelCatalog.displayLabel(window.label))
-                    .font(.system(size: 12, weight: .medium))
-                Spacer()
-                if let reset = QuotaPresentation.resetText(window.shape) {
-                    Text(reset).font(.system(size: 10)).foregroundStyle(.tertiary)
+        return DashboardCard(padding: Theme.Space.md) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(WindowLabelCatalog.displayLabel(window.label))
+                        .font(.system(size: 12, weight: .medium))
+                    Spacer()
+                    if let reset = QuotaPresentation.resetText(window.shape) {
+                        Text(reset).font(.system(size: 10)).foregroundStyle(.tertiary)
+                    }
+                    Text(QuotaPresentation.remainingText(window.shape))
+                        .font(.system(size: 12, weight: .bold))
+                        .monospacedDigit()
+                        .foregroundStyle(remaining != nil ? danger : .primary)
                 }
-                Text(QuotaPresentation.remainingText(window.shape))
-                    .font(.system(size: 12, weight: .bold))
-                    .monospacedDigit()
-                    .foregroundStyle(remaining != nil ? danger : .primary)
-            }
-            if let remaining {
-                QuotaCapsuleBar(remaining: remaining, color: danger, height: 8)
+                if let remaining {
+                    QuotaCapsuleBar(remaining: remaining, color: danger, height: 8)
+                }
             }
         }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.045)))
         .help(window.shape.isEstimated ? L("Estimativa local, não confirmada pelo provedor") : "")
     }
 
@@ -417,7 +392,7 @@ struct QuotaCapsuleBar: View {
                 Capsule().fill(Color.primary.opacity(0.08))
                 Capsule()
                     .fill(color.gradient)
-                    .frame(width: max(height, geo.size.width * max(0, min(1, remaining))))
+                    .frame(width: max(height, geo.size.width * Theme.clampFraction(remaining)))
                     .animation(.easeInOut(duration: 0.3), value: remaining)
             }
         }

@@ -24,6 +24,7 @@ final class ReadmeAssetRenderer: XCTestCase {
 
         let model = try await demoModel()
         try write(view: PopoverContentView(appModel: model)
+                    .environment(\.isStaticRender, true)
                     .frame(width: 360)
                     .background(Color(nsColor: .windowBackgroundColor)),
                   to: "popover.png")
@@ -38,11 +39,33 @@ final class ReadmeAssetRenderer: XCTestCase {
                     .frame(width: 760)
                     .background(Color(nsColor: .windowBackgroundColor)),
                   to: "overview.png")
+        // `isStaticRender` troca só os controles do AppKit por um desenho equivalente:
+        // o `ImageRenderer` não sabe desenhá-los e o PNG sairia com um retângulo amarelo
+        // no lugar do seletor de janela. O app não liga essa flag.
         try write(view: AnalyticsDashboardView(appModel: model)
+                    .environment(\.isStaticRender, true)
                     .padding(24)
                     .frame(width: 860)
                     .background(Color(nsColor: .windowBackgroundColor)),
                   to: "analytics.png")
+        // Detalhe do provedor: era a única das quatro telas sem PNG — e justamente a que
+        // carregava a inconsistência de cromo com a aba Análise. `ProviderDetailScreen`
+        // deixou de ser `private` só para isto.
+        if let claude = model.orderedProviders.first(where: { $0.id == "claude" }),
+           let snapshot = model.snapshotsByProvider["claude"] {
+            try write(view: ProviderDetailScreen(appModel: model, provider: claude, snapshot: snapshot)
+                        .environment(\.isStaticRender, true)
+                        .padding(24)
+                        .frame(width: 760)
+                        .background(Color(nsColor: .windowBackgroundColor)),
+                      to: "provider-detail.png")
+        } else {
+            XCTFail("demo model sem snapshot do Claude para o PNG de detalhe")
+        }
+        // O `ProviderPaneScaffold` ficou de fora de propósito: o `ImageRenderer` não
+        // desenha `Form` agrupado (o mesmo motivo pelo qual o pane Geral também não é
+        // renderizado aqui) e o PNG saía inteiramente em branco. Os painéis de provider
+        // se conferem abrindo o app.
     }
 
     /// Deterministic pseudo-random daily buckets (LCG) so re-rendering doesn't churn
