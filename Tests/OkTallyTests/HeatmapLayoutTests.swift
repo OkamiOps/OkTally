@@ -36,4 +36,22 @@ final class HeatmapLayoutTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(metrics(0).weeks, 1)
         XCTAssertGreaterThanOrEqual(metrics(-50).weeks, 1)
     }
+
+    // Fix round 2: os Layouts customizados do heatmap passam `proposal.width` cru para
+    // `metrics`, e `ProposedViewSize` pode legitimamente ser `.infinity` (medições de
+    // ScrollView/List/.fixedSize()/NavigationSplitView) — `Int(CGFloat.infinity)` trapa
+    // (fatal error) sem essa proteção.
+    func test_infiniteWidth_doesNotCrashAndYieldsDegenerateFallback() {
+        let m = metrics(.infinity)
+        XCTAssertGreaterThanOrEqual(m.weeks, 1)
+        XCTAssertGreaterThanOrEqual(m.cell, 8)
+        XCTAssertLessThanOrEqual(m.cell, 16)
+    }
+
+    func test_nanWidth_doesNotCrashAndYieldsDegenerateFallback() {
+        let m = metrics(.nan)
+        XCTAssertGreaterThanOrEqual(m.weeks, 1)
+        XCTAssertGreaterThanOrEqual(m.cell, 8)
+        XCTAssertLessThanOrEqual(m.cell, 16)
+    }
 }

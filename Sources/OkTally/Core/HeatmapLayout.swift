@@ -18,7 +18,16 @@ enum HeatmapLayout {
         maxCell: CGFloat = 16,
         maxWeeks: Int = 53
     ) -> HeatmapMetrics {
-        let width = max(0, availableWidth)
+        // `availableWidth` chega crua de quem chama (os `Layout`s do heatmap repassam
+        // `proposal.width` direto) e um `ProposedViewSize.width` pode legitimamente ser
+        // `.infinity` — é assim que SwiftUI pede "tamanho ideal" em medições de
+        // ScrollView/List/Form, `.fixedSize()` e negociação de coluna de
+        // NavigationSplitView. `Int(CGFloat.infinity)` (usado abaixo) trapa (fatal error),
+        // então qualquer largura não finita (`.infinity` ou `.nan`) cai no mesmo fallback
+        // degenerado já usado para largura negativa/zero — 1 semana, célula mínima — em
+        // vez de tentar adivinhar um "tamanho ideal" que enganaria a negociação de tamanho
+        // do container pai.
+        let width = availableWidth.isFinite ? max(0, availableWidth) : 0
         // Quantas colunas cabem com a célula no menor tamanho legível.
         let widest = Int(((width + gap) / (minCell + gap)).rounded(.down))
         let weeks = max(1, min(maxWeeks, widest))
