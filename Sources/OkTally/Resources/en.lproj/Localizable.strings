@@ -217,3 +217,10 @@
 "Participação" = "Share";
 "Cotas mais apertadas" = "Tightest quotas";
 "Sem dados no período" = "No data in this period";
+
+/* Task 12 — scaffold dos painéis de provider */
+"Conexão" = "Connection";
+"Estatísticas de uso vêm da API da conta." = "Usage statistics come from the account API.";
+"O uso de cota vem da conta; o volume em tokens é estimado dos transcritos locais." = "Quota usage comes from the account; token volume is estimated from local transcripts.";
+"A chave fica no Keychain desta máquina, nunca em disco." = "The key stays in this machine's Keychain, never on disk.";
+"O login usa código de dispositivo: o navegador abre e você digita o código mostrado aqui." = "Sign-in uses a device code: the browser opens and you type the code shown here.";

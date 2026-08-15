@@ -47,6 +47,10 @@ final class ReadmeAssetRenderer: XCTestCase {
                     .frame(width: 860)
                     .background(Color(nsColor: .windowBackgroundColor)),
                   to: "analytics.png")
+        // O `ProviderPaneScaffold` ficou de fora de propósito: o `ImageRenderer` não
+        // desenha `Form` agrupado (o mesmo motivo pelo qual o pane Geral também não é
+        // renderizado aqui) e o PNG saía inteiramente em branco. Os painéis de provider
+        // se conferem abrindo o app.
     }
 
     /// Deterministic pseudo-random daily buckets (LCG) so re-rendering doesn't churn

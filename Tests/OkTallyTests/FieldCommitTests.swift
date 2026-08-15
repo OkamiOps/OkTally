@@ -31,6 +31,17 @@ final class FieldCommitTests: XCTestCase {
         XCTAssertNil(FieldCommit.lowBalance(""))
     }
 
+    func test_amountAcceptsZeroButRejectsNegativesAndGarbage() {
+        // Os créditos "usados" do MiMo começam em zero — recusar 0 como o saldo baixo faz
+        // deixaria o campo impossível de zerar.
+        XCTAssertEqual(FieldCommit.amount("0"), 0)
+        XCTAssertEqual(FieldCommit.amount(" 40,5 "), 40.5)
+        XCTAssertNil(FieldCommit.amount("-1"))
+        XCTAssertNil(FieldCommit.amount("abc"))
+        XCTAssertNil(FieldCommit.amount(""))
+        XCTAssertNil(FieldCommit.amount("1e3"))
+    }
+
     func test_lowBalanceRejectsScientificNotation() {
         // "1e3" vira 1000.0 silenciosamente com Double(_:) puro — um limiar de alerta
         // errado, digitado ou colado por engano, sem nenhum sinal de erro.
