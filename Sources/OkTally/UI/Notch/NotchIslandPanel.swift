@@ -62,6 +62,10 @@ final class NotchIslandPanel {
     /// `nil` = não há arrasto em curso.
     private var dragAnchorOffset: CGFloat?
 
+    /// Quem garante que nenhum `setFrame` aconteça de dentro de um passe de layout do
+    /// AppKit — a causa do crash de 2026-08-15. Ver `NotchLayoutGate`.
+    private var gate = NotchLayoutGate()
+
     /// Respiro dos LADOS e de BAIXO da pílula, dentro da janela, para a sombra caber.
     ///
     /// `fittingSize` mede o LAYOUT e a sombra não faz parte dele: sem esta margem a
@@ -116,8 +120,17 @@ final class NotchIslandPanel {
             )
         }
         self.screen = screen
-        if panel == nil { build() }
-        layout()
+        let isNewPanel = panel == nil
+        if isNewPanel { build() }
+        if isNewPanel {
+            // Janela recém-criada: ela ainda não está na tela, logo não existe passe de
+            // constraints em curso para ela e posicionar AGORA é seguro. É também o
+            // único jeito de ela não aparecer um giro inteiro no canto de baixo da tela,
+            // que é onde uma `NSPanel` de `contentRect: .zero` nasce.
+            applyLayout(animated: false)
+        } else {
+            scheduleLayout()
+        }
         panel?.orderFrontRegardless()
     }
 
@@ -140,6 +153,7 @@ final class NotchIslandPanel {
         host = nil
         screen = nil
         dragAnchorOffset = nil
+        gate.reset()
         state.isExpanded = false
     }
 
@@ -162,7 +176,43 @@ final class NotchIslandPanel {
             backing: .buffered,
             defer: false
         )
-        panel.contentView = host
+        // ## A linha que fecha o crash
+        //
+        // O `NSHostingView` NÃO é o `contentView`: ele mora dentro de uma `NSView` burra
+        // que é. Parece um detalhe de encanamento e é a correção inteira.
+        //
+        // Enquanto ele é o `contentView`, o `updateConstraints` dele roda
+        // `updateWindowContentSizeExtremaIfNecessary` — que existe para empurrar
+        // tamanho mínimo/máximo de conteúdo para a JANELA e, para descobrir esses
+        // números, roda uma passada INTEIRA do view graph. Nessa passada o SwiftUI
+        // chama `updateTransform`, descobre que a transformada da view envelheceu
+        // (envelheceu porque a janela mudou de tamanho e de lugar — a ilha faz isso a
+        // cada hover) e pede outra atualização: `graphDidChange` → `requestUpdate` →
+        // `setNeedsUpdateConstraints:`. Ou seja, a janela é remarcada como precisando de
+        // passe de constraints DE DENTRO do próprio passe. O AppKit conta essas voltas e
+        // desiste levantando `NSException` em `_postWindowNeedsUpdateConstraints`, que
+        // num app de barra de menu chega em `+[NSApplication _crashOnException:]` e mata
+        // o processo. É o crash de 2026-08-15, quadros 3 a 17 do backtrace.
+        //
+        // Repare que o laço é todo entre AppKit e SwiftUI: ele não precisa que o NOSSO
+        // `setFrame` esteja rodando naquele instante, só que a janela tenha se mexido.
+        // Por isso adiar o `setFrame` (ver `scheduleLayout`) reduz o problema mas não o
+        // elimina — medido em app construído, com a ilha ainda morrendo no hover.
+        //
+        // Aninhado, `updateWindowContentSizeExtremaIfNecessary` sai cedo (não há janela
+        // para dimensionar a partir dele: `contentMinSize` fica em zero — medido), o
+        // `updateConstraints` deixa de rodar o view graph, e o laço não tem por onde
+        // começar. O que perdemos é o dimensionamento automático da janela pelo conteúdo,
+        // que nunca usamos: quem dimensiona esta janela é `applyLayout`, à mão, por
+        // `NotchIslandGeometry`.
+        //
+        // `.intrinsicContentSize` fica porque é dele que sai o `fittingSize` que
+        // `applyLayout` mede; sem ele o `fittingSize` desaba para (0, 0) — medido — e a
+        // ilha nunca apareceria.
+        host.sizingOptions = [.intrinsicContentSize]
+        let contentView = NSView()
+        contentView.addSubview(host)
+        panel.contentView = contentView
         panel.isOpaque = false
         panel.backgroundColor = .clear
         // A sombra é desenhada pelo SwiftUI, seguindo a curva da pílula. A do AppKit
@@ -177,6 +227,34 @@ final class NotchIslandPanel {
         self.host = host
     }
 
+    /// Pede um layout para o PRÓXIMO giro do runloop.
+    ///
+    /// Este é o único caminho que hover, arrasto e ímã podem usar, e o "próximo giro" é a
+    /// correção inteira do crash: um callback do SwiftUI pode estar rodando DENTRO do
+    /// passe de constraints da janela (o hover é reavaliado quando a geometria muda
+    /// embaixo de um cursor parado — e ela muda porque somos nós que a mudamos), e mexer
+    /// no frame lá de dentro faz o AppKit levantar exceção. Fora do passe, o mesmo
+    /// `setFrame` é banal. Ver `NotchLayoutGate`.
+    private func scheduleLayout(animated: Bool = false) {
+        guard gate.request(animated: animated) else { return }
+        enqueueLayoutTurn()
+    }
+
+    /// O giro em si. Uma `Task` no `MainActor` é drenada pela fila principal ENTRE as
+    /// chamadas do runloop — nunca de dentro do commit do `CATransaction` onde o passe de
+    /// constraints mora.
+    private func enqueueLayoutTurn() {
+        Task { [weak self] in
+            self?.runScheduledLayout()
+        }
+    }
+
+    private func runScheduledLayout() {
+        guard let animated = gate.begin() else { return }
+        applyLayout(animated: animated)
+        if gate.end() { enqueueLayoutTurn() }
+    }
+
     /// Reconcilia tamanho e posição da janela com o que o conteúdo pede AGORA.
     ///
     /// `fittingSize` é a medida do SwiftUI já resolvida — nenhuma altura é cravada aqui,
@@ -184,10 +262,14 @@ final class NotchIslandPanel {
     /// vai parar não mora aqui: é `NotchIslandGeometry`, que é pura e testada, porque
     /// posição de janela é a única parte deste painel que PNG nenhum revela.
     ///
+    /// NUNCA chame isto direto de um callback do SwiftUI — é o que causava o crash. O
+    /// caminho é `scheduleLayout`. A única exceção é a janela recém-criada, que ainda não
+    /// está na tela e portanto não tem passe de constraints em curso.
+    ///
     /// - Parameter animated: só o ímã do centro anima. Todo o resto (expandir, encolher,
     ///   reancorar) tem de ser instantâneo: animar a JANELA junto com a mola do conteúdo
     ///   daria duas velocidades para a mesma transição.
-    private func layout(animated: Bool = false) {
+    private func applyLayout(animated: Bool) {
         guard let panel, let host, let screen else { return }
         host.layoutSubtreeIfNeeded()
         let measured = host.fittingSize
@@ -205,6 +287,16 @@ final class NotchIslandPanel {
             bottomMargin: Self.shadowMargin,
             fraction: fraction
         )
+        // Nada mudou → não mexe. Não é micro-otimização: um `setFrame` redundante
+        // envelhece a transformada do `NSHostingView`, que pede outro passe de
+        // constraints, que mede de novo, que chega aqui de novo. É esse laço que o AppKit
+        // conta e no qual ele desiste levantando exceção — a guarda o corta na origem.
+        // A tolerância existe porque o AppKit devolve o frame já alinhado ao backing
+        // store: comparar por igualdade exata faria a guarda nunca valer.
+        guard !Self.isSameFrame(frame, panel.frame) else {
+            syncHostFrame(size: frame.size)
+            return
+        }
         if animated {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.18
@@ -213,7 +305,27 @@ final class NotchIslandPanel {
         } else {
             panel.setFrame(frame, display: true)
         }
-        host.frame = NSRect(origin: .zero, size: frame.size)
+        syncHostFrame(size: frame.size)
+    }
+
+    /// O `contentView` acompanha o tamanho da janela — e só quando ele mudou, pelo mesmo
+    /// motivo da guarda acima.
+    private func syncHostFrame(size: CGSize) {
+        guard let host else { return }
+        let target = NSRect(origin: .zero, size: size)
+        guard !Self.isSameFrame(target, host.frame) else { return }
+        host.frame = target
+    }
+
+    /// Igualdade com folga sub-ponto: absorve o ruído de ponto flutuante e o alinhamento
+    /// do backing store sem engolir movimento de verdade (um arrasto move pontos, não
+    /// décimos).
+    private static func isSameFrame(_ a: CGRect, _ b: CGRect) -> Bool {
+        let epsilon: CGFloat = 0.1
+        return abs(a.origin.x - b.origin.x) < epsilon
+            && abs(a.origin.y - b.origin.y) < epsilon
+            && abs(a.size.width - b.size.width) < epsilon
+            && abs(a.size.height - b.size.height) < epsilon
     }
 
     // MARK: - Hover e clique
@@ -234,7 +346,7 @@ final class NotchIslandPanel {
             withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) {
                 state.isExpanded = true
             }
-            layout()
+            scheduleLayout()
             // Segunda medição um giro depois. `layoutSubtreeIfNeeded` costuma bastar para
             // esvaziar a atualização pendente do SwiftUI, mas não é contratual: se ela
             // ficar para o próximo ciclo, a primeira medida ainda é a da pílula fechada e
@@ -242,7 +354,7 @@ final class NotchIslandPanel {
             resizeTask = Task { [weak self] in
                 try? await Task.sleep(for: .milliseconds(50))
                 guard !Task.isCancelled else { return }
-                self?.layout()
+                self?.scheduleLayout()
             }
         } else {
             collapseTask = Task { [weak self] in
@@ -254,7 +366,7 @@ final class NotchIslandPanel {
                 self.resizeTask = Task { [weak self] in
                     try? await Task.sleep(for: Self.shrinkDelay)
                     guard !Task.isCancelled else { return }
-                    self?.layout()
+                    self?.scheduleLayout()
                 }
             }
         }
@@ -288,7 +400,7 @@ final class NotchIslandPanel {
             forCenterX: mouseX + (dragAnchorOffset ?? 0),
             screenFrame: screen.frame
         )
-        layout()
+        scheduleLayout()
     }
 
     /// Soltou. O ímã do centro decide se a posição escolhida vale como está, e só então
@@ -298,14 +410,14 @@ final class NotchIslandPanel {
         guard let screen else { return }
         fraction = NotchIslandGeometry.snappedFraction(fraction, screenFrame: screen.frame)
         persistFraction()
-        layout(animated: true)
+        scheduleLayout(animated: true)
     }
 
     /// Duplo clique: de volta ao meio da tela.
     private func recenter() {
         fraction = NotchIslandGeometry.centerFraction
         persistFraction()
-        layout(animated: true)
+        scheduleLayout(animated: true)
     }
 
     private func persistFraction() {
