@@ -45,7 +45,7 @@ OkTally is a **native macOS menu bar app** that keeps every one of those quotas 
 | | Feature | What it does |
 | :-: | --- | --- |
 | 📌 | **One number in the bar** | Pin any number of quota windows; the menu bar shows the brand symbol plus the *tightest* one, colored only when it is running out |
-| 🕳️ | **Notch panel** | On the MacBook's built-in display, a black panel hugging the notch: minimal ticks when idle, full quota rows on hover, the popover on click |
+| 🕳️ | **Notch panel** | On the MacBook's built-in display, a black panel hugging the notch: one quota of your choosing on each wing when idle, full quota rows on hover, the popover on click |
 | 🎯 | **Bottleneck-first popover** | A hero gauge spotlights the window closest to running out, with reset countdown; two-column provider cards with ring gauges below |
 | 📈 | **24h sparklines** | Every provider card carries a mini trend of the last 24 hours, straight from the local history database |
 | 🪟 | **Overview window** | Sidebar navigation, KPI row (providers · bottleneck · estimated cost), capsule bars per window, 7-day trends per provider |

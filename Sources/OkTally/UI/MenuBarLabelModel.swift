@@ -87,7 +87,28 @@ enum MenuBarLabelModel {
         }
     }
 
-    private static func segment(providerId: String, shape: QuotaShape) -> MenuBarSegment {
+    /// O segmento de UM slot: a janela escolhida quando ela existe, e a mais crítica
+    /// quando o slot é automático — ou quando a escolha se refere a uma janela que sumiu
+    /// (provedor deslogado). A queda é silenciosa de propósito; ver `QuotaSlotResolver`.
+    static func segment(
+        slot: QuotaSlot,
+        pins: [AppModel.MenuBarPin],
+        snapshots: [String: ProviderSnapshot],
+        hasAnyError: Bool
+    ) -> MenuBarSegment {
+        if case .window(let providerId, let windowLabel) = slot,
+           let snapshot = snapshots[providerId],
+           let window = snapshot.quotas.first(where: { $0.label == windowLabel }) {
+            return segment(providerId: providerId, shape: window.shape)
+        }
+        return criticalSegment(pins: pins, snapshots: snapshots, hasAnyError: hasAnyError)
+    }
+
+    static func segment(for candidate: Candidate) -> MenuBarSegment {
+        segment(providerId: candidate.providerId, shape: candidate.window.shape)
+    }
+
+    static func segment(providerId: String, shape: QuotaShape) -> MenuBarSegment {
         let glyph = ProviderPalette.glyph(forId: providerId)
         if let remaining = QuotaPresentation.remainingFraction(shape) {
             return MenuBarSegment(glyph: glyph, providerId: providerId,

@@ -125,7 +125,7 @@ struct OkTallyApp: App {
         MenuBarExtra {
             PopoverView(appModel: appModel)
         } label: {
-            Image(nsImage: MenuBarLabelRenderer.image(for: appModel.menuBarSegment))
+            MenuBarExtraLabel(appModel: appModel)
         }
         .menuBarExtraStyle(.window)
 
@@ -146,6 +146,22 @@ struct OkTallyApp: App {
                 onImportClaudeLegacy: { claudeProvider.importLegacyCredentialsIfAvailable() },
                 onNotchPreferenceChanged: { notchController.refresh() }
             )
+        }
+    }
+
+    /// O rótulo da barra como VIEW, e não como `Image` solta no closure.
+    ///
+    /// É o que dá acesso ao `colorScheme` do ambiente — a barra de menu do macOS segue a
+    /// aparência do sistema, e o rótulo é um bitmap não-template que ninguém adapta por
+    /// nós (ver `MenuBarInk`). Como o ambiente muda quando o sistema troca de tema, a
+    /// imagem é remontada na hora, sem reiniciar o app.
+    private struct MenuBarExtraLabel: View {
+        @ObservedObject var appModel: AppModel
+        @Environment(\.colorScheme) private var colorScheme
+
+        var body: some View {
+            Image(nsImage: MenuBarLabelRenderer.image(for: appModel.menuBarSegment,
+                                                      onDarkBar: colorScheme == .dark))
         }
     }
 

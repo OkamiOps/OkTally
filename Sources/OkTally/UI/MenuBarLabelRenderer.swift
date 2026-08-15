@@ -6,9 +6,11 @@ import AppKit
 /// qualquer `foregroundStyle` — a única forma de cor sobreviver na barra é uma `NSImage`
 /// NÃO-template. Aqui o par símbolo + número vira essa imagem.
 enum MenuBarLabelRenderer {
+    /// A barra do sistema é escura? A imagem é montada FORA do contexto de aparência da
+    /// barra, então isto tem que ser dito, nunca herdado.
     @MainActor
-    static func image(for segment: MenuBarSegment) -> NSImage {
-        let renderer = ImageRenderer(content: MenuBarLabelView(segment: segment))
+    static func image(for segment: MenuBarSegment, onDarkBar: Bool) -> NSImage {
+        let renderer = ImageRenderer(content: MenuBarLabelView(segment: segment, onDarkBar: onDarkBar))
         renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
         guard let image = renderer.nsImage else { return NSImage() }
         image.isTemplate = false
@@ -33,12 +35,17 @@ enum MenuBarLabelRenderer {
 /// notch e no popover.
 struct MenuBarLabelView: View {
     let segment: MenuBarSegment
+    /// Escuro é o padrão porque é onde o dono vive, mas quem desenha na barra de verdade
+    /// (`OkTallyApp`) sempre passa o valor observado — ver `MenuBarInk`.
+    var onDarkBar: Bool = true
+
+    private var ink: Color { MenuBarInk.color(onDarkBar: onDarkBar) }
 
     var body: some View {
         HStack(spacing: 4) {
             symbol
             Text(segment.text)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(color(for: segment.danger))
         }
@@ -56,18 +63,13 @@ struct MenuBarLabelView: View {
                 .renderingMode(.template)
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 13, height: 13)
-                .foregroundStyle(Self.chromeGray)
+                .frame(width: 15, height: 15)
+                .foregroundStyle(ink)
         } else {
-            BrandMark(size: 13)
-                .foregroundStyle(Self.chromeGray)
+            BrandMark(size: 15)
+                .foregroundStyle(ink)
         }
     }
-
-    /// Cinza médio, e não `.primary`: a imagem é renderizada fora do contexto de
-    /// aparência da barra de menu, então uma cor semântica congelaria a aparência do app e
-    /// poderia sumir contra a barra oposta. 0.58 tem contraste nas duas.
-    private static let chromeGray = Color(white: 0.58)
 
     /// Escala de perigo da marca. Com folga o número é NEUTRO de propósito: quase toda
     /// cota está folgada, e um número verde permanente ensina o olho a ignorar a cor —
@@ -75,10 +77,52 @@ struct MenuBarLabelView: View {
     /// `QuotaPresentation.valueColor` do resto do app.
     private func color(for danger: DangerLevel) -> Color {
         switch danger {
-        case .ok, .neutral: return Self.chromeGray
+        case .ok, .neutral: return ink
         case .warn: return Theme.Brand.heatOrange
         case .critical: return Theme.Brand.neonMagenta
         }
+    }
+}
+
+/// A tinta do rótulo da barra de menu — símbolo e números sem alarme.
+///
+/// ## Por que isto virou um cálculo explícito
+///
+/// O rótulo da barra é uma `NSImage` NÃO-template (é a única forma de os números
+/// coloridos sobreviverem: `MenuBarExtra` monocromatiza qualquer coisa marcada como
+/// template). O preço disso é que o macOS deixa de adaptar a cor sozinho — o que sai do
+/// `ImageRenderer` é literalmente o que aparece na barra.
+///
+/// A primeira versão pagou esse preço com um cinza médio fixo (0.58) escolhido para
+/// "ter contraste nas duas barras". Na barra escura real ele dá ~5:1 enquanto TODO ícone
+/// vizinho do sistema é branco puro (~17:1): o símbolo do OkTally não ficava ilegível,
+/// ficava *apagado* — que foi exatamente a palavra do dono. Contraste suficiente para
+/// passar num teste e insuficiente para pertencer à fileira.
+///
+/// A correção é dizer a cor certa para cada barra, em vez de procurar uma cor que sirva
+/// para as duas. Puro e testável: `Tests/MenuBarInkTests` mede o contraste WCAG dos dois
+/// valores contra as barras reais.
+enum MenuBarInk {
+    /// Quase branco, não branco puro: na barra escura o branco puro num traço de 1,5pt
+    /// floresce e o símbolo engorda.
+    static let onDarkBar: Double = 0.96
+    /// Quase preto, pelo motivo espelhado.
+    static let onLightBar: Double = 0.14
+
+    static func white(onDarkBar dark: Bool) -> Double { dark ? onDarkBar : onLightBar }
+
+    static func color(onDarkBar dark: Bool) -> Color { Color(white: white(onDarkBar: dark)) }
+
+    /// Contraste WCAG entre dois cinzas sRGB (0…1). Existe para o teste poder afirmar
+    /// "isto se lê", em vez de a legibilidade ser opinião de quem escolheu o número.
+    static func contrastRatio(_ a: Double, _ b: Double) -> Double {
+        let lighter = max(relativeLuminance(a), relativeLuminance(b))
+        let darker = min(relativeLuminance(a), relativeLuminance(b))
+        return (lighter + 0.05) / (darker + 0.05)
+    }
+
+    private static func relativeLuminance(_ channel: Double) -> Double {
+        channel <= 0.03928 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
     }
 }
 

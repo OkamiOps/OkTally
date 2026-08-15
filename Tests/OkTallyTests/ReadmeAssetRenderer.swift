@@ -50,7 +50,7 @@ final class ReadmeAssetRenderer: XCTestCase {
                         .environment(\.isStaticRender, true)
                         .frame(width: 360),
                       to: "popover.png", scheme: scheme)
-            try write(view: menuBarStrip(model), to: "menubar.png", scheme: scheme)
+            try write(view: menuBarStrip(model, scheme: scheme), to: "menubar.png", scheme: scheme)
             try write(view: OverviewScreen(
                             appModel: model,
                             entries: model.orderedProviders.compactMap { provider in
@@ -384,12 +384,16 @@ final class ReadmeAssetRenderer: XCTestCase {
             .frame(width: 700)
     }
 
-    /// The menu bar label on a dark menu-bar-like strip.
-    private func menuBarStrip(_ model: AppModel) -> some View {
-        MenuBarLabelView(segment: model.menuBarSegment)
+    /// O rótulo sobre uma faixa com a cor da barra de menu REAL de cada tema — escura no
+    /// escuro, clara no claro. A faixa era escura nos dois, e foi assim que um símbolo
+    /// cinza-médio atravessou o redesenho parecendo aceitável: nunca tinha sido olhado
+    /// contra a barra clara, e contra a escura ele passava por "discreto".
+    private func menuBarStrip(_ model: AppModel, scheme: ColorScheme) -> some View {
+        let dark = scheme == .dark
+        return MenuBarLabelView(segment: model.menuBarSegment, onDarkBar: dark)
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color(white: 0.12)))
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color(white: dark ? 0.12 : 0.95)))
             .padding(8)
     }
 
@@ -485,7 +489,7 @@ private struct NotchCollapsedMock: View {
     var body: some View {
         NotchChrome(bottomRadius: 14) {
             HStack(spacing: 0) {
-                NotchCompactLeading()
+                NotchCompactLeading(appModel: appModel)
                     .padding(.leading, 10)
                 Spacer().frame(width: NotchMetrics.width)
                 NotchCompactTrailing(appModel: appModel)

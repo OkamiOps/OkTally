@@ -135,7 +135,7 @@ final class NotchHUDController {
             expanded: { [appModel] in
                 NotchExpandedView(appModel: appModel, onOpen: { [weak self] in self?.openPopover() })
             },
-            compactLeading: { NotchCompactLeading() },
+            compactLeading: { [appModel] in NotchCompactLeading(appModel: appModel) },
             compactTrailing: { [appModel] in NotchCompactTrailing(appModel: appModel) }
         )
         notch.transitionConfiguration = .init(

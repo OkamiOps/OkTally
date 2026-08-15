@@ -646,8 +646,17 @@ private struct GeneralPane: View {
                     }
                     // Sem pinos não há o que arrastar — o rodapé não promete reordenação.
                     Text(appModel.menuBarPins.isEmpty
-                         ? L("Fixe janelas pelo alfinete no menu do OkTally — a barra mostra a mais apertada e o painel do notch mostra todas.")
-                         : L("Arraste para reordenar. A barra mostra só a mais apertada; o painel do notch mostra todas."))
+                         ? L("Fixe janelas pelo alfinete no menu do OkTally — os pinos são o conjunto que os seletores abaixo usam no modo automático.")
+                         : L("Arraste para reordenar. Os pinos são o conjunto que os seletores abaixo usam no modo automático."))
+                        .font(.caption).foregroundStyle(.secondary)
+
+                    // Os três lugares onde um número do app aparece o dia inteiro. Cada um
+                    // escolhe a sua cota; "Automático" mantém a regra antiga (a mais
+                    // apertada) e continua sendo o padrão.
+                    slotPicker(L("Valor na barra"), selection: $appModel.menuBarSlot)
+                    slotPicker(L("Notch — lado esquerdo"), selection: $appModel.notchLeadingSlot)
+                    slotPicker(L("Notch — lado direito"), selection: $appModel.notchTrailingSlot)
+                    Text(L("Em automático, o lado esquerdo mostra a cota mais apertada e o direito a seguinte. Uma cota escolhida que deixe de existir volta para automático sozinha."))
                         .font(.caption).foregroundStyle(.secondary)
 
                     Toggle(L("Painel no notch"), isOn: $notchHUDEnabled)
@@ -774,6 +783,42 @@ private struct GeneralPane: View {
                 .background(RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
                     .fill(Color.black.opacity(0.55)))
             }
+        }
+    }
+
+    /// Um seletor de slot: "Automático" mais todas as janelas conhecidas agora.
+    ///
+    /// `Picker` nativo e não uma lista própria: é um menu de escolha única entre poucas
+    /// dezenas de itens, exatamente o que o controle do sistema faz melhor (e de graça:
+    /// teclado, VoiceOver, rolagem).
+    private func slotPicker(_ title: String, selection: Binding<QuotaSlot>) -> some View {
+        Picker(title, selection: selection) {
+            ForEach(options(including: selection.wrappedValue), id: \.self) { slot in
+                Text(slotLabel(slot)).tag(slot)
+            }
+        }
+    }
+
+    /// As opções oferecidas, com a escolha corrente garantidamente entre elas.
+    ///
+    /// A garantia importa: se o provedor escolhido estiver deslogado, a janela some da
+    /// lista e um `Picker` sem a própria seleção desenha um menu VAZIO — o dono acharia
+    /// que a preferência dele foi apagada, quando na verdade ela está guardada e só caiu
+    /// para automático na exibição.
+    private func options(including selection: QuotaSlot) -> [QuotaSlot] {
+        var options: [QuotaSlot] = [.automatic] + appModel.availableQuotaSlots
+        if !options.contains(selection) { options.append(selection) }
+        return options
+    }
+
+    private func slotLabel(_ slot: QuotaSlot) -> String {
+        switch slot {
+        case .automatic:
+            return L("Automático (mais crítico)")
+        case .window(let providerId, let windowLabel):
+            let name = "\(providerName(providerId)) · \(WindowLabelCatalog.displayLabel(windowLabel))"
+            let exists = appModel.snapshotsByProvider[providerId]?.quotas.contains { $0.label == windowLabel } ?? false
+            return exists ? name : LF("%@ (indisponível)", name)
         }
     }
 

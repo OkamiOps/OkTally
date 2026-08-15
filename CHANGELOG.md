@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Pick what each spot shows**: the notch's left wing, its right wing and the menu bar
+  value are now three independent selectors in Preferences ▸ Menu bar. Each one is either
+  "Automatic (most critical)" — the previous behaviour, still the default — or a specific
+  provider window. Idle, each notch wing shows an identity chip plus that quota's
+  remaining value (the minimal ticks are gone). A chosen quota that stops existing (a
+  logged-out provider) quietly falls back to automatic.
+
 - **Analytics tab redesigned as a dashboard**: hero block with today's usage and a
   sparkline, streak and daily-peak stat cards, a per-provider stacked bar chart
   (30 d / 90 d / 12 m), a provider list with balance/share sparklines, a share donut,
@@ -53,6 +60,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   notch itself.
 
 ### Fixed
+
+- **Menu bar symbol was nearly invisible**: the label is a non-template `NSImage` (the
+  only way coloured numbers survive), so macOS never adapted its colour — it was drawn in
+  a fixed mid grey (~5.5:1 against the dark bar, where neighbouring system icons sit at
+  ~17:1). The ink is now chosen per bar appearance (~15:1 both ways) and the symbol grew
+  from 13 to 15 pt.
 
 - **The app bundle now carries its own resource bundle.** `build_app.sh` never copied
   it, so translations and bundled assets only resolved through SwiftPM's fallback to an

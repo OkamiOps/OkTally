@@ -1,0 +1,110 @@
+// Sources/OkTally/UI/QuotaSlotResolver.swift
+import Foundation
+
+/// De `QuotaSlot` para a janela concreta que o pixel vai mostrar. Puro, para as regras
+/// (ordem, desempate, queda para automático) serem testáveis sem tela.
+///
+/// Três lugares usam isto e precisam concordar: a asa esquerda do notch, a asa direita e
+/// o número da barra de menu. Se cada um resolvesse "a pior janela" com um critério
+/// próprio, o notch e a barra mostrariam provedores diferentes no mesmo instante — e o
+/// dono não teria como saber qual dos dois está mentindo.
+enum QuotaSlotResolver {
+
+    /// As janelas candidatas, da mais apertada para a mais folgada.
+    ///
+    /// Com pinos, as candidatas são os pinos — fixar continua sendo o jeito de dizer
+    /// "acompanhe estas". Sem pinos, uma janela por provedor (a mais apertada de cada),
+    /// que é a mesma base que o painel do notch já usava: um provedor com 5h + semanal
+    /// não pode ocupar as duas asas e esconder todos os outros.
+    static func ranked(
+        pins: [AppModel.MenuBarPin],
+        snapshots: [String: ProviderSnapshot],
+        providerOrder: [String]
+    ) -> [MenuBarLabelModel.Candidate] {
+        let base = pins.isEmpty
+            ? NotchHUDModel.automaticCandidates(snapshots: snapshots, providerOrder: providerOrder)
+            : MenuBarLabelModel.candidates(pins: pins, snapshots: snapshots)
+        return sortedByTightness(base)
+    }
+
+    /// Ordem de aperto com desempate determinístico.
+    ///
+    /// Saldos em dólares vão para o fim (`.infinity`): não existe "aperto" comparável
+    /// entre um saldo e uma porcentagem, e tratá-los como 0% os colocaria no topo como se
+    /// fossem a emergência do dia. Empate de sobra desempata pelo reset mais próximo e,
+    /// se ainda empatar, pela posição de entrada — sem esse último critério a asa poderia
+    /// trocar de provedor a cada recomposição, porque `snapshots` é um dicionário.
+    private static func sortedByTightness(
+        _ candidates: [MenuBarLabelModel.Candidate]
+    ) -> [MenuBarLabelModel.Candidate] {
+        candidates.enumerated()
+            .map { index, candidate -> (Int, MenuBarLabelModel.Candidate, Double) in
+                (index, candidate, QuotaPresentation.remainingFraction(candidate.window.shape) ?? .infinity)
+            }
+            .sorted { lhs, rhs in
+                if lhs.2 != rhs.2 { return lhs.2 < rhs.2 }
+                let lReset = lhs.1.window.shape.resetAt ?? .distantFuture
+                let rReset = rhs.1.window.shape.resetAt ?? .distantFuture
+                if lReset != rReset { return lReset < rReset }
+                return lhs.0 < rhs.0
+            }
+            .map(\.1)
+    }
+
+    /// A janela de um slot, ou `nil` quando não há nada para mostrar.
+    ///
+    /// Escolha explícita que deixou de existir (provedor deslogado, cota que o serviço
+    /// parou de devolver) NÃO vira buraco: o slot cai para automático em silêncio. O
+    /// contrário — apagar a asa e esperar que o dono vá às Preferências entender por quê —
+    /// transformaria um logout em um bug aparente.
+    static func resolve(
+        _ slot: QuotaSlot,
+        ranked: [MenuBarLabelModel.Candidate],
+        snapshots: [String: ProviderSnapshot],
+        excluding: MenuBarLabelModel.Candidate? = nil
+    ) -> MenuBarLabelModel.Candidate? {
+        if case .window(let providerId, let windowLabel) = slot,
+           let snapshot = snapshots[providerId],
+           let window = snapshot.quotas.first(where: { $0.label == windowLabel }) {
+            return MenuBarLabelModel.Candidate(providerId: providerId, window: window)
+        }
+        return ranked.first { $0 != excluding }
+    }
+
+    /// As duas asas do notch fechado, resolvidas juntas.
+    ///
+    /// A direita é resolvida DEPOIS e sabendo o que a esquerda pegou: em automático, duas
+    /// asas mostrando o mesmo número seria o pior resultado possível — gastaria os dois
+    /// lugares para dizer uma coisa só. Uma escolha explícita, porém, manda: se o dono
+    /// pediu a mesma cota dos dois lados, é isso que ele vê.
+    static func wings(
+        leading: QuotaSlot,
+        trailing: QuotaSlot,
+        pins: [AppModel.MenuBarPin],
+        snapshots: [String: ProviderSnapshot],
+        providerOrder: [String]
+    ) -> (leading: MenuBarLabelModel.Candidate?, trailing: MenuBarLabelModel.Candidate?) {
+        let ranked = self.ranked(pins: pins, snapshots: snapshots, providerOrder: providerOrder)
+        let left = resolve(leading, ranked: ranked, snapshots: snapshots)
+        let right = resolve(trailing, ranked: ranked, snapshots: snapshots, excluding: left)
+        return (left, right)
+    }
+
+    /// Todas as janelas que um `Picker` pode oferecer, na ordem de leitura das
+    /// Preferências: os provedores na ordem do registry e, dentro de cada um, a ordem em
+    /// que o provedor devolveu as janelas.
+    ///
+    /// Ordem de registry e não de aperto: uma lista que se reordena sozinha entre duas
+    /// aberturas do menu é impossível de usar.
+    static func availableWindows(
+        snapshots: [String: ProviderSnapshot],
+        providerOrder: [String]
+    ) -> [QuotaSlot] {
+        let order = providerOrder + snapshots.keys.sorted().filter { !providerOrder.contains($0) }
+        return order.flatMap { providerId in
+            (snapshots[providerId]?.quotas ?? []).map {
+                QuotaSlot.window(providerId: providerId, windowLabel: $0.label)
+            }
+        }
+    }
+}

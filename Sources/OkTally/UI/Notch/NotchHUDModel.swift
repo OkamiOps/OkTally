@@ -39,7 +39,7 @@ enum NotchHUDModel {
         limit: Int = maxEntries
     ) -> [NotchQuotaEntry] {
         let chosen = pins.isEmpty
-            ? automatic(snapshots: snapshots, providerOrder: providerOrder)
+            ? automaticCandidates(snapshots: snapshots, providerOrder: providerOrder)
             : MenuBarLabelModel.candidates(pins: pins, snapshots: snapshots)
         return chosen.prefix(max(0, limit)).map(entry(for:))
     }
@@ -47,7 +47,7 @@ enum NotchHUDModel {
     /// Uma janela por provedor, da mais apertada para a mais folgada. `providerOrder` (a
     /// ordem do registry) é o desempate: sem ele, dois provedores com a mesma sobra
     /// trocariam de lugar a cada recomposição, porque `snapshots` é um dicionário.
-    private static func automatic(
+    static func automaticCandidates(
         snapshots: [String: ProviderSnapshot],
         providerOrder: [String]
     ) -> [MenuBarLabelModel.Candidate] {

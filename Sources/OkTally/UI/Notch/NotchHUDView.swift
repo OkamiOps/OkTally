@@ -12,74 +12,81 @@ enum NotchPalette {
     static let ink = Theme.Brand.offWhite
     static let inkDim = Theme.Brand.offWhite.opacity(0.62)
     static let track = Color.white.opacity(0.14)
-    /// Trilho dos tracinhos fechados. Mais forte que o das barras expandidas de
-    /// propósito: com 3,5pt de largura contra preto puro, um trilho a 14% some, e aí um
-    /// tracinho de 26% deixa de se ler como "um quarto do slot" e vira um ponto solto.
-    static let tickTrack = Color.white.opacity(0.24)
 }
 
 // MARK: - Fechado
 
-/// O que abraça o notch quando o painel está discreto: a marca de um lado, um tracinho
-/// por cota do outro.
+/// O que abraça o notch quando o painel está discreto: UMA cota escolhida de cada lado
+/// do recorte, no estilo da Dynamic Island.
 ///
-/// Tracinho, e não número: fechado o painel divide a altura da barra de menu com o
-/// relógio e os ícones do sistema, e texto nesse tamanho seria a mesma sopa ilegível que
-/// acabou de sair da barra. O tracinho diz "quanto sobra" pela ALTURA preenchida, que se
-/// lê de relance e a dois metros.
+/// Antes daqui as duas asas eram a marca de um lado e uma fileira de tracinhos do outro —
+/// bonito e mudo: os tracinhos diziam "tem cinco cotas e uma delas está baixa", nunca
+/// *qual* nem *quanto*, e o dono não escolhia nada. O que ele pediu foi poder apontar um
+/// valor para cada lado. Um chip de identidade mais um número cabem nos ~90pt de cada asa
+/// e respondem as duas perguntas de uma vez.
+///
+/// Em automático a asa esquerda pega a cota mais apertada e a direita a seguinte (nunca a
+/// mesma) — ver `QuotaSlotResolver.wings`.
 struct NotchCompactLeading: View {
+    /// Observa o modelo em vez de receber o valor pronto: `DynamicNotch` guarda o
+    /// conteúdo UMA vez, na criação do painel, então um valor passado por cópia
+    /// congelaria no número do momento em que o app subiu.
+    @ObservedObject var appModel: AppModel
+
     var body: some View {
-        BrandMark(size: 13)
-            .foregroundStyle(NotchPalette.ink)
+        NotchWing(segment: appModel.notchWings.leading, showsBrandFallback: true)
     }
 }
 
 struct NotchCompactTrailing: View {
-    /// Observa o modelo em vez de receber a lista pronta: `DynamicNotch` guarda o
-    /// conteúdo UMA vez, na criação do painel, então uma lista passada por valor
-    /// congelaria nos números do momento em que o app subiu.
     @ObservedObject var appModel: AppModel
 
     var body: some View {
-        HStack(spacing: 3) {
-            ForEach(appModel.notchEntries) { entry in
-                NotchTick(entry: entry)
-            }
-        }
+        NotchWing(segment: appModel.notchWings.trailing, showsBrandFallback: false)
     }
 }
 
-/// Um tracinho vertical: trilho fraco + preenchimento do que resta, de baixo para cima.
-private struct NotchTick: View {
-    let entry: NotchQuotaEntry
-
-    /// Cor de IDENTIDADE do provedor, não da escala de perigo — é ela que diz de quem é o
-    /// tracinho quando cinco deles estão lado a lado. A exceção é o vermelho da escala:
-    /// abaixo de 10% a pergunta deixa de ser "de quem é" e passa a ser "o que está
-    /// acabando", e aí o magenta da marca ganha do roxo/lima/âmbar do provedor.
-    private var color: Color {
-        entry.danger == .critical ? Theme.Brand.neonMagenta : ProviderPalette.color(for: entry.providerId)
-    }
-
-    /// Saldos não têm porcentagem: o tracinho fica cheio e apenas identifica o provedor.
-    /// Um piso de 12% garante que 0% ainda desenhe um ponto — um tracinho vazio seria
-    /// indistinguível de "esse provedor sumiu".
-    private var fill: Double {
-        guard let remaining = entry.remaining else { return 1 }
-        return max(0.12, Theme.clampFraction(remaining))
-    }
+/// Uma asa: chip da marca do provedor + o quanto resta.
+///
+/// Chip e não tracinho: fechado, o painel divide a altura da barra de menu com o relógio
+/// e os ícones do sistema, e a única coisa que sobrevive nesse tamanho é uma forma de cor
+/// sólida com uma letra dentro. A cor do chip é a de IDENTIDADE do provedor — é ela que
+/// diz de quem é o número sem gastar largura escrevendo o nome.
+struct NotchWing: View {
+    let segment: MenuBarSegment?
+    /// Sem dado nenhum a asa esquerda vira a marca do app, e não um buraco preto: um
+    /// painel vazio no notch é indistinguível de um painel quebrado.
+    let showsBrandFallback: Bool
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .bottom) {
-                Capsule().fill(NotchPalette.tickTrack)
-                Capsule()
-                    .fill(color)
-                    .frame(height: max(geo.size.width, geo.size.height * fill))
+        if let segment {
+            HStack(spacing: 5) {
+                IconChip(glyph: segment.glyph ?? "?",
+                         color: ProviderPalette.color(for: segment.providerId ?? ""),
+                         size: 15)
+                Text(segment.text)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Self.color(for: segment.danger))
+                    .lineLimit(1)
+                    .fixedSize()
             }
+        } else if showsBrandFallback {
+            BrandMark(size: 13)
+                .foregroundStyle(NotchPalette.ink)
         }
-        .frame(width: 4, height: 12)
-        .animation(.easeInOut(duration: 0.3), value: fill)
+    }
+
+    /// Número NEUTRO com folga, cor quando aperta — a mesma regra do resto do app
+    /// (`QuotaPresentation.valueColor`), com o off-white do painel no lugar do `.primary`,
+    /// que sobre preto sólido dependeria do tema do sistema. Um número permanentemente
+    /// verde ensinaria o olho a ignorar a cor justo quando ela finalmente muda.
+    private static func color(for danger: DangerLevel) -> Color {
+        switch danger {
+        case .ok, .neutral: return NotchPalette.ink
+        case .warn: return Theme.Brand.heatOrange
+        case .critical: return Theme.Brand.neonMagenta
+        }
     }
 }
 

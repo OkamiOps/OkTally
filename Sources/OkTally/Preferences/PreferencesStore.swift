@@ -31,6 +31,9 @@ final class PreferencesStore {
         static let minimaxRegionRaw = "minimaxRegionRaw"
         static let alertsEnabled = "alertsEnabled"
         static let notchHUDEnabled = "notchHUDEnabled"
+        static let menuBarSlot = "menuBarSlot"
+        static let notchLeadingSlot = "notchLeadingSlot"
+        static let notchTrailingSlot = "notchTrailingSlot"
         static let alertPercentThresholds = "alertPercentThresholds"
         static let alertLowBalanceThreshold = "alertLowBalanceThreshold"
         static func refreshInterval(_ providerId: String) -> String { "refreshInterval.\(providerId)" }
@@ -153,6 +156,31 @@ final class PreferencesStore {
     var notchHUDEnabled: Bool {
         get { store.string(forKey: Keys.notchHUDEnabled) != "false" }
         set { store.set(newValue ? "true" : "false", forKey: Keys.notchHUDEnabled) }
+    }
+
+    // MARK: - Slots de exibição
+
+    /// Qual cota aparece ao lado do símbolo na barra de menu.
+    ///
+    /// `.automatic` (o padrão) é a regra antiga — a janela mais apertada entre as que o
+    /// dono acompanha — e continua sendo a única que reage sozinha quando a cota que
+    /// aperta muda ao longo do dia. A escolha explícita existe porque "automático" tira do
+    /// dono justamente o número que ele quer olhar o dia inteiro.
+    var menuBarSlot: QuotaSlot {
+        get { QuotaSlot(stored: store.string(forKey: Keys.menuBarSlot)) }
+        set { store.set(newValue.stored.isEmpty ? nil : newValue.stored, forKey: Keys.menuBarSlot) }
+    }
+
+    /// A asa ESQUERDA do notch fechado (o lado da marca, antes do recorte).
+    var notchLeadingSlot: QuotaSlot {
+        get { QuotaSlot(stored: store.string(forKey: Keys.notchLeadingSlot)) }
+        set { store.set(newValue.stored.isEmpty ? nil : newValue.stored, forKey: Keys.notchLeadingSlot) }
+    }
+
+    /// A asa DIREITA do notch fechado.
+    var notchTrailingSlot: QuotaSlot {
+        get { QuotaSlot(stored: store.string(forKey: Keys.notchTrailingSlot)) }
+        set { store.set(newValue.stored.isEmpty ? nil : newValue.stored, forKey: Keys.notchTrailingSlot) }
     }
 
     // MARK: - Alert preferences

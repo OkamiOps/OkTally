@@ -78,6 +78,15 @@ final class AppModel: ObservableObject {
             }
         }
     }
+    /// Escolha de exibição de cada lugar: as duas asas do notch fechado e o número da
+    /// barra de menu. `@Published` (e não lido do store a cada acesso) porque as views do
+    /// notch observam este modelo — trocar o picker nas Preferências tem que repintar a
+    /// asa na hora, sem reabrir nada. A gravação vai para o `PreferencesStore`, que é onde
+    /// mora toda a preferência do app.
+    @Published var notchLeadingSlot: QuotaSlot { didSet { preferences.notchLeadingSlot = notchLeadingSlot } }
+    @Published var notchTrailingSlot: QuotaSlot { didSet { preferences.notchTrailingSlot = notchTrailingSlot } }
+    @Published var menuBarSlot: QuotaSlot { didSet { preferences.menuBarSlot = menuBarSlot } }
+
     private static let menuBarPinsKey = "menuBarPins"
     private static let legacyMenuBarPinKey = "menuBarPin"
     private let defaults: UserDefaults
@@ -101,19 +110,29 @@ final class AppModel: ObservableObject {
     private let scheduler: Scheduler
     private let storage: StorageManaging?
     private let pricingEngine: PricingEngine?
+    private let preferences: PreferencesStore
 
     init(
         registry: PluginRegistry,
         scheduler: Scheduler,
         storage: StorageManaging? = nil,
         pricingEngine: PricingEngine? = nil,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        preferences: PreferencesStore? = nil
     ) {
         self.registry = registry
         self.scheduler = scheduler
         self.storage = storage
         self.pricingEngine = pricingEngine
         self.defaults = defaults
+        // Sobre os MESMOS `defaults` do modelo: um store construído à parte apontaria
+        // para `UserDefaults.standard` e um teste com suite própria vazaria para a
+        // preferência real do dono.
+        let preferences = preferences ?? PreferencesStore(store: defaults)
+        self.preferences = preferences
+        self.notchLeadingSlot = preferences.notchLeadingSlot
+        self.notchTrailingSlot = preferences.notchTrailingSlot
+        self.menuBarSlot = preferences.menuBarSlot
         if let joined = defaults.string(forKey: Self.menuBarPinsKey) {
             self.menuBarPins = joined.split(separator: "\u{2}").compactMap { MenuBarPin(stored: String($0)) }
         } else if let legacy = MenuBarPin(stored: defaults.string(forKey: Self.legacyMenuBarPinKey)) {
@@ -165,12 +184,36 @@ final class AppModel: ObservableObject {
         _ = await scheduler.fetchAll()
     }
 
-    /// O único número da barra de menu.
+    /// O único número da barra de menu — o do slot escolhido, ou o mais crítico quando
+    /// o slot é automático.
     var menuBarSegment: MenuBarSegment {
-        MenuBarLabelModel.criticalSegment(
+        MenuBarLabelModel.segment(
+            slot: menuBarSlot,
             pins: menuBarPins,
             snapshots: snapshotsByProvider,
             hasAnyError: !errorsByProvider.isEmpty
+        )
+    }
+
+    /// As duas asas do notch fechado. Resolvidas juntas para que, em automático, elas não
+    /// mostrem a mesma cota dos dois lados.
+    var notchWings: (leading: MenuBarSegment?, trailing: MenuBarSegment?) {
+        let pair = QuotaSlotResolver.wings(
+            leading: notchLeadingSlot,
+            trailing: notchTrailingSlot,
+            pins: menuBarPins,
+            snapshots: snapshotsByProvider,
+            providerOrder: orderedProviders.map(\.id)
+        )
+        return (pair.leading.map(MenuBarLabelModel.segment(for:)),
+                pair.trailing.map(MenuBarLabelModel.segment(for:)))
+    }
+
+    /// As janelas que os `Picker`s das Preferências oferecem, além de "Automático".
+    var availableQuotaSlots: [QuotaSlot] {
+        QuotaSlotResolver.availableWindows(
+            snapshots: snapshotsByProvider,
+            providerOrder: orderedProviders.map(\.id)
         )
     }
 

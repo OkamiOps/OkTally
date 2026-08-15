@@ -142,8 +142,8 @@
 "Desconectado." = "Signed out.";
 "Barra de menu" = "Menu bar";
 "Nada fixado — a barra mostra automaticamente a janela mais próxima do limite." = "Nothing pinned — the bar automatically shows the window closest to its limit.";
-"Fixe janelas pelo alfinete no menu do OkTally — a barra mostra a mais apertada e o painel do notch mostra todas." = "Pin windows with the pin icon in the OkTally menu — the bar shows the tightest one and the notch panel shows them all.";
-"Arraste para reordenar. A barra mostra só a mais apertada; o painel do notch mostra todas." = "Drag to reorder. The bar shows only the tightest one; the notch panel shows them all.";
+"Fixe janelas pelo alfinete no menu do OkTally — os pinos são o conjunto que os seletores abaixo usam no modo automático." = "Pin windows with the pin icon in the OkTally menu — pins are the set the selectors below draw from in automatic mode.";
+"Arraste para reordenar. Os pinos são o conjunto que os seletores abaixo usam no modo automático." = "Drag to reorder. Pins are the set the selectors below draw from in automatic mode.";
 "Alertas" = "Alerts";
 "Notificações de cota" = "Quota notifications";
 "Avisar quando o uso cruzar:" = "Warn when usage crosses:";
@@ -250,3 +250,11 @@
 "Painel no notch" = "Notch panel";
 "Aparece só na tela embutida do MacBook: em monitor externo ou de tampa fechada não há notch, e a barra de menu segue sozinha." = "Only on the MacBook's built-in display: on an external monitor or with the lid closed there is no notch, and the menu bar carries on alone.";
 "Clique para abrir" = "Click to open";
+
+/* Escolha de qual cota aparece em cada lugar (asas do notch e barra de menu) */
+"Valor na barra" = "Menu bar value";
+"Notch — lado esquerdo" = "Notch — left side";
+"Notch — lado direito" = "Notch — right side";
+"Automático (mais crítico)" = "Automatic (most critical)";
+"%@ (indisponível)" = "%@ (unavailable)";
+"Em automático, o lado esquerdo mostra a cota mais apertada e o direito a seguinte. Uma cota escolhida que deixe de existir volta para automático sozinha." = "In automatic mode the left side shows the tightest quota and the right side the next one. A chosen quota that stops existing quietly falls back to automatic.";
