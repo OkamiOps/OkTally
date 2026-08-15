@@ -92,6 +92,8 @@
 
 /* Charts */
 "Dia" = "Day";
+"Amostra" = "Sample";
+"Progresso" = "Progress";
 "Tokens" = "Tokens";
 "Provedor" = "Provider";
 "total" = "total";

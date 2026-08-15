@@ -105,9 +105,15 @@ struct AnalyticsDashboardView: View {
             VStack(spacing: Theme.Space.md) {
                 DashboardCard(padding: Theme.Space.md) {
                     HStack(spacing: Theme.Space.md) {
+                        // Volt Cyan, e não `.orange` do sistema: (1) laranja é o degrau
+                        // do MEIO da escala de perigo da marca, e uma sequência de dias
+                        // ativos não é um aviso; (2) o `Gauge` nativo deriva o trilho da
+                        // própria cor rebaixada, então com laranja o trilho saía MARROM —
+                        // uma cor que a paleta não tem. Com o acento, o trilho vira ciano
+                        // apagado, que é da família da marca.
                         ProgressRing(
                             fraction: longest > 0 ? Double(streak) / Double(longest) : 0,
-                            color: .orange,
+                            color: Theme.accent,
                             size: 42,
                             label: "\(streak)"
                         )

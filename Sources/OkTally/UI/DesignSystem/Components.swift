@@ -189,30 +189,37 @@ struct ShareBar: View {
     }
 }
 
-/// Anel reaproveitável (streak, cota). Traço grosso, como nas referências — um anel fino
-/// vira um arame e não sustenta o número no meio.
+/// Anel de capacidade. Desde a revisão "usar o que o SwiftUI já tem", isto é um `Gauge`
+/// NATIVO com `.accessoryCircularCapacity` — não mais dois `Circle()` com `.trim()`
+/// desenhados à mão. O nativo traz de graça a animação entre valores, o traço na
+/// espessura do sistema e a rotulagem de acessibilidade (o desenho antigo era um
+/// `Text` mudo dentro de um `ZStack`).
+///
+/// A troca foi decidida por imagem, não por princípio: renderizado lado a lado com o anel
+/// antigo, o `Gauge` sai com traço mais grosso e trilho na própria cor rebaixada, que é
+/// exatamente a leitura das referências — e, ao contrário dos estilos LINEARES do
+/// `Gauge`, o circular respeita `.tint()` e sobrevive ao `ImageRenderer`. Ver o relatório
+/// `.superpowers/popover-native-pass.md` para os dois PNGs de sonda.
 struct ProgressRing: View {
     let fraction: Double
     let color: Color
-    var lineWidth: CGFloat = 8
     var size: CGFloat = 44
     var label: String?
 
     var body: some View {
-        ZStack {
-            Circle().stroke(Theme.track(), lineWidth: lineWidth)
-            Circle()
-                .trim(from: 0, to: Theme.clampFraction(fraction))
-                .stroke(color.gradient, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(.easeInOut(duration: 0.3), value: fraction)
+        Gauge(value: Theme.clampFraction(fraction)) {
+            Text(L("Progresso"))
+        } currentValueLabel: {
             if let label {
                 Text(label)
-                    .font(.system(size: size * 0.32, weight: .bold, design: .rounded))
+                    .font(.system(size: size * 0.30, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(.primary)
             }
         }
+        .gaugeStyle(.accessoryCircularCapacity)
+        .tint(color)
+        .labelsHidden()
         .frame(width: size, height: size)
     }
 }

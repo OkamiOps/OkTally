@@ -1,11 +1,19 @@
 // Sources/OkTally/UI/SparklineView.swift
 import SwiftUI
+import Charts
 
-/// Minimal 24h trend line for a provider card: a normalized polyline with a soft fill
-/// underneath. No axes/labels — the ring and quota lines above carry the numbers; this
-/// only answers "subindo ou estável?" at a glance.
+/// Tendência de uso de um provedor (escala fixa 0–100%). Sem eixos nem rótulos: o número
+/// grande acima já carrega o valor; isto só responde "subindo ou estável?".
+///
+/// Desde a revisão "usar o que o SwiftUI já tem", isto é **Swift Charts** — a mesma
+/// biblioteca que o resto do app já usava em `DailyTokensAreaChart`,
+/// `StackedProviderBarChart` e `ProviderShareDonut`. A versão anterior era um
+/// `GeometryReader` com dois `Path` montados na mão (normalização, polilinha e polígono
+/// de preenchimento): um gráfico de linha reimplementado ao lado de um framework de
+/// gráficos que já estava importado no alvo. A interpolação suave e a animação entre
+/// séries vêm de graça, e a curva ficou mais macia que a polilinha de segmentos retos.
 struct SparklineView: View {
-    /// Used-percent values (0…100) in chronological order.
+    /// Valores de percentual USADO (0…100) em ordem cronológica.
     let points: [Double]
     let color: Color
     /// Altura da faixa. Um gráfico sem eixos não tem altura intrínseca — alguém precisa
@@ -14,45 +22,32 @@ struct SparklineView: View {
     var height: CGFloat = 20
 
     var body: some View {
-        GeometryReader { geo in
-            let normalized = normalizedPoints(in: geo.size)
-            if normalized.count >= 2 {
-                ZStack {
-                    fillPath(normalized, size: geo.size)
-                        .fill(color.opacity(0.12))
-                    linePath(normalized)
-                        .stroke(color.opacity(0.75), style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round))
-                }
-                .animation(.easeInOut(duration: 0.3), value: points)
-            }
+        Chart(Array(points.enumerated()), id: \.offset) { index, value in
+            AreaMark(
+                x: .value(L("Amostra"), index),
+                y: .value(L("Uso"), max(0, min(100, value)))
+            )
+            .interpolationMethod(.catmullRom)
+            .foregroundStyle(
+                LinearGradient(colors: [color.opacity(0.28), color.opacity(0.02)],
+                               startPoint: .top, endPoint: .bottom)
+            )
+            LineMark(
+                x: .value(L("Amostra"), index),
+                y: .value(L("Uso"), max(0, min(100, value)))
+            )
+            .interpolationMethod(.catmullRom)
+            .foregroundStyle(color.opacity(0.85))
+            .lineStyle(StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
         }
+        // Escala vertical FIXA 0–100: com o domínio automático do Swift Charts uma série
+        // baixa e plana seria esticada até o topo e leria como "no limite". Cravar o
+        // domínio é o que mantém "uso baixo e estável" com cara de uso baixo.
+        .chartYScale(domain: 0...100)
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartLegend(.hidden)
+        .chartPlotStyle { $0.padding(.zero) }
         .frame(height: height)
-    }
-
-    private func normalizedPoints(in size: CGSize) -> [CGPoint] {
-        guard points.count >= 2, size.width > 0, size.height > 0 else { return [] }
-        let stepX = size.width / CGFloat(points.count - 1)
-        // Fixed 0…100 vertical scale so cards are comparable and a flat low line reads
-        // as "quase nada usado" instead of being stretched to full height.
-        return points.enumerated().map { index, value in
-            let clamped = max(0, min(100, value))
-            return CGPoint(x: CGFloat(index) * stepX, y: size.height * (1 - CGFloat(clamped / 100)))
-        }
-    }
-
-    private func linePath(_ pts: [CGPoint]) -> Path {
-        Path { path in
-            path.move(to: pts[0])
-            for p in pts.dropFirst() { path.addLine(to: p) }
-        }
-    }
-
-    private func fillPath(_ pts: [CGPoint], size: CGSize) -> Path {
-        Path { path in
-            path.move(to: CGPoint(x: pts[0].x, y: size.height))
-            for p in pts { path.addLine(to: p) }
-            path.addLine(to: CGPoint(x: pts[pts.count - 1].x, y: size.height))
-            path.closeSubpath()
-        }
     }
 }

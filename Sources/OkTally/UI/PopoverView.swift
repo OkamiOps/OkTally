@@ -152,17 +152,38 @@ struct PopoverContentView: View {
             // Cronológico: hoje é o último elemento.
             let today = totals.last?.tokens ?? 0
             if today > 0 {
+                let shape = RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
                 HStack(spacing: Theme.Space.sm) {
                     SectionHeader(L("Hoje"))
                     Text(TokenAnalytics.compactTokens(today))
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
                         .monospacedDigit()
+                        .foregroundStyle(Theme.accent)
                     DailyTokensAreaChart(points: totals, color: Theme.accent)
-                        .frame(height: 18)
+                        .frame(height: 22)
                 }
                 .padding(.horizontal, Theme.Space.md)
-                .padding(.vertical, Theme.Space.xs)
-                .glassChrome()
+                .padding(.vertical, Theme.Space.sm)
+                // Charcoal + fio de Volt Cyan, e NÃO vidro. A faixa era a única peça do
+                // popover que mudava de identidade entre os dois mundos: viva ela era
+                // vidro, sob `ImageRenderer` o vidro cai no material e ela virava uma
+                // pastilha CINZA — do tamanho de um botão, sem cor, no meio de um
+                // dashboard de acento neon. E o próprio comentário do `Theme` já admitia
+                // que ela é a exceção do vidro por carregar número e gráfico, ou seja:
+                // conteúdo, não cromo. Aqui ela é um objeto declarado, idêntico nos dois
+                // mundos: fundo do mesmo degrau dos cards, lavagem ciano dando direção da
+                // esquerda para a direita e uma borda neon fina que a separa do fundo sem
+                // virar moldura.
+                // Ordem importa: o `.background` mais EXTERNO é o que fica mais atrás,
+                // então a lavagem ciano vem primeiro (colada no conteúdo) e o charcoal
+                // opaco por baixo dela. Invertido, o opaco cobriria a lavagem.
+                .background(
+                    shape.fill(LinearGradient(
+                        colors: [Theme.accent.opacity(0.16), Theme.accent.opacity(0.02)],
+                        startPoint: .leading, endPoint: .trailing))
+                )
+                .background(shape.fill(Theme.surface()))
+                .overlay(shape.strokeBorder(Theme.accent.opacity(0.38)))
                 .padding(.horizontal, Theme.Space.md)
             }
         }
@@ -397,7 +418,12 @@ private struct ProviderQuotaRow: View {
     var body: some View {
         let primary = windows.first
         let remaining = primary.flatMap { QuotaPresentation.remainingFraction($0.shape) }
-        VStack(alignment: .leading, spacing: 3) {
+        // `spacing: 0` com paddings explícitos, e não um espaçamento único: o ritmo
+        // vertical da linha é ASSIMÉTRICO de propósito (ver a barra abaixo), e um
+        // espaçamento uniforme distribuía o mesmo ar acima e abaixo da barra — que era
+        // justamente o que fazia a barra flutuar entre duas linhas em vez de pertencer a
+        // uma delas.
+        VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 7) {
                 IdentityChip(provider: provider)
                 Text(provider.displayName)
@@ -423,13 +449,25 @@ private struct ProviderQuotaRow: View {
                     }
                     // Fixed *minimum* width, trailing-aligned: the percentages line up
                     // in one column down the list so the eye scans them without
-                    // re-anchoring. A balance ("19.82 USD") simply spills to the left.
-                    Text(QuotaPresentation.remainingValueText(primary.shape))
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(QuotaPresentation.valueColor(remaining: remaining))
-                        .frame(minWidth: 44, alignment: .trailing)
-                        .layoutPriority(2)
+                    // re-anchoring.
+                    if remaining == nil {
+                        // Provedor só-saldo (OpenRouter): sem porcentagem ele não ganha
+                        // barra, e antes a linha inteira ficava órfã — um número solto na
+                        // coluna da direita, sem o traço de identidade que todas as
+                        // vizinhas tinham. O chip devolve a ele a mesma quantidade de
+                        // tinta: a cor do provedor aparece em ÁREA (fundo + fio), no lugar
+                        // onde as outras linhas a colocam na barra.
+                        BalanceChip(text: QuotaPresentation.remainingValueText(primary.shape),
+                                    identity: identity)
+                            .layoutPriority(2)
+                    } else {
+                        Text(QuotaPresentation.remainingValueText(primary.shape))
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(QuotaPresentation.valueColor(remaining: remaining))
+                            .frame(minWidth: 44, alignment: .trailing)
+                            .layoutPriority(2)
+                    }
                     PinButton(isPinned: isPinned(primary.label), identity: identity,
                               onPin: { onPin(primary.label) })
                 }
@@ -440,24 +478,32 @@ private struct ProviderQuotaRow: View {
             // Indented to the text column, not full-bleed: a bar that ran edge to edge
             // read as a rule *between* rows and stole the following secondary line.
             if let remaining {
-                QuotaCapsuleBar(remaining: remaining, color: identity, height: 4)
+                // Mais fina (3pt) e COLADA na linha que ela mede: 2pt acima contra 8pt
+                // abaixo. Na versão anterior a barra tinha 4pt e ar quase igual dos dois
+                // lados, e aí ela ficava equidistante entre a linha primária e a janela
+                // secundária — o olho tinha de decidir de quem ela era, o que custava um
+                // batimento de leitura por provedor. Com o ar todo empurrado para baixo a
+                // dúvida some: barra e linha de cima são um objeto, e o espaço em branco
+                // é que separa esse objeto da janela seguinte.
+                QuotaCapsuleBar(remaining: remaining, color: identity, height: 3)
                     // 30 = chip (22) + o spacing (7) da HStack acima, arredondado: a barra
                     // começa na coluna do NOME, não na do chip.
                     .padding(.leading, 30)
-                    // Asymmetric on purpose: the bar hugs the line it measures and keeps
-                    // its distance from the provider's secondary window below.
-                    .padding(.bottom, 2)
+                    .padding(.top, 2)
+                    .padding(.bottom, 8)
             }
             ForEach(windows.dropFirst(), id: \.label) { window in
                 SecondaryWindowLine(window: window, identity: identity,
                                     isPinned: isPinned(window.label),
                                     onPin: { onPin(window.label) })
+                    .padding(.top, 3)
             }
             if let meta = metaText {
                 Text(meta)
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
+                    .padding(.top, 4)
                     .help(L("Estimativa: tokens locais × tabela de preços do OpenRouter"))
             }
         }
@@ -494,6 +540,29 @@ private struct ProviderQuotaRow: View {
         fmt.maximumUnitCount = 2
         guard let s = fmt.string(from: age) else { return nil }
         return LF("Atualizado há %@", s)
+    }
+}
+
+/// Saldo em dinheiro numa pastilha da cor do provedor. Existe porque um provedor de
+/// crédito puro não tem fração para desenhar — e uma linha sem barra, no meio de uma lista
+/// onde todas as outras têm, lê como linha quebrada e não como "este é de outro tipo".
+///
+/// O número continua neutro (a mesma regra do resto do app: cor é exceção, reservada ao
+/// perigo); quem carrega a identidade é a pastilha em volta.
+private struct BalanceChip: View {
+    let text: String
+    let identity: Color
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 13, weight: .bold, design: .rounded))
+            .monospacedDigit()
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(identity.opacity(0.18)))
+            .overlay(Capsule().strokeBorder(identity.opacity(0.45)))
     }
 }
 
