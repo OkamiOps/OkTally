@@ -158,7 +158,11 @@ duplicação. A seção "Contas" exibe quantas precisam de atenção.
   cálculo de delta hoje-vs-ontem, e a matemática de célula do heatmap responsivo
   (largura → tamanho de célula e número de semanas).
 - `Tests/OkTallyTests/ReadmeAssetRenderer.swift` é estendido para exportar PNG de cada
-  tela redesenhada; as imagens são inspecionadas a cada iteração antes da entrega.
+  tela redesenhada — Análise, Visão geral, popover e os panes de Preferências (Geral e um
+  pane de provider representativo); as imagens são inspecionadas a cada iteração antes da
+  entrega.
+- O auto-save ganha teste: alterar o valor e disparar o commit persiste em
+  `PreferencesStore`; campo vazio não apaga a credencial existente.
 - Ao final: `Scripts/build_app.sh`, instalação em `/Applications` e relançamento.
 
 ## Riscos
