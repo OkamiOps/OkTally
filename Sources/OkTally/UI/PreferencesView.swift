@@ -42,31 +42,52 @@ struct PreferencesView: View {
             List(selection: $pane) {
                 Label(L("Geral"), systemImage: "slider.horizontal.3")
                     .tag(PreferencesPane.general)
-                Section(L("Contas")) {
+                Section {
                     ForEach(providerIds, id: \.self) { id in
                         sidebarRow(id).tag(PreferencesPane.provider(id))
+                    }
+                } header: {
+                    HStack {
+                        Text(L("Contas"))
+                        Spacer()
+                        let attention = providerIds.filter { appModel.errorKindByProvider[$0] == .needsReauth }.count
+                        if attention > 0 {
+                            Text("\(attention)")
+                                .font(.system(size: 9, weight: .bold))
+                                .monospacedDigit()
+                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .background(Capsule().fill(Color.orange.opacity(0.25)))
+                                .foregroundStyle(.orange)
+                                .help(L("Contas com credencial expirada"))
+                        }
                     }
                 }
             }
             .navigationSplitViewColumnWidth(min: 170, ideal: 180, max: 200)
         } detail: {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    detailContent
-                    if !statusMessage.isEmpty {
-                        Text(statusMessage).font(.caption).foregroundStyle(.secondary)
+            // O pane Geral é um `Form` agrupado, que já rola sozinho — embrulhá-lo no
+            // `ScrollView` dos panes de provedor daria rolagem aninhada.
+            if case .general = pane {
+                GeneralPane(appModel: appModel, preferencesStore: preferencesStore, providerName: providerName)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        detailContent
+                        if !statusMessage.isEmpty {
+                            Text(statusMessage).font(.caption).foregroundStyle(.secondary)
+                        }
                     }
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .frame(width: 640, height: 460)
+        .frame(minWidth: 680, idealWidth: 720, minHeight: 520, idealHeight: 560)
         .onAppear {
             load()
             consumeRequestedPane()
         }
-        .onChange(of: appModel.requestedPreferencesPane) { _ in
+        .onChange(of: appModel.requestedPreferencesPane) { _, _ in
             consumeRequestedPane()
         }
     }
@@ -83,20 +104,12 @@ struct PreferencesView: View {
     // MARK: - Sidebar
 
     private func sidebarRow(_ id: String) -> some View {
-        let identity = ProviderPalette.color(for: id)
-        return HStack(spacing: 8) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)).frame(width: 20, height: 20)
-                Text(ProviderPalette.glyph(forId: id))
-                    .font(.system(size: 10, weight: .heavy)).foregroundStyle(identity)
-            }
-            Text(providerName(id)).font(.system(size: 12))
-            Spacer()
-            Circle()
-                .fill(statusDotColor(id))
-                .frame(width: 7, height: 7)
-                .help(statusDotHelp(id))
-        }
+        ProviderSidebarRow(
+            providerId: id,
+            name: providerName(id),
+            statusColor: statusDotColor(id),
+            statusHelp: statusDotHelp(id)
+        )
     }
 
     /// Tri-state (spec do redesign, agora completo): verde conectado, âmbar precisa
@@ -137,7 +150,7 @@ struct PreferencesView: View {
     @ViewBuilder private var detailContent: some View {
         switch pane {
         case .general:
-            GeneralPane(appModel: appModel, preferencesStore: preferencesStore, providerName: providerName)
+            EmptyView() // tratado antes do ScrollView, por rolar sozinho
         case .provider("claude"): claudePane
         case .provider("codex"): codexPane
         case .provider("supergrok"): superGrokPane
@@ -438,10 +451,12 @@ struct PreferencesView: View {
     }
 }
 
+
 // MARK: - General pane
 
-/// Menu bar pin management. Refresh intervals were deliberately left out: the store's
-/// per-provider interval is not wired into the Scheduler, so a UI for it would lie.
+/// Ajustes gerais: pinos da barra de menu, alertas e atualização. Refresh intervals were
+/// deliberately left out: the store's per-provider interval is not wired into the
+/// Scheduler, so a UI for it would lie.
 private struct GeneralPane: View {
     @ObservedObject var appModel: AppModel
     let preferencesStore: PreferencesStore
@@ -450,77 +465,80 @@ private struct GeneralPane: View {
     @State private var alertsEnabled = true
     @State private var percentSteps: Set<Double> = []
     @State private var lowBalanceText = ""
+    @State private var savedFlash = false
+    @FocusState private var lowBalanceFocused: Bool
 
-    /// The selectable percentage crossings, mirroring Quotio's 10/20/30/50% picker but in
-    /// the "usado" convention this app already alerts on.
-    private static let percentOptions: [Double] = [0.7, 0.9, 1.0]
+    /// 50/70/80/90/100 — nenhuma migração necessária: `alertPercentThresholds` já persiste
+    /// uma lista arbitrária de frações e o `AlertEngine` mapeia qualquer lista, então quem
+    /// tinha 70/90/100 salvo continua com 70/90/100.
+    private static let percentOptions: [Double] = [0.5, 0.7, 0.8, 0.9, 1.0]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(L("Barra de menu")).font(.system(size: 16, weight: .bold))
-            if appModel.menuBarPins.isEmpty {
-                Text(L("Nada fixado — a barra mostra automaticamente a janela mais próxima do limite."))
+        Form {
+            Section(L("Barra de menu")) {
+                if appModel.menuBarPins.isEmpty {
+                    Text(L("Nada fixado — a barra mostra automaticamente a janela mais próxima do limite."))
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    ForEach(appModel.menuBarPins, id: \.stored) { pin in
+                        pinRow(pin)
+                    }
+                }
+                Text(L("Arraste para reordenar. Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra."))
                     .font(.caption).foregroundStyle(.secondary)
-            } else {
-                VStack(spacing: 6) {
-                    ForEach(Array(appModel.menuBarPins.enumerated()), id: \.element.stored) { index, pin in
-                        HStack(spacing: 8) {
-                            Text(ProviderPalette.glyph(forId: pin.providerId))
-                                .font(.system(size: 10, weight: .heavy))
-                                .foregroundStyle(ProviderPalette.color(for: pin.providerId))
-                                .padding(.horizontal, 5).padding(.vertical, 2)
-                                .background(RoundedRectangle(cornerRadius: 5)
-                                    .fill(ProviderPalette.color(for: pin.providerId).opacity(0.16)))
-                            Text("\(providerName(pin.providerId)) · \(WindowLabelCatalog.displayLabel(pin.windowLabel))")
-                                .font(.system(size: 12))
-                            Spacer()
-                            Button { move(index, by: -1) } label: { Image(systemName: "chevron.up") }
-                                .buttonStyle(.plain).disabled(index == 0)
-                            Button { move(index, by: 1) } label: { Image(systemName: "chevron.down") }
-                                .buttonStyle(.plain).disabled(index == appModel.menuBarPins.count - 1)
-                            Button { appModel.menuBarPins.remove(at: index) } label: {
-                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.045)))
-                    }
-                }
-                .frame(maxWidth: 420)
             }
-            Text(L("Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra."))
-                .font(.caption).foregroundStyle(.secondary)
 
-            Divider().padding(.vertical, 4)
-
-            Text(L("Alertas")).font(.system(size: 16, weight: .bold))
-            Toggle(L("Notificações de cota"), isOn: $alertsEnabled)
-                .toggleStyle(.switch).controlSize(.small)
-                .onChange(of: alertsEnabled) { newValue in
-                    preferencesStore.alertsEnabled = newValue
-                }
-            VStack(alignment: .leading, spacing: 6) {
-                Text(L("Avisar quando o uso cruzar:")).font(.caption).foregroundStyle(.secondary)
-                HStack(spacing: 14) {
-                    ForEach(Self.percentOptions, id: \.self) { step in
-                        Toggle("\(Int(step * 100))%", isOn: percentBinding(step))
-                            .toggleStyle(.checkbox)
+            Section(L("Alertas")) {
+                Toggle(L("Notificações de cota"), isOn: $alertsEnabled)
+                    .toggleStyle(.switch)
+                    .onChange(of: alertsEnabled) { _, newValue in
+                        preferencesStore.alertsEnabled = newValue
+                    }
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                    Text(L("Avisar quando o uso cruzar:")).font(.caption).foregroundStyle(.secondary)
+                    HStack(spacing: Theme.Space.sm) {
+                        ForEach(Self.percentOptions, id: \.self) { step in
+                            thresholdChip(step)
+                        }
                     }
                 }
-                HStack(spacing: 6) {
+                HStack(spacing: Theme.Space.sm) {
                     Text(L("Saldo baixo (USD):")).font(.caption).foregroundStyle(.secondary)
                     TextField("5.00", text: $lowBalanceText)
                         .textFieldStyle(.roundedBorder)
-                        .frame(width: 70)
+                        .frame(width: 80)
+                        .focused($lowBalanceFocused)
                         .onSubmit(saveLowBalance)
-                    Button(L("Salvar"), action: saveLowBalance)
-                        .controlSize(.small)
+                        .onChange(of: lowBalanceFocused) { _, focused in
+                            // Auto-save também ao perder o foco: o botão "Salvar" saiu.
+                            if !focused { saveLowBalance() }
+                        }
+                    if savedFlash {
+                        Text(L("Salvo")).font(.caption).foregroundStyle(.green).transition(.opacity)
+                    }
                 }
             }
             .disabled(!alertsEnabled)
             .opacity(alertsEnabled ? 1 : 0.5)
+
+            Section(L("Atualizações")) {
+                if let update = appModel.availableUpdate {
+                    HStack(spacing: Theme.Space.sm) {
+                        Label(LF("Versão %@ disponível", update.version), systemImage: "arrow.down.circle.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.orange)
+                        Spacer()
+                        Button(L("Abrir no GitHub")) { NSWorkspace.shared.open(update.url) }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                    }
+                } else {
+                    Text(L("Você está na versão mais recente."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
         }
+        .formStyle(.grouped)
         .onAppear {
             alertsEnabled = preferencesStore.alertsEnabled
             percentSteps = Set(preferencesStore.alertPercentThresholds)
@@ -528,24 +546,85 @@ private struct GeneralPane: View {
         }
     }
 
-    private func percentBinding(_ step: Double) -> Binding<Bool> {
-        Binding(
-            get: { percentSteps.contains(step) },
-            set: { include in
-                if include { percentSteps.insert(step) } else { percentSteps.remove(step) }
-                preferencesStore.alertPercentThresholds = percentSteps.sorted()
+    /// Linha de pino. O reordenamento é por arrastar-e-soltar: as setinhas ▲▼ saíram, e um
+    /// `List` com `onMove` dentro do `Form` exigiria altura fixa — justamente o que este
+    /// redesign proíbe.
+    private func pinRow(_ pin: AppModel.MenuBarPin) -> some View {
+        HStack(spacing: Theme.Space.sm) {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 9))
+                .foregroundStyle(.tertiary)
+            Text(ProviderPalette.glyph(forId: pin.providerId))
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundStyle(ProviderPalette.color(for: pin.providerId))
+                .padding(.horizontal, 5).padding(.vertical, 2)
+                .background(RoundedRectangle(cornerRadius: 5)
+                    .fill(ProviderPalette.color(for: pin.providerId).opacity(0.16)))
+            Text("\(providerName(pin.providerId)) · \(WindowLabelCatalog.displayLabel(pin.windowLabel))")
+                .font(Theme.Font.body)
+            Spacer()
+            Button {
+                appModel.menuBarPins.removeAll { $0.stored == pin.stored }
+            } label: {
+                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
             }
-        )
+            .buttonStyle(.plain)
+            .help(L("Remover da barra de menu"))
+        }
+        .contentShape(Rectangle())
+        .draggable(pin.stored)
+        .dropDestination(for: String.self) { items, _ in
+            guard let dragged = items.first else { return false }
+            return movePin(stored: dragged, toPositionOf: pin)
+        }
     }
 
+    /// Move o pino arrastado para o índice do alvo, preservando a ordem dos demais.
+    private func movePin(stored: String, toPositionOf target: AppModel.MenuBarPin) -> Bool {
+        guard let from = appModel.menuBarPins.firstIndex(where: { $0.stored == stored }) else { return false }
+        var pins = appModel.menuBarPins
+        let moved = pins.remove(at: from)
+        guard let to = pins.firstIndex(where: { $0.stored == target.stored }) else { return false }
+        pins.insert(moved, at: to)
+        appModel.menuBarPins = pins
+        return true
+    }
+
+    /// Chip selecionável — substitui a checkbox solta.
+    private func thresholdChip(_ step: Double) -> some View {
+        let selected = percentSteps.contains(step)
+        return Button {
+            if selected { percentSteps.remove(step) } else { percentSteps.insert(step) }
+            preferencesStore.alertPercentThresholds = percentSteps.sorted()
+        } label: {
+            Text("\(Int(step * 100))%")
+                .font(.system(size: 11, weight: .semibold))
+                .monospacedDigit()
+                .padding(.horizontal, Theme.Space.md)
+                .padding(.vertical, Theme.Space.xs)
+                .background(Capsule().fill(selected ? Color.accentColor.opacity(0.25) : Theme.surface()))
+                .overlay(Capsule().strokeBorder(selected ? Color.accentColor.opacity(0.6) : Theme.border()))
+                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Auto-save do saldo baixo. Todo o parsing vive no `FieldCommit`: campo vazio ou
+    /// inalterado não grava nada, e lixo (inclusive notação científica como "1e3") é
+    /// recusado e o campo volta ao valor salvo.
     private func saveLowBalance() {
-        guard let value = Double(lowBalanceText.replacingOccurrences(of: ",", with: ".")), value > 0 else { return }
+        let stored = String(format: "%.2f", preferencesStore.alertLowBalanceThreshold)
+        guard let candidate = FieldCommit.sanitized(lowBalanceText, previous: stored),
+              let value = FieldCommit.lowBalance(candidate) else {
+            lowBalanceText = stored
+            return
+        }
         preferencesStore.alertLowBalanceThreshold = value
-    }
-
-    private func move(_ index: Int, by offset: Int) {
-        let target = index + offset
-        guard appModel.menuBarPins.indices.contains(target) else { return }
-        appModel.menuBarPins.swapAt(index, target)
+        lowBalanceText = String(format: "%.2f", value)
+        withAnimation { savedFlash = true }
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            withAnimation { savedFlash = false }
+        }
     }
 }

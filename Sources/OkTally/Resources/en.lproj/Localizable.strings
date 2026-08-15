@@ -140,11 +140,17 @@
 "Desconectado." = "Signed out.";
 "Barra de menu" = "Menu bar";
 "Nada fixado — a barra mostra automaticamente a janela mais próxima do limite." = "Nothing pinned — the bar automatically shows the window closest to its limit.";
-"Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra." = "Pin windows with the pin icon in the OkTally menu — each becomes a colored number in the bar.";
+"Arraste para reordenar. Fixe janelas pelo alfinete no menu do OkTally — cada uma vira um número colorido na barra." = "Drag to reorder. Pin windows with the pin icon in the OkTally menu — each becomes a colored number in the bar.";
 "Alertas" = "Alerts";
 "Notificações de cota" = "Quota notifications";
 "Avisar quando o uso cruzar:" = "Warn when usage crosses:";
 "Saldo baixo (USD):" = "Low balance (USD):";
+"Salvo" = "Saved";
+"Contas com credencial expirada" = "Accounts with an expired credential";
+"Atualizações" = "Updates";
+"Versão %@ disponível" = "Version %@ available";
+"Abrir no GitHub" = "Open on GitHub";
+"Você está na versão mais recente." = "You are on the latest version.";
 
 /* Notifications */
 "%d%% da janela %@" = "%d%% of the %@ window";
