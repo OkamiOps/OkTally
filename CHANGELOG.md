@@ -17,6 +17,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Menu bar popover rebuilt around one hero and a dense provider list.** The tightest
+  window across all providers gets the only display-size number, a danger-colored bar
+  and its own tinted block; every other provider becomes a single compact row —
+  identity chip, name, window, countdown, percentage — with its extra windows hanging
+  underneath. The two-column grid of equal rings is gone, along with the ragged
+  column bottoms, the duplicated numbers (a ring saying "26" beside "26% left"), the
+  hero provider repeated as a card, the flat sparklines and the truncated labels.
+  Provider color now paints the chip and the bar while green/amber/red is reserved for
+  the numbers, and the 480 pt fold shows the hero plus eight providers instead of four.
 - **System requirement is now macOS 26 (Tahoe).** Older macOS versions no longer
   receive updates — the bump unlocks Liquid Glass and the new Swift Charts APIs used
   throughout the redesign.

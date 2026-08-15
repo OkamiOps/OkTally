@@ -87,11 +87,11 @@ struct PopoverContentView: View {
 
     private var providers: [UsageProvider] { appModel.orderedProviders }
 
-    /// Providers that produced at least one quota window → gauge cards. A provider whose
+    /// Providers that produced at least one quota window → hero or list row. A provider whose
     /// latest refresh failed keeps showing its last good snapshot (freshly fetched or
     /// restored from disk) — the failure is still listed in the problems section below,
     /// but usage the owner is tracking must not vanish because one poll errored. Only
-    /// `.notConfigured` hides the card: the owner signed out, so old numbers are noise.
+    /// `.notConfigured` hides the row: the owner signed out, so old numbers are noise.
     private var withData: [(provider: UsageProvider, snapshot: ProviderSnapshot)] {
         providers.compactMap { provider in
             guard let snapshot = appModel.snapshotsByProvider[provider.id],
@@ -140,10 +140,10 @@ struct PopoverContentView: View {
 
     /// Volume de hoje + 14 dias, antes das cotas. Fix round 1: a versão original (label +
     /// valor empilhados + gráfico de 28pt) tomava ~100pt e derrubava uma linha inteira de
-    /// cards de cota para fora dos 480pt visíveis sem rolar — reprovada em revisão. Esta
+    /// linha inteira de cota para fora dos 480pt visíveis sem rolar — reprovada em revisão. Esta
     /// versão é uma única linha (~30pt): rótulo, valor e o gráfico viram um traço fino de
     /// fundo em vez de um bloco com altura própria. A cota continua tendo prioridade: se
-    /// mesmo compacta ela ainda espremer os cards, o caminho é remover a faixa, não a
+    /// mesmo compacta ela ainda espremer as cotas, o caminho é remover a faixa, não a
     /// cota — ver relatório da task.
     @ViewBuilder private var todayStrip: some View {
         if let analytics = appModel.aggregatedAnalytics {
@@ -169,35 +169,44 @@ struct PopoverContentView: View {
         }
     }
 
+    /// Everyone except the hero's provider: the hero already spends the top of the
+    /// popover on it, and repeating it as a row below burns a line of a 480pt fold to
+    /// say nothing new. Its other windows ride along inside the hero block.
+    private var listed: [(provider: UsageProvider, snapshot: ProviderSnapshot)] {
+        guard let heroId = hero?.provider.id else { return withData }
+        return withData.filter { $0.provider.id != heroId }
+    }
+
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             if withData.isEmpty && !problems.isEmpty && problems.allSatisfy({ $0.kind == .notConfigured || $0.kind == nil }) {
                 OnboardingEmptyState()
             }
             todayStrip
             if let hero {
-                HeroCard(
+                HeroBlock(
                     provider: hero.provider,
                     window: hero.window,
                     remaining: hero.remaining,
-                    isPinned: appModel.isPinned(providerId: hero.provider.id, windowLabel: hero.window.label),
-                    onPin: { appModel.togglePin(providerId: hero.provider.id, windowLabel: hero.window.label) }
+                    others: PopoverLayout.orderedWindows(
+                        appModel.snapshotsByProvider[hero.provider.id]?.quotas ?? []
+                    ).filter { $0.label != hero.window.label },
+                    isPinned: { appModel.isPinned(providerId: hero.provider.id, windowLabel: $0) },
+                    onPin: { appModel.togglePin(providerId: hero.provider.id, windowLabel: $0) }
                 )
             }
-            // `alignment: .top` no `GridItem`: sem ele o grid centraliza verticalmente os
-            // cards de uma linha e o card mais curto flutua no meio.
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10, alignment: .top),
-                                GridItem(.flexible(), spacing: 10, alignment: .top)],
-                      spacing: 10) {
-                ForEach(withData, id: \.provider.id) { entry in
-                    ProviderGaugeCard(
-                        provider: entry.provider,
-                        snapshot: entry.snapshot,
-                        history: appModel.historyByProvider[entry.provider.id] ?? [],
-                        estimatedCost: appModel.estimatedCostByProvider[entry.provider.id],
-                        isPinned: { appModel.isPinned(providerId: entry.provider.id, windowLabel: $0) },
-                        onPin: { appModel.togglePin(providerId: entry.provider.id, windowLabel: $0) }
-                    )
+            if !listed.isEmpty {
+                SectionHeader(L("Outras cotas"))
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(listed, id: \.provider.id) { entry in
+                        ProviderQuotaRow(
+                            provider: entry.provider,
+                            snapshot: entry.snapshot,
+                            estimatedCost: appModel.estimatedCostByProvider[entry.provider.id],
+                            isPinned: { appModel.isPinned(providerId: entry.provider.id, windowLabel: $0) },
+                            onPin: { appModel.togglePin(providerId: entry.provider.id, windowLabel: $0) }
+                        )
+                    }
                 }
             }
             if !problems.isEmpty {
@@ -211,196 +220,30 @@ struct PopoverContentView: View {
     }
 }
 
-// MARK: - Hero
+// MARK: - Layout helpers
 
-/// Spotlight on the window closest to running out. The provider still appears in the
-/// grid below — this is a highlight, not a move.
-private struct HeroCard: View {
-    let provider: UsageProvider
-    let window: QuotaWindow
-    let remaining: Double
-    let isPinned: Bool
-    let onPin: () -> Void
-
-    private var danger: Color { QuotaPresentation.color(remaining: remaining) }
-    private var identity: Color { ProviderPalette.color(for: provider.id) }
-
-    var body: some View {
-        HStack(spacing: 14) {
-            RingGauge(remaining: remaining, size: 56, color: danger, lineWidth: 6) {
-                Text("\(Int((remaining * 100).rounded()))")
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(danger)
+/// Pure ordering rules for the popover, kept out of the views so they can be tested.
+enum PopoverLayout {
+    /// Windows of one provider, tightest first. Windows without a percentage (pure
+    /// balances) have no "tightness" to compare, so they sink to the end instead of
+    /// being compared against 0. Stable for equal remainings: original order wins.
+    static func orderedWindows(_ quotas: [QuotaWindow]) -> [QuotaWindow] {
+        quotas.enumerated().sorted { lhs, rhs in
+            let l = QuotaPresentation.remainingFraction(lhs.element.shape)
+            let r = QuotaPresentation.remainingFraction(rhs.element.shape)
+            switch (l, r) {
+            case let (l?, r?):
+                if l != r { return l < r }
+                return lhs.offset < rhs.offset
+            case (nil, .some): return false
+            case (.some, nil): return true
+            case (nil, nil): return lhs.offset < rhs.offset
             }
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(ProviderPalette.glyph(for: provider))
-                        .font(.system(size: 10, weight: .heavy))
-                        .foregroundStyle(identity)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)))
-                    Text("\(provider.displayName) · \(WindowLabelCatalog.displayLabel(window.label))")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                Text(QuotaPresentation.remainingText(window.shape))
-                    .font(.system(size: 15, weight: .bold))
-                    .monospacedDigit()
-                    .foregroundStyle(danger)
-                if let reset = QuotaPresentation.resetText(window.shape) {
-                    Text(reset).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            Spacer(minLength: 0)
-            PinButton(isPinned: isPinned, identity: identity, onPin: onPin)
-        }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 12).fill(danger.opacity(0.07)))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(danger.opacity(0.25)))
-        .help(window.shape.isEstimated ? L("Estimativa local, não confirmada pelo provedor") : "")
+        }.map(\.element)
     }
 }
 
-// MARK: - Provider card
-
-private struct ProviderGaugeCard: View {
-    let provider: UsageProvider
-    let snapshot: ProviderSnapshot
-    let history: [UsageHistoryPoint]
-    let estimatedCost: Decimal?
-    let isPinned: (String) -> Bool
-    let onPin: (String) -> Void
-
-    private var identity: Color { ProviderPalette.color(for: provider.id) }
-
-    /// The provider's worst percent window drives the card's ring; balance-only
-    /// providers show their value instead.
-    private var worst: (window: QuotaWindow, remaining: Double)? {
-        snapshot.quotas
-            .compactMap { w in QuotaPresentation.remainingFraction(w.shape).map { (w, $0) } }
-            .min { $0.1 < $1.1 }
-    }
-
-    var body: some View {
-        DashboardCard(padding: Theme.Space.sm) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Text(ProviderPalette.glyph(for: provider))
-                        .font(.system(size: 10, weight: .heavy))
-                        .foregroundStyle(identity)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 5).fill(identity.opacity(0.16)))
-                    Text(provider.displayName)
-                        .font(.system(size: 12, weight: .semibold))
-                        .lineLimit(1)
-                    if let plan = snapshot.planLabel {
-                        PlanBadge(label: plan)
-                    }
-                    Spacer(minLength: 0)
-                }
-                HStack {
-                    Spacer(minLength: 0)
-                    if let worst {
-                        RingGauge(remaining: worst.remaining,
-                                  size: 44,
-                                  color: QuotaPresentation.color(remaining: worst.remaining),
-                                  lineWidth: 5) {
-                            Text("\(Int((worst.remaining * 100).rounded()))")
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
-                                .monospacedDigit()
-                                .foregroundStyle(QuotaPresentation.color(remaining: worst.remaining))
-                        }
-                    } else if let balance = snapshot.quotas.first {
-                        Text(QuotaPresentation.remainingText(balance.shape))
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(.primary)
-                            .frame(height: 44)
-                    }
-                    Spacer(minLength: 0)
-                }
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(snapshot.quotas, id: \.label) { window in
-                        QuotaLine(
-                            window: window,
-                            identity: identity,
-                            isPinned: isPinned(window.label),
-                            onPin: { onPin(window.label) }
-                        )
-                    }
-                }
-                if history.count >= 2 {
-                    SparklineView(
-                        points: history.map(\.usedPercent),
-                        color: worst.map { QuotaPresentation.color(remaining: $0.remaining) } ?? identity
-                    )
-                    .help(L("Uso nas últimas 24h"))
-                }
-                if let estimatedCost {
-                    Label(LF("Custo est.: $%@ (30d)", Self.costText(estimatedCost)), systemImage: "dollarsign.circle")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
-                        .help(L("Estimativa: tokens locais × tabela de preços do OpenRouter"))
-                }
-                if let staleness = Self.stalenessText(fetchedAt: snapshot.fetchedAt) {
-                    Label(staleness, systemImage: "clock")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
-                        .help(L("Última atualização bem-sucedida — a busca mais recente falhou ou ainda não rodou"))
-                }
-            }
-        }
-    }
-
-    static func costText(_ value: Decimal) -> String {
-        String(format: "%.2f", (value as NSDecimalNumber).doubleValue)
-    }
-
-    /// "Atualizado há 25min" once the snapshot is older than any provider's normal poll
-    /// cadence — i.e. only when the data on screen is genuinely a survivor (app just
-    /// relaunched, or refreshes have been failing). Fresh cards stay caption-free.
-    static func stalenessText(fetchedAt: Date, now: Date = Date()) -> String? {
-        let age = now.timeIntervalSince(fetchedAt)
-        guard age > 15 * 60 else { return nil }
-        let fmt = DateComponentsFormatter()
-        fmt.unitsStyle = .abbreviated
-        fmt.allowedUnits = [.day, .hour, .minute]
-        fmt.maximumUnitCount = 2
-        guard let s = fmt.string(from: age) else { return nil }
-        return LF("Atualizado há %@", s)
-    }
-}
-
-/// One compact line per quota window inside a card.
-private struct QuotaLine: View {
-    let window: QuotaWindow
-    let identity: Color
-    let isPinned: Bool
-    let onPin: () -> Void
-
-    var body: some View {
-        let remaining = QuotaPresentation.remainingFraction(window.shape)
-        HStack(spacing: 4) {
-            PinButton(isPinned: isPinned, identity: identity, onPin: onPin)
-            Text(WindowLabelCatalog.displayLabel(window.label))
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            Spacer(minLength: 2)
-            VStack(alignment: .trailing, spacing: 0) {
-                Text(QuotaPresentation.remainingText(window.shape))
-                    .font(.system(size: 10, weight: .semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(remaining != nil ? QuotaPresentation.color(remaining: remaining) : .primary)
-                    .lineLimit(1)
-                if let reset = QuotaPresentation.resetText(window.shape) {
-                    Text(reset).font(.system(size: 9)).foregroundStyle(.tertiary).lineLimit(1)
-                }
-            }
-        }
-        .help(window.shape.isEstimated ? L("Estimativa local, não confirmada pelo provedor") : "")
-    }
-}
+// MARK: - Pin
 
 private struct PinButton: View {
     let isPinned: Bool
@@ -418,6 +261,248 @@ private struct PinButton: View {
     }
 }
 
+// MARK: - Identity chip
+
+/// The provider's colored initial. The only place the identity color is loud; it is what
+/// tells two rows apart at a glance, since the danger color is reserved for the numbers.
+private struct IdentityChip: View {
+    let provider: UsageProvider
+    var size: CGFloat = 10
+
+    var body: some View {
+        let color = ProviderPalette.color(for: provider.id)
+        Text(ProviderPalette.glyph(for: provider))
+            .font(.system(size: size, weight: .heavy))
+            .foregroundStyle(color)
+            .frame(width: size + 8, height: size + 6)
+            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(color.opacity(0.16)))
+    }
+}
+
+// MARK: - Hero
+
+/// The one window closest to running out, and the only block in the popover that gets
+/// display-size type. Everything else is a row — that is what makes this read as the
+/// answer to "what is about to hurt?" instead of one of nine equal gauges.
+///
+/// No ring here on purpose: a ring drawn around the number repeats it (the old hero had
+/// a "26" inside the ring *and* "26% left" beside it). One number, one bar.
+private struct HeroBlock: View {
+    let provider: UsageProvider
+    let window: QuotaWindow
+    let remaining: Double
+    /// The hero provider's remaining windows — it is excluded from the list below, so
+    /// they would otherwise disappear.
+    let others: [QuotaWindow]
+    let isPinned: (String) -> Bool
+    let onPin: (String) -> Void
+
+    private var danger: Color { QuotaPresentation.color(remaining: remaining) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 7) {
+                IdentityChip(provider: provider)
+                Text(provider.displayName)
+                    .font(.system(size: 12, weight: .semibold))
+                Text("· " + WindowLabelCatalog.displayLabel(window.label))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                PinButton(isPinned: isPinned(window.label),
+                          identity: ProviderPalette.color(for: provider.id),
+                          onPin: { onPin(window.label) })
+            }
+            HStack(alignment: .lastTextBaseline, spacing: 5) {
+                Text(QuotaPresentation.remainingValueText(window.shape))
+                    .font(.system(size: 36, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(danger)
+                Text(L("restante"))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 6)
+                if let reset = QuotaPresentation.resetText(window.shape) {
+                    Text(reset)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            QuotaCapsuleBar(remaining: remaining, color: danger, height: 8)
+            ForEach(others, id: \.label) { other in
+                SecondaryWindowLine(window: other,
+                                    identity: ProviderPalette.color(for: provider.id),
+                                    isPinned: isPinned(other.label),
+                                    onPin: { onPin(other.label) })
+            }
+        }
+        .padding(11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
+            .fill(Theme.surfaceAccent(danger)))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.medium, style: .continuous)
+            .strokeBorder(danger.opacity(0.28)))
+        .help(window.shape.isEstimated ? L("Estimativa local, não confirmada pelo provedor") : "")
+    }
+}
+
+// MARK: - Provider row
+
+/// One provider per row, constant vertical rhythm. Replaces the two-column grid of
+/// natural-height gauge cards: at 360pt wide those columns never ended on the same line
+/// and left holes of up to 200pt beside a short card.
+///
+/// Reading order across the row is fixed — identity, who, which window, when it comes
+/// back, how much is left — so the eye scans one column of percentages down the list.
+private struct ProviderQuotaRow: View {
+    let provider: UsageProvider
+    let snapshot: ProviderSnapshot
+    let estimatedCost: Decimal?
+    let isPinned: (String) -> Bool
+    let onPin: (String) -> Void
+
+    private var identity: Color { ProviderPalette.color(for: provider.id) }
+    private var windows: [QuotaWindow] { PopoverLayout.orderedWindows(snapshot.quotas) }
+
+    var body: some View {
+        let primary = windows.first
+        let remaining = primary.flatMap { QuotaPresentation.remainingFraction($0.shape) }
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 7) {
+                IdentityChip(provider: provider)
+                Text(provider.displayName)
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                if let primary {
+                    Text("· " + WindowLabelCatalog.displayLabel(primary.label))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                if let plan = snapshot.planLabel { PlanBadge(label: plan) }
+                Spacer(minLength: 4)
+                if let primary {
+                    if let reset = QuotaPresentation.resetCompactText(primary.shape) {
+                        Text(reset)
+                            .font(.system(size: 10))
+                            .monospacedDigit()
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .layoutPriority(1)
+                    }
+                    // Fixed *minimum* width, trailing-aligned: the percentages line up
+                    // in one column down the list so the eye scans them without
+                    // re-anchoring. A balance ("19.82 USD") simply spills to the left.
+                    Text(QuotaPresentation.remainingValueText(primary.shape))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(remaining != nil ? QuotaPresentation.color(remaining: remaining) : .primary)
+                        .frame(minWidth: 44, alignment: .trailing)
+                        .layoutPriority(2)
+                    PinButton(isPinned: isPinned(primary.label), identity: identity,
+                              onPin: { onPin(primary.label) })
+                }
+            }
+            // Identity color on the bar, danger color on the number: the row says whose
+            // quota it is and how bad it is with two different channels, instead of
+            // painting the whole popover green.
+            // Indented to the text column, not full-bleed: a bar that ran edge to edge
+            // read as a rule *between* rows and stole the following secondary line.
+            if let remaining {
+                QuotaCapsuleBar(remaining: remaining, color: identity, height: 4)
+                    .padding(.leading, 25)
+                    // Asymmetric on purpose: the bar hugs the line it measures and keeps
+                    // its distance from the provider's secondary window below.
+                    .padding(.bottom, 2)
+            }
+            ForEach(windows.dropFirst(), id: \.label) { window in
+                SecondaryWindowLine(window: window, identity: identity,
+                                    isPinned: isPinned(window.label),
+                                    onPin: { onPin(window.label) })
+            }
+            if let meta = metaText {
+                Text(meta)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .help(L("Estimativa: tokens locais × tabela de preços do OpenRouter"))
+            }
+        }
+        .help(snapshot.quotas.contains(where: \.shape.isEstimated)
+              ? L("Estimativa local, não confirmada pelo provedor") : "")
+    }
+
+    /// Cost estimate and staleness share one tertiary line — both are footnotes, and two
+    /// separate labeled rows per provider was most of the old cards' dead space.
+    private var metaText: String? {
+        var parts: [String] = []
+        if let estimatedCost {
+            parts.append(LF("Custo est.: $%@ (30d)", Self.costText(estimatedCost)))
+        }
+        if let staleness = Self.stalenessText(fetchedAt: snapshot.fetchedAt) {
+            parts.append(staleness)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    static func costText(_ value: Decimal) -> String {
+        String(format: "%.2f", (value as NSDecimalNumber).doubleValue)
+    }
+
+    /// "Atualizado há 25min" once the snapshot is older than any provider's normal poll
+    /// cadence — i.e. only when the data on screen is genuinely a survivor (app just
+    /// relaunched, or refreshes have been failing). Fresh rows stay caption-free.
+    static func stalenessText(fetchedAt: Date, now: Date = Date()) -> String? {
+        let age = now.timeIntervalSince(fetchedAt)
+        guard age > 15 * 60 else { return nil }
+        let fmt = DateComponentsFormatter()
+        fmt.unitsStyle = .abbreviated
+        fmt.allowedUnits = [.day, .hour, .minute]
+        fmt.maximumUnitCount = 2
+        guard let s = fmt.string(from: age) else { return nil }
+        return LF("Atualizado há %@", s)
+    }
+}
+
+/// A provider's second (and third…) window: same columns as the row above it, one step
+/// quieter, and no bar — the bar belongs to the window that is actually at risk.
+private struct SecondaryWindowLine: View {
+    let window: QuotaWindow
+    let identity: Color
+    let isPinned: Bool
+    let onPin: () -> Void
+
+    var body: some View {
+        let remaining = QuotaPresentation.remainingFraction(window.shape)
+        HStack(spacing: 6) {
+            Text(WindowLabelCatalog.displayLabel(window.label))
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            if let reset = QuotaPresentation.resetCompactText(window.shape) {
+                Text(reset)
+                    .font(.system(size: 9))
+                    .monospacedDigit()
+                    .foregroundStyle(.tertiary)
+                    .layoutPriority(1)
+            }
+            Text(QuotaPresentation.remainingValueText(window.shape))
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(remaining != nil ? QuotaPresentation.color(remaining: remaining) : .primary)
+                .frame(minWidth: 44, alignment: .trailing)
+                .layoutPriority(2)
+            PinButton(isPinned: isPinned, identity: identity, onPin: onPin)
+        }
+        // Deeper than the provider name's 25pt column: the extra step is what says this
+        // window hangs off the row above instead of starting a new provider.
+        .padding(.leading, 34)
+    }
+}
 // MARK: - Problems
 
 private struct ProblemsSection: View {

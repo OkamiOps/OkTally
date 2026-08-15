@@ -30,6 +30,8 @@
 "Conecte seu primeiro provedor" = "Connect your first provider";
 "Claude, Codex, Cursor, Copilot e outros — cotas e saldos num lugar só." = "Claude, Codex, Cursor, Copilot and more — quotas and balances in one place.";
 "Abrir Preferências" = "Open Preferences";
+"Outras cotas" = "Other quotas";
+"restante" = "left";
 
 /* Quota presentation */
 "%d%% restante" = "%d%% left";
