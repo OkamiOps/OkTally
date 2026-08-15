@@ -61,15 +61,8 @@ struct PopoverView: View {
                 NSApp.activate(ignoringOtherApps: true)
             }
             Spacer()
-            if #available(macOS 14.0, *) {
-                SettingsLink { Text(L("Preferências")) }
-                    .simultaneousGesture(TapGesture().onEnded { NSApp.activate(ignoringOtherApps: true) })
-            } else {
-                Button(L("Preferências")) {
-                    NSApp.activate(ignoringOtherApps: true)
-                    DispatchQueue.main.async { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) }
-                }
-            }
+            SettingsLink { Text(L("Preferências")) }
+                .simultaneousGesture(TapGesture().onEnded { NSApp.activate(ignoringOtherApps: true) })
             Button(L("Encerrar")) { NSApplication.shared.terminate(nil) }
         }
         .buttonStyle(.plain)
@@ -514,27 +507,18 @@ private struct OnboardingEmptyState: View {
     }
 }
 
-/// Botão reutilizável que abre a janela de Ajustes (SettingsLink no macOS 14+, seletor
-/// legado antes disso), executando `beforeOpen` primeiro — usado para deep-link do pane.
+/// Botão reutilizável que abre a janela de Ajustes via `SettingsLink`, executando
+/// `beforeOpen` primeiro — usado para deep-link do pane.
 private struct OpenSettingsButton<L: View>: View {
     let beforeOpen: () -> Void
     @ViewBuilder let label: () -> L
 
     var body: some View {
-        if #available(macOS 14.0, *) {
-            SettingsLink { label() }
-                .buttonStyle(.plain)
-                .simultaneousGesture(TapGesture().onEnded {
-                    beforeOpen()
-                    NSApp.activate(ignoringOtherApps: true)
-                })
-        } else {
-            Button {
+        SettingsLink { label() }
+            .buttonStyle(.plain)
+            .simultaneousGesture(TapGesture().onEnded {
                 beforeOpen()
                 NSApp.activate(ignoringOtherApps: true)
-                DispatchQueue.main.async { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) }
-            } label: { label() }
-                .buttonStyle(.plain)
-        }
+            })
     }
 }

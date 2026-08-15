@@ -6,11 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-### Alterado
+### Added
 
-- **Requisito de sistema agora é macOS 26 (Tahoe).** Versões anteriores do macOS não
-  recebem mais atualizações — a mudança libera Liquid Glass e as APIs novas de Swift
-  Charts usadas no redesign da interface.
+- **Analytics tab redesigned as a dashboard**: hero block with today's usage and a
+  sparkline, streak and daily-peak stat cards, a per-provider stacked bar chart
+  (30 d / 90 d / 12 m), a provider list with balance/share sparklines, a share donut,
+  and a strip of the tightest quotas across all providers.
+- The usage heatmap now fills the available width and gained a legend.
+- Alert thresholds now include **50 %** and **80 %** alongside the existing 70 / 90 / 100 %.
+
+### Changed
+
+- **System requirement is now macOS 26 (Tahoe).** Older macOS versions no longer
+  receive updates — the bump unlocks Liquid Glass and the new Swift Charts APIs used
+  throughout the redesign.
+- **Preferences rebuilt** with native grouped forms and auto-save: fields commit on
+  their own as you edit them, the "Save" buttons are gone, and each provider pane now
+  has an explicit "Remove key" button instead of an implicit clear-on-blank.
+- Popover, Overview, and Preferences now share the same design system (colors,
+  typography, card chrome, and Liquid Glass materials).
 
 ## [0.9.1-beta] — 2026-08-12
 
