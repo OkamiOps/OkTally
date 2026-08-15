@@ -122,7 +122,7 @@ Requer macOS 26 (Tahoe) ou mais recente. Versões anteriores do macOS não são 
 
 ### Compilar do código
 
-Requer Xcode Command Line Tools com Swift 5.9 ou mais novo.
+Requer Xcode Command Line Tools com Swift 6.2 ou mais novo (o manifesto declara `swift-tools-version: 6.2`).
 
 ```bash
 git clone https://github.com/OkamiOps/OkTally.git
