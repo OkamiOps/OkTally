@@ -24,6 +24,7 @@ final class ReadmeAssetRenderer: XCTestCase {
 
         let model = try await demoModel()
         try write(view: PopoverContentView(appModel: model)
+                    .environment(\.isStaticRender, true)
                     .frame(width: 360)
                     .background(Color(nsColor: .windowBackgroundColor)),
                   to: "popover.png")
