@@ -23,15 +23,24 @@ final class CursorUsageProvider: UsageProvider {
         guard let token = tokenReader.readAccessToken() else { throw CursorUsageError.notDetected }
         let response = try await client.fetchUsage(accessToken: token)
 
-        // Included monthly credit pool (e.g. $20 on Pro), minus total spend drawn from it
-        // plus any bonus credits Cursor granted. Can go negative once bonus credits are
-        // consumed too — that's surfaced as-is rather than clamped, since it's meaningful
-        // (usage above the included plan allotment).
-        let remainingCents = response.planUsage.limit - response.planUsage.totalSpend
-        let remaining = Decimal(remainingCents) / 100
-        let balanceWindow = QuotaWindow(label: "balance", shape: .creditBalance(remaining: remaining, currency: "USD"))
-
-        var windows = [balanceWindow]
+        // Included monthly credit pool (e.g. $20 on Pro, $400 on Ultra) minus spend.
+        // Prefer `limit - totalSpend` when the API still sends `totalSpend`: it can go
+        // negative on overage, which is surfaced as-is rather than clamped, since it's
+        // meaningful (usage above the included plan allotment). When Cursor omits
+        // `totalSpend` (schema change observed 2026-08-17), fall back to the API's own
+        // `remaining` figure. With neither, skip the balance window instead of guessing —
+        // the percent window below still reports usage.
+        var windows = [QuotaWindow]()
+        let remainingCents: Double?
+        if let totalSpend = response.planUsage.totalSpend {
+            remainingCents = response.planUsage.limit - totalSpend
+        } else {
+            remainingCents = response.planUsage.remaining
+        }
+        if let remainingCents {
+            let remaining = Decimal(remainingCents) / 100
+            windows.append(QuotaWindow(label: "balance", shape: .creditBalance(remaining: remaining, currency: "USD")))
+        }
         // The API also hands back a ready-made percent-of-plan figure directly
         // (`totalPercentUsed`) — surface it as its own window so Cursor participates in
         // the menu-bar icon aggregation and percentage-based alerts like every other

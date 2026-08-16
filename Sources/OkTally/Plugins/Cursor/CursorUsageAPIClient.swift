@@ -15,7 +15,13 @@ import Foundation
 /// milliseconds encoded as strings.
 struct CursorUsageResponse: Codable, Equatable {
     struct PlanUsage: Codable, Equatable {
-        let totalSpend: Double
+        /// Dropped from the live schema on 2026-08-17 (same fate as `bonusSpend` before
+        /// it); kept optional so its presence still enables the more precise
+        /// `limit - totalSpend` balance, which can go negative on overage.
+        let totalSpend: Double?
+        /// The API's own remaining-credit figure, the only balance source once
+        /// `totalSpend` is gone.
+        let remaining: Double?
         let limit: Double
         let totalPercentUsed: Double
     }

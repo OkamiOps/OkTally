@@ -66,7 +66,8 @@ final class FakeCursorUsageFetching: CursorUsageFetching {
 
 final class CursorUsageProviderTests: XCTestCase {
     private func makeResponse(
-        totalSpend: Double = 25423,
+        totalSpend: Double? = 25423,
+        remaining: Double? = nil,
         limit: Double = 2000,
         totalPercentUsed: Double = 73.68985507246377
     ) -> CursorUsageResponse {
@@ -75,6 +76,7 @@ final class CursorUsageProviderTests: XCTestCase {
             billingCycleEnd: "1786429152000",
             planUsage: .init(
                 totalSpend: totalSpend,
+                remaining: remaining,
                 limit: limit,
                 totalPercentUsed: totalPercentUsed
             )
@@ -143,6 +145,55 @@ final class CursorUsageProviderTests: XCTestCase {
         XCTAssertEqual(used, 73.68985507246377)
         XCTAssertEqual(limit, 100)
         XCTAssertEqual(resetAt, Date(timeIntervalSince1970: 1786429152))
+    }
+
+    func test_fetchSnapshot_fallsBackToRemaining_whenTotalSpendAbsent() async throws {
+        let reader = FakeCursorTokenReading()
+        reader.tokenToReturn = "session-token"
+        let fetcher = FakeCursorUsageFetching()
+        fetcher.responseToReturn = makeResponse(totalSpend: nil, remaining: 40000, limit: 40000, totalPercentUsed: 0)
+        let provider = CursorUsageProvider(tokenReader: reader, client: fetcher)
+
+        let snapshot = try await provider.fetchSnapshot()
+
+        guard case .creditBalance(let remaining, _) = snapshot.quotas.first(where: { $0.label == "balance" })?.shape else {
+            return XCTFail("expected creditBalance shape")
+        }
+        XCTAssertEqual(remaining, Decimal(400))
+    }
+
+    func test_fetchSnapshot_omitsBalanceWindow_whenNeitherSpendNorRemainingPresent() async throws {
+        let reader = FakeCursorTokenReading()
+        reader.tokenToReturn = "session-token"
+        let fetcher = FakeCursorUsageFetching()
+        fetcher.responseToReturn = makeResponse(totalSpend: nil, remaining: nil)
+        let provider = CursorUsageProvider(tokenReader: reader, client: fetcher)
+
+        let snapshot = try await provider.fetchSnapshot()
+
+        XCTAssertNil(snapshot.quotas.first(where: { $0.label == "balance" }))
+        XCTAssertNotNil(snapshot.quotas.first(where: { $0.label == "percent" }))
+    }
+
+    /// Schema observed live on 2026-08-17: Cursor dropped `totalSpend` from `planUsage`
+    /// (the same way it dropped `bonusSpend` between 08-07 and 08-12) and now reports the
+    /// pool via `remaining`. The decoder must survive this, or the whole provider fails
+    /// and the app freezes on the last persisted snapshot.
+    func test_apiClient_decodesFixtureWithoutTotalSpend() async throws {
+        let fixtureURL = Bundle.module.url(forResource: "cursor_usage_response_no_total_spend", withExtension: "json", subdirectory: "Fixtures")!
+        let data = try Data(contentsOf: fixtureURL)
+        let url = URL(string: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage")!
+        URLProtocolStub.stubResponses[url] = (data, 200)
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [URLProtocolStub.self]
+        let session = URLSession(configuration: config)
+
+        let client = CursorUsageAPIClient(session: session)
+        let response = try await client.fetchUsage(accessToken: "session-token")
+
+        XCTAssertEqual(response.billingCycleEnd, "1789579610000")
+        XCTAssertEqual(response.planUsage.limit, 40000)
+        XCTAssertEqual(response.planUsage.totalPercentUsed, 0)
     }
 
     func test_apiClient_decodesFixture() async throws {
