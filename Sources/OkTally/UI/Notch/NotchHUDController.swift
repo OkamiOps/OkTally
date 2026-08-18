@@ -270,6 +270,9 @@ final class NotchHUDController {
             // 0,25s de painel apagado no meio — o pulo que a mola deveria evitar.
             skipIntermediateHides: true
         )
+        // A prateleira abaixo do recorte físico, onde a barra contínua ganha pixels
+        // reais — a razão de o pacote ser vendorado. Ver `NotchBottomRule.compactShelf`.
+        notch.compactBottomShelf = NotchBottomRule.compactShelf
         hoverObserver = notch.$isHovering
             .removeDuplicates()
             .sink { [weak self] hovering in
