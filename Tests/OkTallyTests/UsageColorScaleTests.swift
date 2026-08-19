@@ -10,30 +10,64 @@ final class UsageColorScaleTests: XCTestCase {
     private let cyan = UsageRGB(hex: 0x00B8F5)
     private let yellow = UsageRGB(hex: 0xFFCE3A)
 
-    // MARK: - O caminho azul → amarelo
+    // MARK: - O caminho amarelo → azul
 
-    /// O teste central: no MEIO da migração azul→amarelo a cor tem que continuar sendo
-    /// uma cor. Interpolando em sRGB ali sai um cinza-esverdeado lavado — e é o meio da
-    /// escala, o pior lugar possível para a cor parar de significar algo.
-    func test_azulParaAmarelo_naoPassaPorCinza() {
+    /// O teste central: entre o amarelo (40) e o azul (60) NENHUM matiz emprestado
+    /// aparece. A primeira versão rodava o matiz pelo menor arco e cruzava o VERDE no
+    /// auge da saturação — 50% restante saía um verde-néon mais vivo que o verde de 85%,
+    /// ou seja, o meio da escala anunciava o estado mais saudável de todos (foi o bug
+    /// visto no Codex a 50%). Agora a travessia é um crossfade: matiz do amarelo até a
+    /// fronteira, matiz do azul depois dela, e nada de verde no caminho.
+    func test_amareloParaAzul_semMatizEmprestado() {
+        let scale = UsageColorScale.standard
+        let yellowHue = yellow.hsb.hue
+        let cyanHue = cyan.hsb.hue
+        for percent in stride(from: 40.0, through: 60.0, by: 0.5) {
+            let hue = scale.color(atPercent: percent).hsb.hue
+            let pertence = abs(hue - yellowHue) < 0.01 || abs(hue - cyanHue) < 0.01
+            XCTAssertTrue(pertence, "matiz emprestado (\(hue * 360)°) em \(percent)% — verde entre amarelo e azul")
+        }
+        // E a fronteira cai onde o dono espera: 50% já está do lado AZUL.
+        XCTAssertEqual(scale.color(atPercent: 50).hsb.hue, cyanHue, accuracy: 0.01,
+                       "50% restante tem que ler como azul, não como verde")
+    }
+
+    /// O mergulho do crossfade não pode virar o cinza lamacento que o sRGB daria: no
+    /// fundo do mergulho a cor continua sendo uma cor, e mais saturada que a média sRGB.
+    func test_crossfade_naoPassaPorCinza() {
         let hsbMid = UsageColorScale.mix(cyan, yellow, 0.5)
         let rgbMid = UsageRGB(red: (cyan.red + yellow.red) / 2,
                               green: (cyan.green + yellow.green) / 2,
                               blue: (cyan.blue + yellow.blue) / 2)
 
-        XCTAssertGreaterThan(hsbMid.hsb.saturation, 0.7,
-                             "o ponto médio azul→amarelo tem que continuar saturado")
+        XCTAssertGreaterThan(hsbMid.hsb.saturation, 0.35,
+                             "o fundo do mergulho amarelo→azul lavou de vez")
         XCTAssertLessThan(rgbMid.hsb.saturation, 0.45,
                           "premissa do teste: em sRGB o mesmo ponto lava — se isto falhar, a justificativa do espaço HSB mudou")
-        XCTAssertGreaterThan(hsbMid.hsb.saturation, rgbMid.hsb.saturation * 1.5)
+        XCTAssertGreaterThan(hsbMid.hsb.saturation, rgbMid.hsb.saturation)
     }
 
-    /// Nenhum ponto da escala padrão é lavado — varredura de 0 a 100.
+    /// Nenhum ponto da escala padrão é lavado — varredura de 0 a 100. O único trecho com
+    /// desconto é o mergulho do crossfade amarelo→azul (46–54%), e mesmo lá há um piso.
     func test_escalaPadrao_nuncaLava() {
         for percent in stride(from: 0.0, through: 100.0, by: 1.0) {
             let color = UsageColorScale.standard.color(atPercent: percent)
-            XCTAssertGreaterThan(color.hsb.saturation, 0.5, "cor lavada em \(percent)%")
+            let floorSat = (46...54).contains(percent) ? 0.35 : 0.5
+            XCTAssertGreaterThan(color.hsb.saturation, floorSat, "cor lavada em \(percent)%")
             XCTAssertGreaterThan(color.hsb.brightness, 0.5, "cor apagada em \(percent)%")
+        }
+    }
+
+    /// O verde é o prêmio do topo da escala: nenhum percentual do MEIO pode sair mais
+    /// vivo que a parada verde de 85%+ — era exatamente o que a rotação de matiz fazia.
+    func test_nenhumTransitoMaisVivoQueOVerdeDoTopo() {
+        let scale = UsageColorScale.standard
+        let green = scale.color(atPercent: 85).hsb
+        for percent in stride(from: 41.0, through: 59.0, by: 1.0) {
+            let hsb = scale.color(atPercent: percent).hsb
+            let isGreenish = (0.2...0.42).contains(hsb.hue)
+            XCTAssertFalse(isGreenish && hsb.saturation > green.saturation,
+                           "\(percent)% saiu um verde mais saturado que o verde do topo")
         }
     }
 
