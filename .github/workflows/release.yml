@@ -1,0 +1,54 @@
+# Cria a tag e o release no GitHub a partir do master.
+#
+# Existe porque cortar release exige criar uma TAG, e nem todo ambiente de onde se
+# trabalha no repositório pode empurrar tags (sessões remotas do Claude Code, por
+# exemplo, só empurram branches). Disparo manual: Actions ▸ Release ▸ Run workflow,
+# com a versão (ex.: 0.9.3-beta). As notas saem da seção correspondente do CHANGELOG.
+#
+# O DMG continua sendo construído localmente (Scripts/build_app.sh + make_dmg.sh
+# precisam de macOS e da identidade de assinatura da máquina do dono) e anexado ao
+# release depois: `gh release upload v<versão> .build/OkTally-<versão>.dmg`.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versão (ex.: 0.9.3-beta) — vira a tag v<versão>"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extrair notas do CHANGELOG
+        id: notes
+        run: |
+          VERSION="${{ inputs.version }}"
+          # A seção "## [<versão>]" até o próximo "## [" — o corpo do release é
+          # exatamente o que o CHANGELOG já diz, sem uma segunda fonte de verdade.
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { on = 1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > /tmp/notes.md
+          if ! [ -s /tmp/notes.md ]; then
+            echo "CHANGELOG.md não tem a seção [$VERSION]" >&2
+            exit 1
+          fi
+
+      - name: Criar tag e release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ inputs.version }}"
+          gh release create "v${VERSION}" \
+            --target "${{ github.sha }}" \
+            --title "OkTally ${VERSION}" \
+            --notes-file /tmp/notes.md
