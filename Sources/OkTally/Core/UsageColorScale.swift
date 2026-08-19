@@ -186,7 +186,7 @@ struct UsageColorStop: Identifiable, Equatable {
 /// é verde, 74% é um verde-ciano, 55% já está virando amarelo, 26% é laranja. Não existe
 /// mais um platô de cor onde valores diferentes se parecem.
 ///
-/// ## Por que HSB com o menor arco de matiz
+/// ## Por que HSB, e por que o matiz NUNCA é emprestado
 ///
 /// Interpolar em sRGB entre o azul e o amarelo passa por um cinza-esverdeado lavado (a
 /// média dos dois canais opostos), e é exatamente o meio da escala — o pior lugar
@@ -194,22 +194,27 @@ struct UsageColorStop: Identifiable, Equatable {
 /// ficam em lados opostos do eixo `b`, então a mistura cruza o eixo neutro com croma
 /// perto de zero.
 ///
-/// Interpolando em HSB pelo MENOR arco de matiz a mistura nunca entra no centro do
-/// círculo: azul (195°) → amarelo (46°) desce pelo verde, com saturação alta o caminho
-/// todo. `UsageColorScaleTests` mede isso — a saturação no ponto médio azul→amarelo fica
-/// acima de 0,7 em HSB e abaixo de 0,4 em sRGB.
+/// Em HSB o trecho de arco CURTO (verde→azul são 46°) roda o matiz pelo menor caminho,
+/// saturado o percurso todo: em 74% sai o azul-esverdeado do meio, que é a migração
+/// pedida. Mas num arco LONGO rodar o matiz atravessa uma cor que não pertence a nenhuma
+/// das duas paradas: amarelo (46°) → azul (195°) cruzaria o VERDE — e cruzaria no auge da
+/// saturação interpolada, mais vivo que o próprio verde de 85%+. Foi o defeito real da
+/// primeira versão: o Codex com 50% restante saía verde-néon, ou seja, o MEIO da escala
+/// anunciava o estado mais saudável de todos.
+///
+/// Por isso trecho de arco longo não roda: faz um CROSSFADE sem matiz emprestado. Cada
+/// lado segura o próprio matiz e a troca acontece no fundo de um mergulho curto de
+/// saturação — o amarelo empalidece, o azul emerge. `UsageColorScaleTests` mede as duas
+/// coisas: nenhum matiz verde entre 40% e 60%, e o mergulho raso o bastante para nunca
+/// virar o cinza lamacento que o sRGB daria.
 ///
 /// ## Por que a travessia é suavizada (e não linear)
-///
-/// O preço do arco é que azul→amarelo são 149° de matiz, e uma rampa LINEAR passa a maior
-/// parte do percurso no verde: no primeiro corte, 47% restante — que pela escala do dono
-/// é amarelo — saía verde, ou seja, a cor dizia "tranquilo" bem no meio da escala. Verde
-/// ali não é só feio, é informação errada.
 ///
 /// A travessia usa `smootherstep`: cada parada SEGURA a sua cor perto do próprio ponto e
 /// a migração acontece no meio do caminho entre duas paradas. Continua contínua (nenhum
 /// degrau, que é o que o dono recusou), mas o trecho ambíguo fica onde ele deve ficar —
-/// na fronteira entre duas faixas, não dentro de uma delas.
+/// na fronteira entre duas faixas, não dentro de uma delas. Uma rampa linear espalharia
+/// a mistura (e, no arco longo, o mergulho de saturação) pela faixa inteira.
 struct UsageColorScale: Equatable {
     /// Paradas em ordem CRESCENTE de percentual restante. `normalized` garante a ordem;
     /// nada mais no tipo depende de o chamador ter ordenado.
@@ -279,7 +284,13 @@ struct UsageColorScale: Equatable {
         color(atPercent: (fraction.isFinite ? fraction : 0) * 100)
     }
 
-    /// Mistura em HSB pelo menor arco de matiz. Ver a nota do tipo.
+    /// Acima deste arco de matiz (90°) o meio da rotação seria uma cor que não pertence
+    /// a nenhuma das duas paradas — matiz EMPRESTADO — e a mistura troca de rotação para
+    /// crossfade. Ver a nota do tipo.
+    static let borrowedHueArc = 0.25
+
+    /// Mistura em HSB. Arco de matiz curto roda pelo menor caminho; arco longo faz
+    /// crossfade sem matiz emprestado. Ver a nota do tipo.
     static func mix(_ a: UsageRGB, _ b: UsageRGB, _ t: Double) -> UsageRGB {
         let x = a.hsb, y = b.hsb
         // Cinza não tem matiz: pegar o zero que a conversão devolve arrastaria a mistura
@@ -289,11 +300,24 @@ struct UsageColorScale: Equatable {
         var delta = hueB - hueA
         if delta > 0.5 { delta -= 1 }
         if delta < -0.5 { delta += 1 }
-        let clamped = eased(min(1, max(0, t)), hueArc: abs(delta))
+        let arc = abs(delta)
+        let clamped = eased(min(1, max(0, t)), hueArc: arc)
+        let saturation = x.saturation + (y.saturation - x.saturation) * clamped
+        let brightness = x.brightness + (y.brightness - x.brightness) * clamped
+        guard arc > borrowedHueArc else {
+            return UsageRGB(hsb: UsageHSB(hue: hueA + delta * clamped,
+                                          saturation: saturation,
+                                          brightness: brightness))
+        }
+        // Arco longo (amarelo→azul): cada lado segura o próprio matiz e a troca acontece
+        // no fundo de um mergulho de saturação/brilho centrado na travessia. O mergulho
+        // zera nas paradas — as cores que o dono escolheu saem intactas — e é raso o
+        // bastante para o fundo continuar sendo uma cor, não o cinza do sRGB.
+        let transit = 4 * clamped * (1 - clamped)
         return UsageRGB(hsb: UsageHSB(
-            hue: hueA + delta * clamped,
-            saturation: x.saturation + (y.saturation - x.saturation) * clamped,
-            brightness: x.brightness + (y.brightness - x.brightness) * clamped
+            hue: clamped < 0.5 ? hueA : hueB,
+            saturation: saturation * (1 - 0.55 * transit),
+            brightness: brightness * (1 - 0.18 * transit)
         ))
     }
 
@@ -301,15 +325,9 @@ struct UsageColorScale: Equatable {
     ///
     /// Trecho curto (verde→azul são 46°) atravessa quase linear: em 74% a cor é o
     /// azul-esverdeado do meio do caminho, que é exatamente a migração pedida. Trecho
-    /// longo (azul→amarelo são 149°) atravessa mais rápido, porque numa rampa linear ele
-    /// passaria a MAIOR PARTE do percurso no verde — e verde em 47% restante diz
-    /// "tranquilo" no meio da escala, que é informação errada.
-    ///
-    /// Sobra um ponto irredutível: por volta de 50% a cor cruza o verde. Ir do azul ao
-    /// amarelo sem passar pelo verde só é possível passando pelo centro do círculo, ou
-    /// seja, pelo cinza — o "cinza lamacento" que esta escala existe para evitar. Entre
-    /// as duas, o verde de passagem é a escolha, espremido na fronteira 50/51 que separa
-    /// as duas faixas.
+    /// longo (amarelo→azul são 149°) atravessa mais rápido: a suavização extra encolhe o
+    /// mergulho do crossfade para a vizinhança imediata da fronteira entre as duas
+    /// faixas, em vez de espalhar cor desbotada pela faixa inteira.
     private static func eased(_ t: Double, hueArc: Double) -> Double {
         // Um passo de suavização a cada 90° de arco, até três.
         let passes = 1 + min(2, Int(hueArc / 0.25))

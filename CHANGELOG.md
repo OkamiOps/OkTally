@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.9.3-beta] — 2026-08-19
+
+### Fixed
+
+- **No more neon green at mid-scale**: the usage color scale rotated hue through green
+  when crossing the long yellow→blue arc, so ~50 % remaining (e.g. Codex at 50 %) showed
+  a green brighter than the 85 %+ green — the middle of the scale looked like the
+  healthiest state. Long-arc segments now crossfade without borrowed hues: yellow fades
+  out, blue fades in through a short saturation dip, and 50 % reads as blue. The scale
+  preview bar is now sampled every 1 % so the junction renders faithfully.
+
 ## [0.9.2-beta] — 2026-08-19
 
 ### Added
@@ -169,6 +180,7 @@ First public release. Everything below is new.
 - Secrets in the macOS Keychain only (with silent migration from legacy plaintext locations); usage data stays local; no telemetry.
 - Tri-state provider status (connected / needs reauth / not configured) so an expired login is never painted as "broken" or hidden as "fine".
 
+[0.9.3-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.3-beta
 [0.9.2-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.2-beta
 [0.9.1-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.1-beta
 [0.9.0-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.0-beta

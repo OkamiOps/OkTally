@@ -95,7 +95,7 @@ Der **Analyse**-Tab summiert alle Quellen in eine Heatmap + Chips (Gesamt, Tages
 
 Erfordert macOS 26 (Tahoe) oder neuer. Ältere macOS-Versionen werden nicht mehr unterstützt und erhalten keine Updates mehr.
 
-1. `OkTally-0.9.2.dmg` von der [Releases-Seite](https://github.com/OkamiOps/OkTally/releases) laden.
+1. `OkTally-0.9.3.dmg` von der [Releases-Seite](https://github.com/OkamiOps/OkTally/releases) laden.
 2. Öffnen und **OkTally** nach Programme ziehen.
 3. Die App ist nicht notarisiert: beim ersten Start Rechtsklick (Ctrl-Klick) auf `OkTally.app` → **Öffnen** → **Öffnen**.
 

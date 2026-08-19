@@ -1024,7 +1024,9 @@ private struct GeneralPane: View {
 /// interpola em RGB, e é justamente esse caminho que passa por um cinza lavado entre o
 /// azul e o amarelo — o preview mostraria uma escala que o app não desenha. Aqui a barra
 /// é AMOSTRADA da mesma função que pinta os números (`UsageColorScale.color(atPercent:)`),
-/// de dois em dois por cento, então o que se vê é literalmente o que o app usa.
+/// de um em um por cento, então o que se vê é literalmente o que o app usa. Um em um e
+/// não dois em dois: o crossfade amarelo→azul cabe inteiro em ~4% da barra, e com passo
+/// de 2 o mergulho viraria dois degraus visíveis em vez de uma junção.
 struct UsageScalePreviewBar: View {
     let scale: UsageColorScale
     /// Traço, não layout — a mesma convenção da `QuotaCapsuleBar` e da barra do notch: a
@@ -1032,7 +1034,7 @@ struct UsageScalePreviewBar: View {
     var height: CGFloat = 18
 
     private var gradient: Gradient {
-        Gradient(stops: stride(from: 0.0, through: 100.0, by: 2.0).map { percent in
+        Gradient(stops: stride(from: 0.0, through: 100.0, by: 1.0).map { percent in
             Gradient.Stop(color: Color(usage: scale.color(atPercent: percent)), location: percent / 100)
         })
     }
