@@ -9,7 +9,15 @@ let package = Package(
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "6.29.0"),
         // Exceção documentada à regra de "nenhuma dependência nova": o painel do notch.
         // Ver .superpowers/notch-hud-report.md.
-        .package(url: "https://github.com/MrKai77/DynamicNotchKit.git", from: "1.1.0")
+        //
+        // VENDORADO (era o 1.1.0 do GitHub, MIT) por causa de um limite do pacote que não
+        // dá para contornar por fora: o painel compacto tem exatamente a altura do notch
+        // físico, então a barra contínua do rodapé passava POR TRÁS do recorte — no
+        // framebuffer ela era uma só, mas o hardware engolia o miolo e o olho via dois
+        // tocos. O patch (marcado com "[OkTally patch]") acrescenta `compactBottomShelf`:
+        // uma prateleira de altura configurável abaixo do notch, onde a barra ganha
+        // pixels reais de ponta a ponta.
+        .package(path: "Vendor/DynamicNotchKit")
     ],
     targets: [
         .executableTarget(
