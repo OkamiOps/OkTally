@@ -103,6 +103,39 @@ final class NotchHUDController {
         return placement.screen
     }
 
+    /// Linhas de PIXEL do painel físico (1964 no 14"): o modo com a flag "native" da
+    /// lista do CoreGraphics. É o denominador da conta do recorte verdadeiro — em
+    /// resolução escalada o furo ocupa mais pontos do que o `safeAreaInsets.top` admite
+    /// (ver `NotchPhysicalCutout`). `nil` = sem como saber, e a conta cai no declarado.
+    private static func nativePanelRows(of screen: NSScreen) -> CGFloat? {
+        guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+        else { return nil }
+        let options = [kCGDisplayShowDuplicateLowResolutionModes: kCFBooleanTrue] as CFDictionary
+        guard let modes = CGDisplayCopyAllDisplayModes(CGDirectDisplayID(number.uint32Value), options)
+            as? [CGDisplayMode]
+        else { return nil }
+        // kDisplayModeNativeFlag — a constante do IOKit não é exposta em Swift.
+        let nativeFlag: UInt32 = 0x0200_0000
+        return (modes.first { $0.ioFlags & nativeFlag != 0 }).map { CGFloat($0.pixelHeight) }
+    }
+
+    /// Recalcula a prateleira para ESTA tela/modo e publica nos dois lugares que a usam:
+    /// o pacote (altura do painel) e a caixinha das asas (posição da barra). Chamada a
+    /// cada ancoragem porque trocar a resolução muda a resposta sem trocar de tela.
+    private func updateShelf(for screen: NSScreen) {
+        let safeTop = screen.safeAreaInsets.top
+        let shelf = NotchPhysicalCutout.shelf(
+            physicalHeight: NotchPhysicalCutout.height(
+                logicalScreenHeight: screen.frame.height,
+                nativePanelRows: Self.nativePanelRows(of: screen),
+                safeTop: safeTop
+            ),
+            safeTop: safeTop
+        )
+        notch?.compactBottomShelf = shelf
+        NotchBarSpan.shared.compactShelf = shelf
+    }
+
     /// Começa a observar telas e mostra o painel se houver notch. Idempotente: chamar de
     /// novo depois de mudar a preferência é a forma de aplicar a mudança.
     func start() {
@@ -193,6 +226,7 @@ final class NotchHUDController {
 
             case .notch:
                 island.close()
+                updateShelf(for: target.screen)
                 await notch.compact(on: target.screen)
                 guard !Task.isCancelled else { return }
                 guard attempt == 0 else { return }
@@ -217,6 +251,7 @@ final class NotchHUDController {
         case .notch:
             island.close()
             let notch = notch ?? makeNotch()
+            updateShelf(for: target.screen)
             Task { await notch.compact(on: target.screen) }
         case .floating:
             // A janela do pacote some ANTES de a ilha aparecer: as duas no ar ao mesmo
@@ -271,8 +306,9 @@ final class NotchHUDController {
             skipIntermediateHides: true
         )
         // A prateleira abaixo do recorte físico, onde a barra contínua ganha pixels
-        // reais — a razão de o pacote ser vendorado. Ver `NotchBottomRule.compactShelf`.
-        notch.compactBottomShelf = NotchBottomRule.compactShelf
+        // reais — a razão de o pacote ser vendorado. O valor de verdade é por
+        // tela/modo (`updateShelf`); este é só o chão até a primeira ancoragem.
+        notch.compactBottomShelf = 10
         hoverObserver = notch.$isHovering
             .removeDuplicates()
             .sink { [weak self] hovering in
