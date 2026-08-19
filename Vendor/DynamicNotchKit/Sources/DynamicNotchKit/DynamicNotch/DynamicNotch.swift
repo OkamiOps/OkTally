@@ -78,7 +78,10 @@ public final class DynamicNotch<Expanded, CompactLeading, CompactTrailing>: Obse
     /// shelf below the notch gives that content real pixels across the full width.
     /// Content is laid out unchanged (the shelf is added to the bottom safe-area inset);
     /// only the black shape grows downward. Zero restores stock behavior.
-    public var compactBottomShelf: CGFloat = 0
+    /// `@Published` because the right value depends on the SCREEN MODE (scaled
+    /// resolutions deepen the physical cutout) and is set on every re-anchor — the view
+    /// must re-render when it changes.
+    @Published public var compactBottomShelf: CGFloat = 0
 
     /// Content
     let expandedContent: Expanded

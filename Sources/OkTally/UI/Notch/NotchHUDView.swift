@@ -49,7 +49,7 @@ struct NotchCompactLeading: View {
                     // a barra sublinharia o chip, no meio do painel, em vez de correr pela
                     // borda de baixo dele. É a prateleira que a leva para BAIXO do recorte
                     // físico, onde existem pixels de ponta a ponta.
-                    .offset(y: NotchBottomRule.reservedBottomInset + NotchBottomRule.compactShelf - NotchBottomRule.bottomGap)
+                    .offset(y: NotchBottomRule.reservedBottomInset + span.compactShelf - NotchBottomRule.bottomGap)
             }
     }
 }
@@ -81,6 +81,13 @@ final class NotchBarSpan: ObservableObject {
 
     @Published var leading: CGRect = .zero
     @Published var trailing: CGRect = .zero
+
+    /// A prateleira do painel compacto NESTA tela/modo — quanto o painel desce abaixo do
+    /// recorte físico para a barra ter pixels reais. Calculada pelo controller a cada
+    /// ancoragem (`NotchPhysicalCutout.shelf`), porque depende da resolução escalada do
+    /// momento. Mora aqui pela mesma razão das medidas das asas: as views do conteúdo
+    /// compacto não têm outro canal com o controller.
+    @Published var compactShelf: CGFloat = 10
 
     /// Da ponta esquerda do painel até a direita. Zero enquanto ninguém mediu — e aí a
     /// barra simplesmente não é desenhada, em vez de aparecer com um comprimento chutado.
@@ -143,19 +150,6 @@ struct NotchBottomRule: View {
     /// (`NotchView.compactContent`, `safeAreaInset(edge: .bottom)` de 8pt). A barra mora
     /// DENTRO desse respiro: é o que a coloca na borda do painel sem empurrar o chip.
     static let reservedBottomInset: CGFloat = 8
-
-    /// Quanto o painel compacto DESCE abaixo do notch físico (`compactBottomShelf` do
-    /// pacote vendorado — ver o comentário no `Package.swift`).
-    ///
-    /// O painel de fábrica tem exatamente a altura do recorte, e o recorte é um buraco:
-    /// não há pixels atrás dele. Uma barra "de ponta a ponta" desenhada nessa faixa era
-    /// contínua no framebuffer e partida no olho — o miolo morria atrás do hardware. A
-    /// prateleira dá à barra uma faixa com pixels reais na largura inteira.
-    ///
-    /// O valor precisa cobrir `bottomGap + thickness` (5,5pt), senão parte do traço volta
-    /// para trás do recorte; 8pt deixa 2,5pt de preto entre o recorte e a barra, que é o
-    /// que a separa visualmente do hardware sem virar uma aba pendurada.
-    static let compactShelf: CGFloat = 8
 
     /// Distância da barra até a borda inferior do painel. Encostar de fato na borda a
     /// faria entrar na curva do canto, que a cortaria na ponta de fora.

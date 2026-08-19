@@ -3,36 +3,82 @@ import XCTest
 @testable import OkTally
 
 /// A conta que decide se a barra contínua do notch fechado é VISÍVEL — a parte que nenhum
-/// PNG do harness revela, porque o recorte físico não existe na imagem: no framebuffer a
-/// barra sempre foi contínua, e mesmo assim o dono via dois tocos, um sob cada asa.
+/// PNG (nem `screencapture`!) revela: o framebuffer tem os pixels atrás do recorte, o
+/// painel de LED não. O dono provou com uma foto do hardware que a primeira prateleira,
+/// calculada sobre o `safeAreaInsets.top` DECLARADO, ainda deixava a barra dentro do furo:
+/// em resolução escalada o furo físico ocupa mais pontos do que o macOS admite.
 ///
-/// A regra: o painel compacto desce `compactShelf` pontos abaixo do recorte (patch
-/// `compactBottomShelf` no pacote vendorado), e a barra mora nessa prateleira. Estes
-/// testes guardam a aritmética que mantém o traço INTEIRO fora da sombra do hardware —
-/// quem mexer nas constantes sem refazer a conta quebra aqui, não no olho do dono.
+/// Estes testes guardam as duas contas de `NotchPhysicalCutout`: quanto o furo mede de
+/// verdade no modo atual, e quanto o painel precisa descer para a barra inteira ficar
+/// abaixo dele.
 final class NotchBottomRuleTests: XCTestCase {
-    /// A borda de baixo da barra fica a `bottomGap` da borda do painel; a de cima, a
-    /// `bottomGap + thickness`. TUDO isso precisa caber dentro da prateleira — se a
-    /// prateleira for mais rasa, o topo do traço volta para trás do recorte e o miolo
-    /// da barra some de novo.
-    func testBarLivesEntirelyBelowThePhysicalNotch() {
-        let barTopAbovePanelBottom = NotchBottomRule.bottomGap + NotchBottomRule.thickness
-        XCTAssertGreaterThanOrEqual(
-            NotchBottomRule.compactShelf, barTopAbovePanelBottom,
-            "A prateleira (\(NotchBottomRule.compactShelf)pt) é mais rasa que gap+traço "
-                + "(\(barTopAbovePanelBottom)pt): o topo da barra fica atrás do recorte físico."
+    /// Anatomia da barra a partir das constantes reais — se alguém mudar espessura ou
+    /// respiro, as contas abaixo acompanham em vez de mentir.
+    private var barBand: CGFloat { NotchBottomRule.bottomGap + NotchBottomRule.thickness }
+
+    // MARK: - Altura física do furo
+
+    /// Modo padrão (lógica = nativa ÷ 2): o declarado é verdade e a conta devolve ele.
+    func testDefaultModeMatchesDeclaredSafeArea() {
+        let physical = NotchPhysicalCutout.height(
+            logicalScreenHeight: 982, nativePanelRows: 1964, safeTop: 38
+        )
+        XCTAssertEqual(physical, 38, accuracy: 0.01)
+    }
+
+    /// A tela do dono no dia da foto: 2048×1330 escalado num painel de 1964 linhas,
+    /// `safeAreaInsets.top` declarando 43. O furo real: 38 × 1330 ÷ 982 ≈ 51,5pt —
+    /// 8,5pt mais fundo que o declarado. Foi exatamente nessa faixa que a barra da
+    /// primeira prateleira morreu.
+    func testScaledModeCutoutIsDeeperThanDeclared() {
+        let physical = NotchPhysicalCutout.height(
+            logicalScreenHeight: 1330, nativePanelRows: 1964, safeTop: 43
+        )
+        XCTAssertEqual(physical, 51.46, accuracy: 0.05)
+        XCTAssertGreaterThan(physical, 43 + 8, "o furo escalado invade >8pt além do declarado")
+    }
+
+    /// Sem modo nativo na lista (painel desconhecido) a resposta honesta é o declarado —
+    /// nunca um chute que poderia ser MENOR que ele.
+    func testUnknownPanelFallsBackToDeclared() {
+        XCTAssertEqual(
+            NotchPhysicalCutout.height(logicalScreenHeight: 1330, nativePanelRows: nil, safeTop: 43),
+            43
         )
     }
 
-    /// O mesmo invariante, contado a partir do topo da tela, com o notch real do dono
-    /// (43pt na tela 2048×1330): o traço inteiro tem de começar ABAIXO dos 43pt.
-    func testBarClearsARealNotchHeight() {
-        let notchHeight: CGFloat = 43
-        let panelHeight = notchHeight + NotchBottomRule.compactShelf
-        let barTop = panelHeight - NotchBottomRule.bottomGap - NotchBottomRule.thickness
-        XCTAssertGreaterThanOrEqual(
-            barTop, notchHeight,
-            "Barra começa em y=\(barTop), dentro da faixa do recorte (0…\(notchHeight))."
+    /// O furo nunca é raso demais: se o modelo der menos que o declarado (painel exótico),
+    /// o declarado é o piso.
+    func testDeclaredIsTheFloor() {
+        let physical = NotchPhysicalCutout.height(
+            logicalScreenHeight: 500, nativePanelRows: 1964, safeTop: 43
         )
+        XCTAssertEqual(physical, 43)
+    }
+
+    // MARK: - Prateleira
+
+    /// O invariante que a foto do dono cobrou: TODO o traço (respiro da borda +
+    /// espessura + folga do modelo) abaixo do furo físico. A borda de cima da barra fica
+    /// em `safeTop + shelf − barBand`; ela precisa passar do furo com a folga inteira.
+    func testBarClearsThePhysicalCutoutOnTheOwnersScreen() {
+        let safeTop: CGFloat = 43
+        let physical = NotchPhysicalCutout.height(
+            logicalScreenHeight: 1330, nativePanelRows: 1964, safeTop: safeTop
+        )
+        let shelf = NotchPhysicalCutout.shelf(physicalHeight: physical, safeTop: safeTop)
+        let barTop = safeTop + shelf - barBand
+        XCTAssertGreaterThanOrEqual(
+            barTop, physical + NotchPhysicalCutout.clearance - 1,
+            "barra em y=\(barTop) sem folga sobre o furo de \(physical)pt"
+        )
+    }
+
+    /// No modo padrão a prateleira volta ao tamanho discreto (~10pt): overlap zero,
+    /// sobra só a anatomia da barra e a folga.
+    func testDefaultModeShelfStaysShallow() {
+        let shelf = NotchPhysicalCutout.shelf(physicalHeight: 38, safeTop: 38)
+        XCTAssertEqual(shelf, (barBand + NotchPhysicalCutout.clearance).rounded(.up))
+        XCTAssertLessThanOrEqual(shelf, 10)
     }
 }
