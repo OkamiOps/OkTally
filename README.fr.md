@@ -9,7 +9,7 @@
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/licence-MIT-blue?style=flat)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/OkamiOps/OkTally?include_prereleases&style=flat&color=orange)](https://github.com/OkamiOps/OkTally/releases)
-[![Tests](https://img.shields.io/badge/tests-252%20r%C3%A9ussis-brightgreen?style=flat)](#d%C3%A9veloppement)
+[![Tests](https://img.shields.io/badge/tests-427%20r%C3%A9ussis-brightgreen?style=flat)](#d%C3%A9veloppement)
 [![No telemetry](https://img.shields.io/badge/t%C3%A9l%C3%A9m%C3%A9trie-aucune-success?style=flat)](#confidentialit%C3%A9)
 
 [English](README.md) | [Deutsch](README.de.md) | **Français** | [Português (BR)](README.pt-BR.md)
@@ -95,7 +95,7 @@ L'onglet **Análise** somme toutes les sources dans une heatmap + chips (total, 
 
 Nécessite macOS 26 (Tahoe) ou ultérieur. Les versions antérieures de macOS ne sont plus prises en charge et ne recevront plus de mises à jour.
 
-1. Téléchargez `OkTally-0.9.1.dmg` depuis la [page Releases](https://github.com/OkamiOps/OkTally/releases).
+1. Téléchargez `OkTally-0.9.2.dmg` depuis la [page Releases](https://github.com/OkamiOps/OkTally/releases).
 2. Ouvrez-le et glissez **OkTally** dans Applications.
 3. L'app n'est pas notariée : au premier lancement, clic droit (Ctrl-clic) sur `OkTally.app` → **Ouvrir** → **Ouvrir**.
 

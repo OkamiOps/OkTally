@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.9.2-beta] — 2026-08-19
+
 ### Added
 
 - **Pick what each spot shows**: the notch's left wing, its right wing and the menu bar
@@ -22,13 +24,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The usage heatmap now fills the available width and gained a legend.
 - Alert thresholds now include **50 %** and **80 %** alongside the existing 70 / 90 / 100 %.
 - **Notch panel** on the MacBook's built-in display: a black panel continuous with the
-  notch, with rounded "wing" corners. Idle it hugs the notch with the brand symbol on
-  one side and one minimal tick per tracked quota on the other; hovering springs it open
+  notch, with rounded "wing" corners. Idle it hugs the notch with one chosen quota on
+  each side of the cutout (identity chip + remaining value); hovering springs it open
   into a dense row per quota (identity chip, bar, % remaining, reset countdown); clicking
-  opens the full popover anchored under the notch. It exists only where there is a notch
-  — on an external monitor, with the lid closed, or with the new **Notch panel** switch
-  in Preferences ▸ Menu bar turned off, the window is not created at all and the menu bar
-  carries on alone.
+  opens the full popover anchored under the notch. The **Notch panel** switch in
+  Preferences ▸ Menu bar turns the whole thing off.
+- **Floating island** when no screen has a notch (clamshell, external monitors, iMac):
+  the same panel draws itself whole as a black pill hugging the top of the primary
+  display — flat on top, wing-rounded below. It can be dragged along the menu bar
+  (position remembered per display, snapping back to center), double-clicked to
+  re-center, and behaves exactly like the notch panel on hover and click.
+- **Continuous bottom bar** across the closed panel: one thin edge-to-edge progress bar
+  under the notch (or island) showing the remaining share of a chosen quota, colored by
+  the danger scale. On notched screens the panel now extends a computed shelf *below*
+  the physical cutout, because the hardware hole is deeper than `safeAreaInsets.top`
+  admits on scaled resolutions — without the shelf, the middle of the bar sat behind
+  the cutout, where the LCD has no pixels.
+- **Hero card is now a fifth selectable slot**: the popover's big number can be pinned
+  to a specific provider window (or left on "Automatic — most critical"), alongside the
+  two notch wings, the bottom bar and the menu bar value.
+- **Continuous usage color scale**, replacing the three fixed steps: values now blend
+  smoothly from healthy to warning to critical, and the two boundary thresholds are
+  editable in Preferences.
 
 ### Changed
 
@@ -71,6 +88,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   it, so translations and bundled assets only resolved through SwiftPM's fallback to an
   absolute path inside `.build` on the building machine — copying the `.app` elsewhere
   (or deleting `.build`) would have crashed it on the first translated string.
+
+- **Cursor survives the API's new billing schema**: Cursor silently dropped
+  `totalSpend` from its usage payload, which froze the card on stale data with "The
+  data couldn't be read because it is missing". The decoder now treats the field as
+  optional and derives the spend from the remaining fields.
+- **Hovering the floating island no longer crashes the app.**
+- **The notch panel stays on the notched screen** when an external monitor is plugged
+  in (the library's own screen observer used to steal the window to `screens[0]`).
+
+### Internal
+
+- **DynamicNotchKit is now vendored** (`Vendor/DynamicNotchKit`, MIT, was 1.1.0): the
+  stock compact panel is exactly as tall as the notch, so a continuous bottom bar was
+  physically impossible — the patch adds a configurable shelf below the cutout, sized
+  per screen mode from the panel's native pixel rows.
 
 ## [0.9.1-beta] — 2026-08-12
 
@@ -137,6 +169,7 @@ First public release. Everything below is new.
 - Secrets in the macOS Keychain only (with silent migration from legacy plaintext locations); usage data stays local; no telemetry.
 - Tri-state provider status (connected / needs reauth / not configured) so an expired login is never painted as "broken" or hidden as "fine".
 
+[0.9.2-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.2-beta
 [0.9.1-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.1-beta
 [0.9.0-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.0-beta
 [0.8.0-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.8.0-beta

@@ -9,7 +9,7 @@
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/OkamiOps/OkTally?include_prereleases&style=flat&color=orange)](https://github.com/OkamiOps/OkTally/releases)
-[![Tests](https://img.shields.io/badge/tests-252%20passing-brightgreen?style=flat)](#development)
+[![Tests](https://img.shields.io/badge/tests-427%20passing-brightgreen?style=flat)](#development)
 [![No telemetry](https://img.shields.io/badge/telemetry-none-success?style=flat)](#privacy)
 
 **English** | [Deutsch](README.de.md) | [Français](README.fr.md) | [Português (BR)](README.pt-BR.md)
@@ -129,7 +129,7 @@ Every provider is a plugin conforming to a single `UsageProvider` protocol and n
 
 Requires macOS 26 (Tahoe) or later. Older macOS versions are no longer supported and will not receive updates.
 
-1. Download `OkTally-0.9.1.dmg` from the [Releases page](https://github.com/OkamiOps/OkTally/releases).
+1. Download `OkTally-0.9.2.dmg` from the [Releases page](https://github.com/OkamiOps/OkTally/releases).
 2. Open it and drag **OkTally** to Applications.
 3. The app is not notarized: on first launch, right-click (Ctrl-click) `OkTally.app` → **Open** → **Open**.
 
