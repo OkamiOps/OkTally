@@ -1,13 +1,16 @@
-# Cria a tag e o release no GitHub a partir do master.
+# Corta um release completo a partir do master: testa, constrói o DMG num runner
+# macOS e publica tag + release com o DMG anexado.
 #
-# Existe porque cortar release exige criar uma TAG, e nem todo ambiente de onde se
-# trabalha no repositório pode empurrar tags (sessões remotas do Claude Code, por
-# exemplo, só empurram branches). Disparo manual: Actions ▸ Release ▸ Run workflow,
-# com a versão (ex.: 0.9.3-beta). As notas saem da seção correspondente do CHANGELOG.
+# Existe porque cortar release exige criar uma TAG e construir um APP DE MACOS, e nem
+# todo ambiente de onde se trabalha no repositório pode fazer qualquer das duas coisas
+# (sessões remotas do Claude Code rodam em Linux e só empurram branches). Disparo
+# manual: Actions ▸ Release ▸ Run workflow, com a versão (ex.: 0.9.3-beta). As notas
+# saem da seção correspondente do CHANGELOG — uma fonte de verdade só.
 #
-# O DMG continua sendo construído localmente (Scripts/build_app.sh + make_dmg.sh
-# precisam de macOS e da identidade de assinatura da máquina do dono) e anexado ao
-# release depois: `gh release upload v<versão> .build/OkTally-<versão>.dmg`.
+# O runner não tem a identidade "OkTally Dev" da máquina do dono, então o build_app.sh
+# cai na assinatura ad-hoc: quem atualiza reconecta os provedores UMA vez (mesmo aviso
+# do 0.8.0-beta). Para um DMG com identidade estável, construir localmente e subir por
+# cima: `gh release upload v<versão> .build/OkTally-<versão>.dmg --clobber`.
 name: Release
 
 on:
@@ -23,16 +26,31 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
+      - name: Selecionar o Xcode mais novo
+        # O Package.swift exige o SDK do macOS 26; o xcode-select default do runner
+        # pode apontar para um Xcode mais velho.
+        run: |
+          LATEST="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$LATEST" ]; then sudo xcode-select -s "$LATEST"; fi
+          xcodebuild -version
+
+      - name: Testes
+        run: swift test
+
+      - name: Construir o DMG
+        # Sem argumento: make_dmg.sh lê a versão do Info.plist, que é o nome que os
+        # READMEs anunciam (OkTally-0.9.3.dmg, sem o sufixo -beta da tag).
+        run: bash Scripts/make_dmg.sh
+
       - name: Extrair notas do CHANGELOG
-        id: notes
         run: |
           VERSION="${{ inputs.version }}"
           # A seção "## [<versão>]" até o próximo "## [" — o corpo do release é
-          # exatamente o que o CHANGELOG já diz, sem uma segunda fonte de verdade.
+          # exatamente o que o CHANGELOG já diz.
           awk -v ver="$VERSION" '
             $0 ~ "^## \\[" ver "\\]" { on = 1; next }
             on && /^## \[/ { exit }
@@ -43,12 +61,20 @@ jobs:
             exit 1
           fi
 
-      - name: Criar tag e release
+      - name: Publicar tag, release e DMG
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${{ inputs.version }}"
-          gh release create "v${VERSION}" \
-            --target "${{ github.sha }}" \
-            --title "OkTally ${VERSION}" \
-            --notes-file /tmp/notes.md
+          DMG="$(ls .build/OkTally-*.dmg)"
+          if gh release view "v${VERSION}" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            # Rodada de reparo: o release já existe (por exemplo, criado sem o DMG) —
+            # só completa o que falta, sem recriar tag nem apagar histórico.
+            gh release upload "v${VERSION}" "$DMG" --clobber --repo "${{ github.repository }}"
+          else
+            gh release create "v${VERSION}" "$DMG" \
+              --target "${{ github.sha }}" \
+              --title "OkTally ${VERSION}" \
+              --notes-file /tmp/notes.md \
+              --repo "${{ github.repository }}"
+          fi
