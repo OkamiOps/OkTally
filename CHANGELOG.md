@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.9.3-beta] — 2026-08-19
+
 ### Fixed
 
 - **No more neon green at mid-scale**: the usage color scale rotated hue through green
@@ -178,6 +180,7 @@ First public release. Everything below is new.
 - Secrets in the macOS Keychain only (with silent migration from legacy plaintext locations); usage data stays local; no telemetry.
 - Tri-state provider status (connected / needs reauth / not configured) so an expired login is never painted as "broken" or hidden as "fine".
 
+[0.9.3-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.3-beta
 [0.9.2-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.2-beta
 [0.9.1-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.1-beta
 [0.9.0-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.0-beta

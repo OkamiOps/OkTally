@@ -95,7 +95,7 @@ L'onglet **Análise** somme toutes les sources dans une heatmap + chips (total, 
 
 Nécessite macOS 26 (Tahoe) ou ultérieur. Les versions antérieures de macOS ne sont plus prises en charge et ne recevront plus de mises à jour.
 
-1. Téléchargez `OkTally-0.9.2.dmg` depuis la [page Releases](https://github.com/OkamiOps/OkTally/releases).
+1. Téléchargez `OkTally-0.9.3.dmg` depuis la [page Releases](https://github.com/OkamiOps/OkTally/releases).
 2. Ouvrez-le et glissez **OkTally** dans Applications.
 3. L'app n'est pas notariée : au premier lancement, clic droit (Ctrl-clic) sur `OkTally.app` → **Ouvrir** → **Ouvrir**.
 

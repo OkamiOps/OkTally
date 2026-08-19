@@ -129,7 +129,7 @@ Every provider is a plugin conforming to a single `UsageProvider` protocol and n
 
 Requires macOS 26 (Tahoe) or later. Older macOS versions are no longer supported and will not receive updates.
 
-1. Download `OkTally-0.9.2.dmg` from the [Releases page](https://github.com/OkamiOps/OkTally/releases).
+1. Download `OkTally-0.9.3.dmg` from the [Releases page](https://github.com/OkamiOps/OkTally/releases).
 2. Open it and drag **OkTally** to Applications.
 3. The app is not notarized: on first launch, right-click (Ctrl-click) `OkTally.app` → **Open** → **Open**.
 
