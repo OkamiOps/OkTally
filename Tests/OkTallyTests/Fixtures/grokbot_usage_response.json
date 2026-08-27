@@ -1,0 +1,7 @@
+{
+  "usagePercent": 19.086533,
+  "nextResetTimestampUtc": "2026-08-31T00:31:02.272Z",
+  "hasNonZeroIncludedLimit": true,
+  "hasAvailableUsage": true,
+  "grokPlanLabel": "Grok Bot Plan"
+}

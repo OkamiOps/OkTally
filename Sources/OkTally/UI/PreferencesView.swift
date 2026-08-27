@@ -38,7 +38,7 @@ struct PreferencesView: View {
     @State private var statusMessage: String = ""
 
     /// Sidebar order — mirrors the old card order, not registration order.
-    private let providerIds = ["claude", "codex", "supergrok", "cursor", "copilot", "antigravity", "openrouter", "minimax", "opencode", "mimo"]
+    private let providerIds = ["claude", "codex", "supergrok", "cursor", "cursor-grokbot", "copilot", "antigravity", "openrouter", "minimax", "opencode", "mimo"]
 
     var body: some View {
         NavigationSplitView {
@@ -141,7 +141,7 @@ struct PreferencesView: View {
         case "claude": return claudeLoggedIn
         case "codex": return codexLoggedIn
         case "supergrok": return superGrokLoggedIn
-        case "cursor": return true // reads the Cursor app session automatically
+        case "cursor", "cursor-grokbot": return true // reads the Cursor app session automatically
         case "copilot": return CopilotTokenReader().firstToken() != nil
         case "antigravity": return AntigravityTokenReader().readTokens() != nil
         case "openrouter": return !openRouterAPIKey.isEmpty
@@ -162,6 +162,7 @@ struct PreferencesView: View {
         case .provider("codex"): codexPane
         case .provider("supergrok"): superGrokPane
         case .provider("cursor"): cursorPane
+        case .provider("cursor-grokbot"): grokBotPane
         case .provider("copilot"): copilotPane
         case .provider("antigravity"): antigravityPane
         case .provider("openrouter"):
@@ -301,6 +302,21 @@ struct PreferencesView: View {
             snapshot: appModel.snapshotsByProvider["cursor"],
             problem: appModel.errorsByProvider["cursor"],
             name: providerName("cursor"),
+            status: .connected(L("Lê a sessão do app Cursor automaticamente"))
+        ) {
+            Text(L("Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho."))
+                .font(.caption).foregroundStyle(.secondary)
+        } details: {
+            EmptyView()
+        }
+    }
+
+    private var grokBotPane: some View {
+        ProviderPaneScaffold(
+            providerId: "cursor-grokbot",
+            snapshot: appModel.snapshotsByProvider["cursor-grokbot"],
+            problem: appModel.errorsByProvider["cursor-grokbot"],
+            name: providerName("cursor-grokbot"),
             status: .connected(L("Lê a sessão do app Cursor automaticamente"))
         ) {
             Text(L("Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho."))

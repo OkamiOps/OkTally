@@ -26,6 +26,7 @@ enum ProviderPalette {
         // lugar mais visível da tela desmontava a paleta categórica inteira. Lima fecha o
         // único setor vago da roda, entre o âmbar do MiMo e o verde-azulado do Codex.
         case "cursor":      return Color(hex: 0x8FD14F) // lima
+        case "cursor-grokbot": return Color(hex: 0x5966D9)
         default:            return Theme.accent
         }
     }
@@ -43,6 +44,7 @@ enum ProviderPalette {
         case "codex": return "X"
         case "supergrok": return "G"
         case "cursor": return "▹"
+        case "cursor-grokbot": return "GB"
         case "openrouter": return "O"
         case "minimax": return "M"
         case "opencode": return "◇"

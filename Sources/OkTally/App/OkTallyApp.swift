@@ -63,6 +63,7 @@ struct OkTallyApp: App {
             region: { preferencesStore.minimaxRegionRaw == "china" ? .china : .global }
         ))
         registry.register(CursorUsageProvider())
+        registry.register(GrokBotUsageProvider())
         registry.register(CopilotUsageProvider())
         registry.register(AntigravityUsageProvider())
         registry.register(OpenCodeUsageProvider(apiKeyProvider: { preferencesStore.openCodeAPIKey }))
