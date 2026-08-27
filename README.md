@@ -9,7 +9,7 @@
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/OkamiOps/OkTally?include_prereleases&style=flat&color=orange)](https://github.com/OkamiOps/OkTally/releases)
-[![Tests](https://img.shields.io/badge/tests-427%20passing-brightgreen?style=flat)](#development)
+[![Tests](https://img.shields.io/badge/tests-431%20passing-brightgreen?style=flat)](#development)
 [![No telemetry](https://img.shields.io/badge/telemetry-none-success?style=flat)](#privacy)
 
 **English** | [Deutsch](README.de.md) | [Français](README.fr.md) | [Português (BR)](README.pt-BR.md)
@@ -59,7 +59,7 @@ OkTally is a **native macOS menu bar app** that keeps every one of those quotas 
 | 📊 | **Analytics tab** | Token stats + GitHub-style usage heatmap, aggregated across Codex, Claude Code and OpenCode — streaks, daily peak, today/yesterday/30 days |
 | 🔔 | **Configurable alerts** | Edge-triggered macOS notifications at 70/90/100% (your pick) and a low-balance USD threshold — once per crossing, not once per poll |
 | 💰 | **Cost estimates** | Local token counts × OpenRouter's public price table → "est. cost (30d)" on the card |
-| 🧲 | **Zero-config detection** | Cursor, GitHub Copilot and Antigravity are picked up from the logins already on your Mac — nothing to paste |
+| 🧲 | **Zero-config detection** | Cursor, GrokBot, GitHub Copilot and Antigravity are picked up from the logins already on your Mac — nothing to paste |
 | 🔐 | **Keychain-only secrets** | OAuth tokens and API keys never touch plaintext; everything runs locally |
 
 ## The overview window
@@ -94,6 +94,7 @@ The **Análise** tab sums all sources into one heatmap + stat chips (lifetime, d
 | **Codex** | OAuth | Weekly + per-feature windows (e.g. Spark) | ✅ account | — |
 | **GitHub Copilot** | **Zero-config** — reads your Copilot/gh CLI login | Chat, completions, premium | — | — |
 | **Cursor** | **Zero-config** — reads your local Cursor session | Balance + billing-cycle % | — | — |
+| **GrokBot** | **Zero-config** — reuses your local Cursor session | Separate weekly GrokBot quota | — | — |
 | **Antigravity** | **Zero-config** — reads your Antigravity IDE login | Gemini + Claude/GPT groups, 5h + weekly | — | — |
 | **SuperGrok** | OAuth device code | Weekly window | — | — |
 | **OpenRouter** | API key | Credit balance | — | price table source |
@@ -109,8 +110,8 @@ The **Análise** tab sums all sources into one heatmap + stat chips (lifetime, d
 
 ```mermaid
 flowchart LR
-    subgraph Providers["10 provider plugins"]
-        P1["Claude · Codex · Copilot · Cursor<br/>Antigravity · SuperGrok · OpenRouter<br/>MiniMax · OpenCode · MiMo"]
+    subgraph Providers["11 provider plugins"]
+        P1["Claude · Codex · Copilot · Cursor · GrokBot<br/>Antigravity · SuperGrok · OpenRouter<br/>MiniMax · OpenCode · MiMo"]
     end
     P1 -->|"ProviderSnapshot<br/>(QuotaShape)"| S[Scheduler]
     S --> DB[(SQLite history<br/>30-day retention)]
@@ -129,7 +130,7 @@ Every provider is a plugin conforming to a single `UsageProvider` protocol and n
 
 Requires macOS 26 (Tahoe) or later. Older macOS versions are no longer supported and will not receive updates.
 
-1. Download `OkTally-0.9.3.dmg` from the [Releases page](https://github.com/OkamiOps/OkTally/releases).
+1. Download `OkTally-0.9.4.dmg` from the [Releases page](https://github.com/OkamiOps/OkTally/releases).
 2. Open it and drag **OkTally** to Applications.
 3. The app is not notarized: on first launch, right-click (Ctrl-click) `OkTally.app` → **Open** → **Open**.
 
@@ -155,7 +156,7 @@ bash Scripts/make_dmg.sh               # package a drag-to-install DMG
 ## Getting started
 
 1. Click the OkTally item in the menu bar — first launch shows a **connect your first provider** call-to-action.
-2. Open **Preferences** and connect each provider you use — OAuth login, API key, or nothing at all for Cursor/Copilot.
+2. Open **Preferences** and connect each provider you use — OAuth login, API key, or nothing at all for Cursor/GrokBot/Copilot.
 3. Back in the popover, pin the windows you care about with the pin icon.
 4. Tune alert thresholds (70/90/100% + low balance) in **Preferences → General**.
 5. Open **Visão geral** for the full dashboard and the **Análise** tab.
@@ -163,7 +164,7 @@ bash Scripts/make_dmg.sh               # package a drag-to-install DMG
 ## Development
 
 ```bash
-swift test    # 252 unit tests
+swift test    # 431 unit tests
 ```
 
 | Directory | What lives there |
