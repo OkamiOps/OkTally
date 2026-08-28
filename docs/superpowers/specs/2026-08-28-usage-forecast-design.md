@@ -87,14 +87,17 @@ Novo `UsageForecastEngine`, puro e sem dependência de SwiftUI ou SQLite.
 
 ### Critério mínimo
 
-A previsão numérica só existe quando a série possui:
+A previsão numérica de esgotamento só existe quando a série possui:
 
 - pelo menos 3 horas entre a primeira e a última amostra;
 - pelo menos 6 amostras;
 - aumento líquido mínimo de 0,5 ponto percentual.
 
-Antes disso o resultado é `collecting`, com o tempo observado e a quantidade de
-amostras disponíveis. Não se inventa data de esgotamento.
+Com menos de 3 horas ou menos de 6 amostras, o resultado é `collecting`, com o tempo
+observado e a quantidade de amostras disponíveis. Depois de cumprir esses dois mínimos,
+uma variação líquida menor que 0,5 ponto produz `noExhaustion`: existe histórico
+suficiente para dizer que o ritmo observado é baixo demais, mas não para inventar uma
+data de esgotamento.
 
 ### Fórmulas
 
@@ -114,8 +117,8 @@ gap = resetAt - exhaustionAt
 `gap > 0` significa que a cota acaba antes da renovação. `gap < 0` significa folga.
 
 Uma queda líquida no percentual é tratada como correção do provider, não como consumo
-negativo: o ritmo fica zero e nenhuma data de esgotamento é produzida até a série voltar
-a acumular pelo menos 0,5 ponto.
+negativo: depois dos mínimos de tempo e amostras, o ritmo fica zero e o estado é
+`noExhaustion` até a série voltar a acumular pelo menos 0,5 ponto.
 
 ### Estado de ritmo
 
