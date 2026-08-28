@@ -70,7 +70,7 @@ final class CodexUsageProvider: UsageProvider {
             used: window.usedPercent, limit: 100,
             windowStart: resetAt.addingTimeInterval(-windowSpan),
             resetAt: resetAt
-        )))
+        ), renewalCadence: seconds == 604800 ? .weekly : nil))
     }
 
     private static func label(forWindowSeconds seconds: Int?) -> String? {

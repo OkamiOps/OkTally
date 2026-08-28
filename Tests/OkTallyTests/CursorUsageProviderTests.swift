@@ -128,6 +128,7 @@ final class CursorUsageProviderTests: XCTestCase {
         // limit (2000c) - totalSpend (25423c) = -23423c = -$234.23
         XCTAssertEqual(remaining, Decimal(string: "-234.23")!)
         XCTAssertEqual(currency, "USD")
+        XCTAssertNil(snapshot.quotas.first(where: { $0.label == "balance" })?.renewalCadence)
     }
 
     func test_fetchSnapshot_emitsPercentWindow_fromTotalPercentUsedAndBillingCycleEnd() async throws {
@@ -145,6 +146,7 @@ final class CursorUsageProviderTests: XCTestCase {
         XCTAssertEqual(used, 73.68985507246377)
         XCTAssertEqual(limit, 100)
         XCTAssertEqual(resetAt, Date(timeIntervalSince1970: 1786429152))
+        XCTAssertEqual(snapshot.quotas.first(where: { $0.label == "percent" })?.renewalCadence, .monthly)
     }
 
     func test_fetchSnapshot_fallsBackToRemaining_whenTotalSpendAbsent() async throws {

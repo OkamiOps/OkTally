@@ -96,7 +96,8 @@ final class GrokBotUsageProvider: UsageProvider {
                     used: response.usagePercent,
                     limit: 100,
                     resetAt: resetAt
-                )
+                ),
+                renewalCadence: .weekly
             )],
             usageDetail: nil,
             planLabel: response.grokPlanLabel

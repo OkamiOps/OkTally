@@ -60,7 +60,9 @@ final class MiniMaxUsageProvider: UsageProvider {
 
         var quotas: [QuotaWindow] = []
         if let bestFiveHour { quotas.append(QuotaWindow(label: "5h", shape: bestFiveHour)) }
-        if let bestWeekly { quotas.append(QuotaWindow(label: "weekly", shape: bestWeekly)) }
+        if let bestWeekly {
+            quotas.append(QuotaWindow(label: "weekly", shape: bestWeekly, renewalCadence: .weekly))
+        }
 
         return ProviderSnapshot(providerId: id, fetchedAt: Date(), quotas: quotas, usageDetail: nil)
     }

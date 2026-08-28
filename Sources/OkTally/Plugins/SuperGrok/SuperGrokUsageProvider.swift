@@ -56,7 +56,8 @@ final class SuperGrokUsageProvider: UsageProvider {
 
         let window = QuotaWindow(
             label: "weekly",
-            shape: .rollingWindow(used: usedPercent, limit: 100, windowStart: windowStart, resetAt: resetAt)
+            shape: .rollingWindow(used: usedPercent, limit: 100, windowStart: windowStart, resetAt: resetAt),
+            renewalCadence: .weekly
         )
         return ProviderSnapshot(providerId: id, fetchedAt: now(), quotas: [window], usageDetail: nil)
     }

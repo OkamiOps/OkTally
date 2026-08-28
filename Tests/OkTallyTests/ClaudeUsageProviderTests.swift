@@ -28,9 +28,15 @@ final class ClaudeUsageProviderTests: XCTestCase {
 
         XCTAssertEqual(snapshot.providerId, "claude")
         XCTAssertEqual(snapshot.quotas.count, 3)
-        XCTAssertEqual(snapshot.quotas.first { $0.label == "5h" }?.shape.usedPercent, 42.5)
-        XCTAssertEqual(snapshot.quotas.first { $0.label == "weekly" }?.shape.usedPercent, 61.0)
-        XCTAssertEqual(snapshot.quotas.first { $0.label == "weekly-opus" }?.shape.usedPercent, 15.0)
+        let fiveHour = try XCTUnwrap(snapshot.quotas.first { $0.label == "5h" })
+        let weekly = try XCTUnwrap(snapshot.quotas.first { $0.label == "weekly" })
+        let weeklyOpus = try XCTUnwrap(snapshot.quotas.first { $0.label == "weekly-opus" })
+        XCTAssertEqual(fiveHour.shape.usedPercent, 42.5)
+        XCTAssertNil(fiveHour.renewalCadence)
+        XCTAssertEqual(weekly.shape.usedPercent, 61.0)
+        XCTAssertEqual(weekly.renewalCadence, .weekly)
+        XCTAssertEqual(weeklyOpus.shape.usedPercent, 15.0)
+        XCTAssertEqual(weeklyOpus.renewalCadence, .weekly)
     }
 
     func test_fetchSnapshot_withoutOpusWindow_returnsTwoWindows() async throws {

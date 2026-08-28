@@ -59,6 +59,7 @@ final class SuperGrokUsageProviderTests: XCTestCase {
             resetAt: resetAt
         ))
         XCTAssertEqual(window.shape.usedPercent, 42.5)
+        XCTAssertEqual(window.renewalCadence, .weekly)
         XCTAssertEqual(fetcher.lastAccessToken, "tok")
     }
 
@@ -76,6 +77,7 @@ final class SuperGrokUsageProviderTests: XCTestCase {
             return XCTFail("expected .rollingWindow shape")
         }
         XCTAssertEqual(used, 0)
+        XCTAssertEqual(snapshot.quotas[0].renewalCadence, .weekly)
     }
 
     func test_fetchSnapshot_missingResetAt_fallsBackToNow() async throws {

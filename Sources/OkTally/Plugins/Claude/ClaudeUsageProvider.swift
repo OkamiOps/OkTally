@@ -52,10 +52,18 @@ final class ClaudeUsageProvider: UsageProvider {
         let now = Date()
         var quotas = [
             QuotaWindow(label: "5h", shape: Self.shape(for: usage.fiveHour, windowLength: 5 * 3600, now: now)),
-            QuotaWindow(label: "weekly", shape: Self.shape(for: usage.sevenDay, windowLength: 7 * 24 * 3600, now: now))
+            QuotaWindow(
+                label: "weekly",
+                shape: Self.shape(for: usage.sevenDay, windowLength: 7 * 24 * 3600, now: now),
+                renewalCadence: .weekly
+            )
         ]
         if let opus = usage.sevenDayOpus {
-            quotas.append(QuotaWindow(label: "weekly-opus", shape: Self.shape(for: opus, windowLength: 7 * 24 * 3600, now: now)))
+            quotas.append(QuotaWindow(
+                label: "weekly-opus",
+                shape: Self.shape(for: opus, windowLength: 7 * 24 * 3600, now: now),
+                renewalCadence: .weekly
+            ))
         }
         let planLabel = await profileClient?.fetchPlanLabel(accessToken: accessToken)
         return ProviderSnapshot(providerId: id, fetchedAt: now, quotas: quotas, usageDetail: nil, planLabel: planLabel)

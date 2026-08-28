@@ -47,17 +47,20 @@ final class AntigravityUsageProviderTests: XCTestCase {
         let windows = AntigravityUsageProvider.windows(fromSummary: Data(summaryJSON.utf8), now: now)
 
         XCTAssertEqual(windows.count, 3)
-        let byLabel = Dictionary(uniqueKeysWithValues: windows.map { ($0.label, $0.shape) })
+        let byLabel = Dictionary(uniqueKeysWithValues: windows.map { ($0.label, $0) })
 
-        guard case .rollingWindow(let used, let limit, _, let resetAt) = byLabel["Gemini (weekly)"] else {
+        guard case .rollingWindow(let used, let limit, _, let resetAt) = byLabel["Gemini (weekly)"]?.shape else {
             return XCTFail("expected Gemini weekly window")
         }
         XCTAssertEqual(used, 60, accuracy: 0.0001)
         XCTAssertEqual(limit, 100)
         XCTAssertEqual(resetAt, ISO8601DateFormatter().date(from: "2026-08-19T10:51:46Z"))
+        XCTAssertEqual(byLabel["Gemini (weekly)"]?.renewalCadence, .weekly)
 
-        XCTAssertEqual(byLabel["Gemini (5h)"]?.usedPercent ?? -1, 0, accuracy: 0.0001)
-        XCTAssertEqual(byLabel["Claude/GPT (weekly)"]?.usedPercent ?? -1, 7, accuracy: 0.0001)
+        XCTAssertEqual(byLabel["Gemini (5h)"]?.shape.usedPercent ?? -1, 0, accuracy: 0.0001)
+        XCTAssertNil(byLabel["Gemini (5h)"]?.renewalCadence)
+        XCTAssertEqual(byLabel["Claude/GPT (weekly)"]?.shape.usedPercent ?? -1, 7, accuracy: 0.0001)
+        XCTAssertEqual(byLabel["Claude/GPT (weekly)"]?.renewalCadence, .weekly)
     }
 
     func test_windows_toleratesMissingFractionAndUnknownGroups() {

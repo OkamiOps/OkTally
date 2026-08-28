@@ -144,7 +144,7 @@ final class AntigravityUsageProvider: UsageProvider {
                     used: used, limit: 100,
                     windowStart: resetAt.addingTimeInterval(-windowLength),
                     resetAt: resetAt
-                )))
+                ), renewalCadence: isWeekly ? .weekly : nil))
             }
         }
         return windows

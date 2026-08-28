@@ -48,7 +48,8 @@ final class CursorUsageProvider: UsageProvider {
         if let resetAt = Self.parseEpochMillis(response.billingCycleEnd) {
             let percentWindow = QuotaWindow(
                 label: "percent",
-                shape: .periodicCounter(used: response.planUsage.totalPercentUsed, limit: 100, resetAt: resetAt)
+                shape: .periodicCounter(used: response.planUsage.totalPercentUsed, limit: 100, resetAt: resetAt),
+                renewalCadence: .monthly
             )
             windows.append(percentWindow)
         }

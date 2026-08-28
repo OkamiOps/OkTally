@@ -46,11 +46,13 @@ final class MiniMaxUsageProviderTests: XCTestCase {
             return XCTFail("expected a 5h quota window")
         }
         XCTAssertEqual(fiveHour.shape.usedPercent ?? -1, 40, accuracy: 0.001)
+        XCTAssertNil(fiveHour.renewalCadence)
 
         guard let weekly = snapshot.quotas.first(where: { $0.label == "weekly" }) else {
             return XCTFail("expected a weekly quota window")
         }
         XCTAssertEqual(weekly.shape.usedPercent ?? -1, 30, accuracy: 0.001)
+        XCTAssertEqual(weekly.renewalCadence, .weekly)
     }
 
     func test_fetchSnapshot_missingAPIKey_throws() async {

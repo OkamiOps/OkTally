@@ -59,7 +59,8 @@ final class GrokBotUsageProviderTests: XCTestCase {
                 used: 19.086533,
                 limit: 100,
                 resetAt: Date(timeIntervalSince1970: 1_788_136_262.272)
-            )
+            ),
+            renewalCadence: .weekly
         )])
     }
 

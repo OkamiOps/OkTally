@@ -62,10 +62,13 @@ final class CodexUsageProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.providerId, "codex")
         XCTAssertEqual(snapshot.quotas.count, 2)
         // The 604800s general window is labelled "semanal", never "5h".
-        XCTAssertEqual(snapshot.quotas.first { $0.label == "semanal" }?.shape.usedPercent, 69)
-        XCTAssertNil(snapshot.quotas.first { $0.label == "5h" })
+        let weekly = try XCTUnwrap(snapshot.quotas.first { $0.label == "semanal" })
+        XCTAssertEqual(weekly.shape.usedPercent, 69)
+        XCTAssertEqual(weekly.renewalCadence, .weekly)
         // The named additional limit surfaces under its feature name.
-        XCTAssertEqual(snapshot.quotas.first { $0.label.contains("GPT-5.3-Codex-Spark") }?.shape.usedPercent, 9)
+        let additionalWeekly = try XCTUnwrap(snapshot.quotas.first { $0.label.contains("GPT-5.3-Codex-Spark") })
+        XCTAssertEqual(additionalWeekly.shape.usedPercent, 9)
+        XCTAssertEqual(additionalWeekly.renewalCadence, .weekly)
         XCTAssertEqual(fetcher.lastAccountId, "acc-9")
         XCTAssertEqual(snapshot.planLabel, "Pro")
     }
@@ -91,6 +94,7 @@ final class CodexUsageProviderTests: XCTestCase {
 
         XCTAssertEqual(snapshot.quotas.count, 1)
         XCTAssertEqual(snapshot.quotas.first?.label, "5h")
+        XCTAssertNil(snapshot.quotas.first?.renewalCadence)
     }
 
     func test_isAuthenticated_reflectsStoredToken() async throws {
