@@ -4,6 +4,72 @@ import XCTest
 
 @MainActor
 final class AppModelTests: XCTestCase {
+    private final class ForecastReadFailingStorage: StorageManaging {
+        var snapshotsByProvider: [String: [ProviderSnapshot]] = [:]
+        var shouldFailSnapshotsRead = false
+
+        func save(_ snapshot: ProviderSnapshot) throws {
+            snapshotsByProvider[snapshot.providerId, default: []].append(snapshot)
+        }
+
+        func latestSnapshot(providerId: String) throws -> ProviderSnapshot? {
+            snapshotsByProvider[providerId]?.last
+        }
+
+        func snapshots(providerId: String, since: Date) throws -> [ProviderSnapshot] {
+            if shouldFailSnapshotsRead { throw FakeError.boom }
+            return (snapshotsByProvider[providerId] ?? []).filter { $0.fetchedAt >= since }
+        }
+
+        func prune(olderThan cutoff: Date) throws {}
+    }
+
+    private let forecastHour: TimeInterval = 3_600
+
+    private func renewableForecastSnapshots(
+        providerId: String = "claude",
+        now: Date
+    ) -> [ProviderSnapshot] {
+        let resetAt = now.addingTimeInterval(24 * forecastHour)
+        return [(-6.0, 10.0), (-5, 15), (-4, 20), (-3, 25), (-2, 30), (0, 40)].map { hoursAgo, used in
+            ProviderSnapshot(
+                providerId: providerId,
+                fetchedAt: now.addingTimeInterval(hoursAgo * forecastHour),
+                quotas: [
+                    QuotaWindow(
+                        label: "weekly",
+                        shape: .periodicCounter(used: used, limit: 100, resetAt: resetAt),
+                        renewalCadence: .weekly
+                    )
+                ],
+                usageDetail: nil
+            )
+        }
+    }
+
+    private func forecastScheduler(registry: PluginRegistry, storage: StorageManaging) -> Scheduler {
+        Scheduler(
+            registry: registry,
+            storage: storage,
+            alertEngine: AlertEngine(),
+            alertDispatcher: AlertDispatcher(sender: FakeNotificationSender())
+        )
+    }
+
+    private func waitForForecast(
+        _ id: ForecastWindowID,
+        in model: AppModel,
+        matching predicate: @escaping (UsageForecast) -> Bool = { _ in true }
+    ) async -> UsageForecast? {
+        for _ in 0..<100 {
+            if let forecast = model.forecastsByWindow[id], predicate(forecast) {
+                return forecast
+            }
+            await Task.yield()
+        }
+        return nil
+    }
+
     func test_refreshNow_populatesSnapshotsAndErrors() async {
         let good = FakeUsageProvider(id: "openrouter", displayName: "OpenRouter")
         good.snapshotToReturn = ProviderSnapshot(providerId: "openrouter", fetchedAt: Date(), quotas: [], usageDetail: nil)
@@ -206,5 +272,160 @@ final class AppModelTests: XCTestCase {
         // fonte de verdade.
         XCTAssertEqual(model.notchEntries.map(\.providerId), ["claude"])
         XCTAssertEqual(model.notchEntries.first?.danger, .warn)
+    }
+
+    func test_forecastSlotPersistsAndAvailableSlotsOnlyIncludeCurrentEligibleWindows() throws {
+        let now = Date()
+        let provider = FakeUsageProvider(id: "claude", displayName: "Claude Code")
+        let registry = PluginRegistry()
+        registry.register(provider)
+        let storage = FakeStorage()
+        let snapshot = ProviderSnapshot(
+            providerId: "claude",
+            fetchedAt: now,
+            quotas: [
+                QuotaWindow(
+                    label: "weekly",
+                    shape: .periodicCounter(used: 40, limit: 100, resetAt: now.addingTimeInterval(24 * forecastHour)),
+                    renewalCadence: .weekly
+                ),
+                QuotaWindow(
+                    label: "5h",
+                    shape: .rollingWindow(used: 40, limit: 100, windowStart: now, resetAt: now.addingTimeInterval(forecastHour))
+                ),
+                QuotaWindow(
+                    label: "estimated",
+                    shape: .estimated(used: 40, limit: 100, basis: .localTokenCount, resetAt: now.addingTimeInterval(24 * forecastHour)),
+                    renewalCadence: .monthly
+                )
+            ],
+            usageDetail: nil
+        )
+        try storage.save(snapshot)
+        let defaults = freshDefaults(#function)
+        let model = AppModel(
+            registry: registry,
+            scheduler: forecastScheduler(registry: registry, storage: storage),
+            storage: storage,
+            defaults: defaults
+        )
+
+        XCTAssertEqual(model.availableForecastSlots, [.window(providerId: "claude", windowLabel: "weekly")])
+
+        let preferred = ForecastSlot.window(providerId: "claude", windowLabel: "weekly")
+        model.forecastSlot = preferred
+        let reloaded = AppModel(
+            registry: registry,
+            scheduler: forecastScheduler(registry: registry, storage: storage),
+            storage: storage,
+            defaults: defaults
+        )
+
+        XCTAssertEqual(reloaded.forecastSlot, preferred)
+    }
+
+    func test_recomputeForecastsPublishesForecastFromPersisted24HourHistory() async throws {
+        let now = Date()
+        let provider = FakeUsageProvider(id: "claude", displayName: "Claude Code")
+        let registry = PluginRegistry()
+        registry.register(provider)
+        let storage = FakeStorage()
+        for snapshot in renewableForecastSnapshots(now: now) {
+            try storage.save(snapshot)
+        }
+        let model = AppModel(
+            registry: registry,
+            scheduler: forecastScheduler(registry: registry, storage: storage),
+            storage: storage,
+            defaults: freshDefaults(#function)
+        )
+        let id = ForecastWindowID(providerId: "claude", windowLabel: "weekly")
+
+        await model.recomputeForecasts(providerId: "claude", now: now)
+
+        let forecast = try XCTUnwrap(model.forecastsByWindow[id])
+        XCTAssertEqual(forecast.state, .slowDown)
+        XCTAssertEqual(forecast.samples.count, 6)
+        XCTAssertEqual(forecast.currentUsedPercent, 40, accuracy: 0.0001)
+        XCTAssertEqual(model.forecasts(providerId: "claude").map(\.id), [id])
+        XCTAssertEqual(model.selectedForecast?.id, id)
+    }
+
+    func test_initRecomputesForecastsFromPersistedSeedInBackground() async throws {
+        let now = Date()
+        let provider = FakeUsageProvider(id: "claude", displayName: "Claude Code")
+        let registry = PluginRegistry()
+        registry.register(provider)
+        let storage = FakeStorage()
+        for snapshot in renewableForecastSnapshots(now: now) {
+            try storage.save(snapshot)
+        }
+        let model = AppModel(
+            registry: registry,
+            scheduler: forecastScheduler(registry: registry, storage: storage),
+            storage: storage,
+            defaults: freshDefaults(#function)
+        )
+        let id = ForecastWindowID(providerId: "claude", windowLabel: "weekly")
+
+        let forecast = await waitForForecast(id, in: model)
+
+        XCTAssertEqual(forecast?.state, .slowDown)
+    }
+
+    func test_successfulFetchRecomputesForecastsFromPersistedHistory() async throws {
+        let now = Date()
+        let snapshots = renewableForecastSnapshots(now: now)
+        let provider = FakeUsageProvider(id: "claude", displayName: "Claude Code")
+        provider.snapshotToReturn = snapshots.last
+        let registry = PluginRegistry()
+        registry.register(provider)
+        let storage = FakeStorage()
+        for snapshot in snapshots.dropLast() {
+            try storage.save(snapshot)
+        }
+        let model = AppModel(
+            registry: registry,
+            scheduler: forecastScheduler(registry: registry, storage: storage),
+            storage: storage,
+            defaults: freshDefaults(#function)
+        )
+        let id = ForecastWindowID(providerId: "claude", windowLabel: "weekly")
+
+        await model.refreshNow()
+        let forecast = await waitForForecast(id, in: model) {
+            $0.currentUsedPercent == 40 && $0.samples.count == 6
+        }
+
+        XCTAssertEqual(forecast?.state, .slowDown)
+    }
+
+    func test_recomputeForecastsStorageFailurePreservesPublishedForecastAndProviderState() async throws {
+        let now = Date()
+        let provider = FakeUsageProvider(id: "claude", displayName: "Claude Code")
+        let registry = PluginRegistry()
+        registry.register(provider)
+        let storage = ForecastReadFailingStorage()
+        for snapshot in renewableForecastSnapshots(now: now) {
+            try storage.save(snapshot)
+        }
+        let model = AppModel(
+            registry: registry,
+            scheduler: forecastScheduler(registry: registry, storage: storage),
+            storage: storage,
+            defaults: freshDefaults(#function)
+        )
+
+        let id = ForecastWindowID(providerId: "claude", windowLabel: "weekly")
+        _ = await waitForForecast(id, in: model)
+        let published = model.forecastsByWindow
+        XCTAssertFalse(published.isEmpty)
+
+        storage.shouldFailSnapshotsRead = true
+        await model.recomputeForecasts(providerId: "claude", now: now)
+
+        XCTAssertEqual(model.forecastsByWindow, published)
+        XCTAssertNil(model.errorsByProvider["claude"])
+        XCTAssertNil(model.errorKindByProvider["claude"])
     }
 }

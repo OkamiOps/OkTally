@@ -15,6 +15,10 @@ final class AppModel: ObservableObject {
     /// Recomputado a partir do SQLite no seed inicial e após cada fetch bem-sucedido.
     @Published private(set) var historyByProvider: [String: [UsageHistoryPoint]] = [:]
 
+    /// Previsões por janela renovável, calculadas a partir dos snapshots persistidos das
+    /// últimas 24h. Uma falha de leitura nunca limpa o último resultado publicado.
+    @Published private(set) var forecastsByWindow: [ForecastWindowID: UsageForecast] = [:]
+
     /// Custo estimado (USD) por provider, calculado quando um snapshot traz `usageDetail`
     /// e o `PricingEngine` conhece os modelos. Ausente = sem dados para precificar.
     @Published private(set) var estimatedCostByProvider: [String: Decimal] = [:]
@@ -92,6 +96,10 @@ final class AppModel: ObservableObject {
     /// popover observa este modelo, e trocar o picker tem que repintar o card na hora.
     @Published var popoverHeroSlot: QuotaSlot { didSet { preferences.popoverHeroSlot = popoverHeroSlot } }
 
+    /// Alvo do card de previsão. A escolha manual continua persistida mesmo quando a
+    /// janela some temporariamente; `selectedForecast` então cai para automático.
+    @Published var forecastSlot: ForecastSlot { didSet { preferences.forecastSlot = forecastSlot } }
+
     /// A escala de cor do uso. `@Published` pelo mesmo motivo dos slots: editar as
     /// paradas em Preferências tem que repintar TODA a tela na hora, e as views observam
     /// este modelo.
@@ -156,6 +164,7 @@ final class AppModel: ObservableObject {
         self.notchBottomSlot = preferences.notchBottomSlot
         self.menuBarSlot = preferences.menuBarSlot
         self.popoverHeroSlot = preferences.popoverHeroSlot
+        self.forecastSlot = preferences.forecastSlot
         self.usageColorScale = preferences.usageColorScale
         if let joined = defaults.string(forKey: Self.menuBarPinsKey) {
             self.menuBarPins = joined.split(separator: "\u{2}").compactMap { MenuBarPin(stored: String($0)) }
@@ -168,10 +177,12 @@ final class AppModel: ObservableObject {
         // Seed from the last persisted snapshot per provider so a relaunch (or a provider
         // whose next fetch fails) shows the last known usage instead of nothing. Each
         // snapshot carries its own `fetchedAt`, so the UI can label it as stale.
+        var seededForecastProviderIds: [String] = []
         if let storage {
             for provider in registry.providers {
                 if let snapshot = try? storage.latestSnapshot(providerId: provider.id), !snapshot.quotas.isEmpty {
                     snapshotsByProvider[provider.id] = snapshot
+                    seededForecastProviderIds.append(provider.id)
                 }
                 refreshHistory(providerId: provider.id)
             }
@@ -179,6 +190,11 @@ final class AppModel: ObservableObject {
         // O holder só é povoado depois de `self` estar inteiro (o `didSet` não roda para
         // atribuições feitas dentro do `init`).
         UsageColorScaleHolder.current = usageColorScale
+        for providerId in seededForecastProviderIds {
+            Task { [weak self] in
+                await self?.recomputeForecasts(providerId: providerId)
+            }
+        }
         scheduler.onResult = { [weak self] result in
             Task { @MainActor in self?.apply(result) }
         }
@@ -255,6 +271,27 @@ final class AppModel: ObservableObject {
         )
     }
 
+    /// Janelas que podem alimentar uma previsão, na mesma ordem estável da lista de
+    /// provedores. Ao contrário de `availableQuotaSlots`, não inclui 5h, saldo, shapes
+    /// estimados ou ciclos sem um reset futuro real.
+    var availableForecastSlots: [ForecastSlot] {
+        let now = Date()
+        let providerOrder = orderedProviders.map(\.id)
+        let orderedIds = providerOrder + snapshotsByProvider.keys.sorted().filter { !providerOrder.contains($0) }
+        return orderedIds.flatMap { providerId in
+            (snapshotsByProvider[providerId]?.quotas ?? []).compactMap { window in
+                guard UsageForecastEngine.isEligible(current: window, now: now) else { return nil }
+                return ForecastSlot.window(providerId: providerId, windowLabel: window.label)
+            }
+        }
+    }
+
+    /// O alvo efetivamente apresentado: preferência manual quando ela ainda existe, ou a
+    /// decisão automática quando a janela foi removida/transitoriamente indisponível.
+    var selectedForecast: UsageForecast? {
+        UsageForecastSelection.select(preferred: forecastSlot, forecasts: forecastsByWindow)
+    }
+
     /// As cotas do painel do notch — as mesmas fechado e expandido.
     var notchEntries: [NotchQuotaEntry] {
         NotchHUDModel.entries(
@@ -273,6 +310,56 @@ final class AppModel: ObservableObject {
         let since = now.addingTimeInterval(-Double(hours) * 3600)
         guard let snapshots = try? storage.snapshots(providerId: providerId, since: since) else { return [] }
         return UsageHistory.worstUsedSeries(snapshots)
+    }
+
+    /// Previsões atualmente publicadas de um provider, mantendo a ordem das janelas no
+    /// snapshot atual para que listas/gráficos não mudem de posição a cada dicionário.
+    func forecasts(providerId: String) -> [UsageForecast] {
+        let currentIds = (snapshotsByProvider[providerId]?.quotas ?? []).map {
+            ForecastWindowID(providerId: providerId, windowLabel: $0.label)
+        }
+        var result = currentIds.compactMap { forecastsByWindow[$0] }
+        let knownIds = Set(currentIds)
+        result += forecastsByWindow.values
+            .filter { $0.id.providerId == providerId && !knownIds.contains($0.id) }
+            .sorted { lhs, rhs in lhs.id.windowLabel < rhs.id.windowLabel }
+        return result
+    }
+
+    /// Reads persisted history and performs the engine calculation off the MainActor.
+    /// The captured snapshot is checked again before publication, so a slower older read
+    /// cannot overwrite a newer provider fetch. Storage errors intentionally return
+    /// without touching either forecasts or the provider's fetch-error presentation.
+    func recomputeForecasts(providerId: String, now: Date = Date()) async {
+        guard let storage, let capturedSnapshot = snapshotsByProvider[providerId] else { return }
+        let since = now.addingTimeInterval(-24 * 3_600)
+
+        let recomputed = await Task.detached(priority: .utility) { () -> [ForecastWindowID: UsageForecast]? in
+            guard let snapshots = try? storage.snapshots(providerId: providerId, since: since) else {
+                return nil
+            }
+
+            var forecasts: [ForecastWindowID: UsageForecast] = [:]
+            for window in capturedSnapshot.quotas where UsageForecastEngine.isEligible(current: window, now: now) {
+                let forecast = UsageForecastEngine.forecast(
+                    providerId: providerId,
+                    current: window,
+                    snapshots: snapshots,
+                    now: now
+                )
+                forecasts[forecast.id] = forecast
+            }
+            return forecasts
+        }.value
+
+        guard let recomputed,
+              snapshotsByProvider[providerId] == capturedSnapshot else {
+            return
+        }
+
+        var merged = forecastsByWindow.filter { $0.key.providerId != providerId }
+        merged.merge(recomputed) { _, newest in newest }
+        forecastsByWindow = merged
     }
 
     private func refreshHistory(providerId: String, now: Date = Date()) {
@@ -305,6 +392,9 @@ final class AppModel: ObservableObject {
             errorsByProvider[result.providerId] = nil
             errorKindByProvider[result.providerId] = nil
             refreshHistory(providerId: result.providerId)
+            Task { [weak self] in
+                await self?.recomputeForecasts(providerId: result.providerId)
+            }
             refreshEstimatedCost(for: snapshot)
         case .failure(let error):
             errorsByProvider[result.providerId] = error.localizedDescription

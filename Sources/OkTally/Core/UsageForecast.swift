@@ -28,6 +28,102 @@ struct UsageForecast: Equatable {
     let state: UsageForecastState
 }
 
+/// Resolves the forecast target without knowing about persistence or SwiftUI.
+///
+/// A manual target wins whenever it is still present. Automatic selection is deliberately
+/// based on projected time, rather than current percentage, because two windows with the
+/// same remaining percentage can have radically different reset deadlines and pace.
+enum UsageForecastSelection {
+    static func select(
+        preferred: ForecastSlot,
+        forecasts: [ForecastWindowID: UsageForecast]
+    ) -> UsageForecast? {
+        if case let .window(providerId, windowLabel) = preferred,
+           let explicit = forecasts[ForecastWindowID(providerId: providerId, windowLabel: windowLabel)] {
+            return explicit
+        }
+
+        let candidates = forecasts.values.filter { forecast in
+            if case .unavailable = forecast.state { return false }
+            return true
+        }
+
+        let numeric = candidates.filter { $0.gap != nil }
+        if let largestShortfall = numeric
+            .filter({ ($0.gap ?? 0) > 0 })
+            .sorted(by: largestPositiveGapFirst)
+            .first {
+            return largestShortfall
+        }
+
+        if let tightestSafeForecast = numeric
+            .sorted(by: smallestAbsoluteGapFirst)
+            .first {
+            return tightestSafeForecast
+        }
+
+        // A mature zero/near-zero rate is a stronger conclusion than an immature series.
+        // The collecting fallback below is specifically for the case where no window has
+        // accumulated enough history for a numeric (or no-exhaustion) conclusion.
+        if let noExhaustion = candidates
+            .filter({ if case .noExhaustion = $0.state { return true }; return false })
+            .sorted(by: stableIDOrder)
+            .first {
+            return noExhaustion
+        }
+
+        if let longestObserved = candidates
+            .filter({ if case .collecting = $0.state { return true }; return false })
+            .sorted(by: longestObservedFirst)
+            .first {
+            return longestObserved
+        }
+
+        return candidates.sorted(by: stableIDOrder).first
+    }
+
+    private static func largestPositiveGapFirst(_ lhs: UsageForecast, _ rhs: UsageForecast) -> Bool {
+        let left = lhs.gap ?? -.infinity
+        let right = rhs.gap ?? -.infinity
+        if left != right { return left > right }
+        return stableIDOrder(lhs, rhs)
+    }
+
+    private static func smallestAbsoluteGapFirst(_ lhs: UsageForecast, _ rhs: UsageForecast) -> Bool {
+        let left = abs(lhs.gap ?? .infinity)
+        let right = abs(rhs.gap ?? .infinity)
+        if left != right { return left < right }
+        return stableIDOrder(lhs, rhs)
+    }
+
+    private static func longestObservedFirst(_ lhs: UsageForecast, _ rhs: UsageForecast) -> Bool {
+        let left = observedHours(in: lhs)
+        let right = observedHours(in: rhs)
+        if left != right { return left > right }
+        let leftSamples = sampleCount(in: lhs)
+        let rightSamples = sampleCount(in: rhs)
+        if leftSamples != rightSamples { return leftSamples > rightSamples }
+        return stableIDOrder(lhs, rhs)
+    }
+
+    private static func observedHours(in forecast: UsageForecast) -> Double {
+        if case let .collecting(observedHours, _) = forecast.state { return observedHours }
+        return 0
+    }
+
+    private static func sampleCount(in forecast: UsageForecast) -> Int {
+        if case let .collecting(_, sampleCount) = forecast.state { return sampleCount }
+        return 0
+    }
+
+    private static func stableIDOrder(_ lhs: UsageForecast, _ rhs: UsageForecast) -> Bool {
+        if lhs.id.providerId != rhs.id.providerId {
+            return lhs.id.providerId < rhs.id.providerId
+        }
+        return lhs.id.windowLabel < rhs.id.windowLabel
+    }
+}
+
 /// Pure 24-hour pace calculation for one explicitly renewable quota window.
 enum UsageForecastEngine {
     private static let historyWindow: TimeInterval = 24 * 60 * 60
@@ -123,6 +219,13 @@ enum UsageForecastEngine {
             gap: gap,
             state: state
         )
+    }
+
+    /// Shared eligibility rule for the AppModel's picker and persisted-history pass.
+    /// Keeping it next to the engine prevents the UI from offering a window the engine
+    /// will later publish as unavailable.
+    static func isEligible(current: QuotaWindow, now: Date) -> Bool {
+        eligible(current: current, now: now) != nil
     }
 
     private static func eligible(current: QuotaWindow, now: Date) -> EligibleWindow? {
