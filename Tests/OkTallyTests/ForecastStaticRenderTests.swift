@@ -25,6 +25,49 @@ final class ForecastStaticRenderTests: XCTestCase {
         }
     }
 
+    func test_forecastBarsRenderAtPopoverWidthInBothSchemes() throws {
+        for scheme in [ColorScheme.dark, .light] {
+            let name = scheme == .dark ? "dark" : "light"
+            let view = ForecastBarsView(
+                providerId: forecast.id.providerId,
+                providerName: "Claude Code",
+                forecast: forecast,
+                now: now
+            )
+            let bitmap = try renderView(
+                view,
+                scheme: scheme,
+                size: CGSize(width: 360, height: 190),
+                artifactName: "OkTally-ForecastBars-\(name).png"
+            )
+            assertViewIsVisibleAndUnclipped(bitmap, named: "bars-\(name)")
+        }
+    }
+
+    func test_forecastDetailRendersInBothSchemesAtNormalAndNarrowWidths() throws {
+        let cases: [(name: String, scheme: ColorScheme, size: CGSize)] = [
+            ("dark-normal", .dark, CGSize(width: 680, height: 520)),
+            ("dark-narrow", .dark, CGSize(width: 320, height: 620)),
+            ("light-normal", .light, CGSize(width: 680, height: 520)),
+            ("light-narrow", .light, CGSize(width: 320, height: 620))
+        ]
+
+        for renderCase in cases {
+            let view = ForecastDetailView(
+                providerId: forecast.id.providerId,
+                forecasts: [forecast, saferForecast],
+                now: now
+            )
+            let bitmap = try renderView(
+                view,
+                scheme: renderCase.scheme,
+                size: renderCase.size,
+                artifactName: "OkTally-ForecastDetail-\(renderCase.name).png"
+            )
+            assertViewIsVisibleAndUnclipped(bitmap, named: "detail-\(renderCase.name)")
+        }
+    }
+
     private var forecast: UsageForecast {
         let hour: TimeInterval = 3_600
         return UsageForecast(
@@ -47,6 +90,21 @@ final class ForecastStaticRenderTests: XCTestCase {
         )
     }
 
+    private var saferForecast: UsageForecast {
+        UsageForecast(
+            id: ForecastWindowID(providerId: "claude", windowLabel: "weekly-opus"),
+            cadence: .weekly,
+            currentUsedPercent: 24,
+            samples: forecast.samples,
+            ratePerDay: 8,
+            safeRatePerDay: 20,
+            exhaustionAt: now.addingTimeInterval(72 * 3_600),
+            resetAt: now.addingTimeInterval(48 * 3_600),
+            gap: -24 * 3_600,
+            state: .canAccelerate
+        )
+    }
+
     private func render(scheme: ColorScheme, size: CGSize, name: String) throws -> NSBitmapImageRep {
         let view = ZStack {
             Rectangle().fill(Theme.pageBackground)
@@ -56,6 +114,25 @@ final class ForecastStaticRenderTests: XCTestCase {
                 now: now
             )
             .padding(Theme.Space.md)
+        }
+
+        return try renderView(
+            view,
+            scheme: scheme,
+            size: size,
+            artifactName: "OkTally-ForecastChart-\(name).png"
+        )
+    }
+
+    private func renderView<V: View>(
+        _ content: V,
+        scheme: ColorScheme,
+        size: CGSize,
+        artifactName: String
+    ) throws -> NSBitmapImageRep {
+        let view = ZStack {
+            Rectangle().fill(Theme.pageBackground)
+            content.padding(Theme.Space.md)
         }
         .frame(width: size.width, height: size.height)
         .environment(\.colorScheme, scheme)
@@ -78,16 +155,48 @@ final class ForecastStaticRenderTests: XCTestCase {
         // de congelar o bitmap. A janela continua fora da tela o tempo todo.
         RunLoop.current.run(until: Date().addingTimeInterval(0.05))
 
-        let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds), "sem bitmap para \(name)")
+        let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds), "sem bitmap para \(artifactName)")
         host.cacheDisplay(in: host.bounds, to: bitmap)
 
-        let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]), "falha ao codificar \(name)")
+        let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]), "falha ao codificar \(artifactName)")
         let artifactURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("OkTally-ForecastChart-\(name).png")
+            .appendingPathComponent(artifactName)
         try png.write(to: artifactURL, options: .atomic)
-        print("forecast chart render: \(artifactURL.path)")
+        print("forecast render: \(artifactURL.path)")
 
         return bitmap
+    }
+
+    private func assertViewIsVisibleAndUnclipped(_ bitmap: NSBitmapImageRep, named name: String) {
+        XCTAssertGreaterThan(bitmap.pixelsWide, 0, "\(name): bitmap sem largura")
+        XCTAssertGreaterThan(bitmap.pixelsHigh, 0, "\(name): bitmap sem altura")
+        guard let background = bitmap.colorAt(x: 0, y: 0)?.usingColorSpace(.sRGB) else {
+            return XCTFail("\(name): não foi possível ler o fundo")
+        }
+
+        var inkCount = 0
+        var bounds: NSRect?
+        for y in 0..<bitmap.pixelsHigh {
+            for x in 0..<bitmap.pixelsWide {
+                guard let pixel = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                let differs = max(
+                    abs(pixel.redComponent - background.redComponent),
+                    abs(pixel.greenComponent - background.greenComponent),
+                    abs(pixel.blueComponent - background.blueComponent)
+                ) > 0.04
+                guard differs else { continue }
+                inkCount += 1
+                let point = NSRect(x: x, y: y, width: 1, height: 1)
+                bounds = bounds.map { $0.union(point) } ?? point
+            }
+        }
+
+        XCTAssertGreaterThan(inkCount, 500, "\(name): conteúdo insuficiente")
+        guard let bounds else { return }
+        XCTAssertGreaterThan(bounds.minX, 1, "\(name): conteúdo cortado à esquerda")
+        XCTAssertGreaterThan(bounds.minY, 1, "\(name): conteúdo cortado na base")
+        XCTAssertLessThan(bounds.maxX, CGFloat(bitmap.pixelsWide - 1), "\(name): conteúdo cortado à direita")
+        XCTAssertLessThan(bounds.maxY, CGFloat(bitmap.pixelsHigh - 1), "\(name): conteúdo cortado no topo")
     }
 
     private func assertChartIsVisibleAndUnclipped(_ bitmap: NSBitmapImageRep, named name: String) {

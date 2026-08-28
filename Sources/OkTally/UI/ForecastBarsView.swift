@@ -121,7 +121,7 @@ struct UsageForecastPresentation: Equatable {
         return Theme.clampFraction(event.timeIntervalSince(now) / total)
     }
 
-    private static func durationText(_ interval: TimeInterval) -> String {
+    static func durationText(_ interval: TimeInterval) -> String {
         guard interval.isFinite else { return L("agora") }
         let totalMinutes = max(0, Int((interval / 60).rounded(.down)))
         guard totalMinutes > 0 else { return L("agora") }
@@ -138,7 +138,7 @@ struct UsageForecastPresentation: Equatable {
         return LF("%dmin", minutes)
     }
 
-    private static func decimal(_ value: Double) -> String {
+    static func decimal(_ value: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
         formatter.maximumFractionDigits = 1

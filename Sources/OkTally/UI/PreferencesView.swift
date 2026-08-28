@@ -711,6 +711,9 @@ private struct GeneralPane: View {
                     // menu, antes travado na pior cota. É o pedido do dono: "eu não
                     // consigo trocar esse card principal".
                     slotPicker(L("Destaque do menu"), selection: $appModel.popoverHeroSlot)
+                    forecastSlotPicker(selection: $appModel.forecastSlot)
+                    Text(L("A estimativa usa a variação líquida observada nas últimas 24 horas e não depende dos pinos da barra."))
+                        .font(.caption).foregroundStyle(.secondary)
                     Text(L("Em automático, o lado esquerdo mostra a cota mais apertada e o direito a seguinte; a barra inferior mostra sempre a mais apertada; o destaque do menu mostra a mais crítica entre todas. Uma cota escolhida que deixe de existir volta para automático sozinha."))
                         .font(.caption).foregroundStyle(.secondary)
 
@@ -923,6 +926,31 @@ private struct GeneralPane: View {
             ForEach(options(including: selection.wrappedValue), id: \.self) { slot in
                 Text(slotLabel(slot)).tag(slot)
             }
+        }
+    }
+
+    private func forecastSlotPicker(selection: Binding<ForecastSlot>) -> some View {
+        Picker(L("Previsão de consumo"), selection: selection) {
+            ForEach(forecastOptions(including: selection.wrappedValue), id: \.self) { slot in
+                Text(forecastSlotLabel(slot)).tag(slot)
+            }
+        }
+    }
+
+    private func forecastOptions(including selection: ForecastSlot) -> [ForecastSlot] {
+        var options: [ForecastSlot] = [.automatic] + appModel.availableForecastSlots
+        if !options.contains(selection) { options.append(selection) }
+        return options
+    }
+
+    private func forecastSlotLabel(_ slot: ForecastSlot) -> String {
+        switch slot {
+        case .automatic:
+            return L("Automático — maior risco")
+        case .window(let providerId, let windowLabel):
+            let name = "\(providerName(providerId)) · \(WindowLabelCatalog.displayLabel(windowLabel))"
+            let exists = appModel.availableForecastSlots.contains(slot)
+            return exists ? name : LF("%@ (indisponível)", name)
         }
     }
 

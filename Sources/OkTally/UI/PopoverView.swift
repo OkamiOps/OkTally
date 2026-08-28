@@ -137,6 +137,16 @@ struct PopoverContentView: View {
         return (provider, candidate.window, QuotaPresentation.remainingFraction(candidate.window.shape))
     }
 
+    private var forecastProvider: UsageProvider? {
+        guard let forecast = appModel.selectedForecast else { return nil }
+        return providers.first { $0.id == forecast.id.providerId }
+    }
+
+    private var showsUnavailableForecast: Bool {
+        if case .window = appModel.forecastSlot { return true }
+        return false
+    }
+
     /// Volume de hoje + 14 dias, antes das cotas. Fix round 1: a versão original (label +
     /// valor empilhados + gráfico de 28pt) tomava ~100pt e derrubava uma linha inteira de
     /// linha inteira de cota para fora dos 480pt visíveis sem rolar — reprovada em revisão. Esta
@@ -211,6 +221,15 @@ struct PopoverContentView: View {
                     isPinned: { appModel.isPinned(providerId: hero.provider.id, windowLabel: $0) },
                     onPin: { appModel.togglePin(providerId: hero.provider.id, windowLabel: $0) },
                     onHighlight: { appModel.popoverHeroSlot = .window(providerId: hero.provider.id, windowLabel: $0) }
+                )
+            }
+            if let forecast = appModel.selectedForecast,
+               let provider = forecastProvider {
+                ForecastBarsView(
+                    providerId: provider.id,
+                    providerName: provider.displayName,
+                    forecast: forecast,
+                    showUnavailable: showsUnavailableForecast
                 )
             }
             // Abaixo do herói, não acima: a posição mais valiosa da tela é o topo, e ela

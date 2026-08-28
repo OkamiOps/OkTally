@@ -303,6 +303,13 @@ struct ProviderDetailScreen: View {
             if let hero {
                 heroBlock(hero)
             }
+            let forecasts = appModel.forecasts(providerId: provider.id)
+            if !forecasts.isEmpty {
+                ForecastDetailView(
+                    providerId: provider.id,
+                    forecasts: forecasts
+                )
+            }
             if appModel.analyticsLoaders[provider.id] != nil {
                 if let analytics = appModel.analyticsByProvider[provider.id] {
                     AnalyticsSection(analytics: analytics)

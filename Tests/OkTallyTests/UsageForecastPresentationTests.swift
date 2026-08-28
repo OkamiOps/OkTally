@@ -29,26 +29,26 @@ final class UsageForecastPresentationTests: XCTestCase {
         )
     }
 
-    func test_headlinesEmPortuguesExplicamCadaEstadoSemPrometerCerteza() {
+    func test_headlinesLocalizadosExplicamCadaEstadoSemPrometerCerteza() {
         XCTAssertEqual(
             UsageForecastPresentation(
                 forecast: forecast(state: .slowDown, gap: 36 * hour), now: now
             ).headline,
-            "Desacelere · pode acabar 1d 12h antes"
+            LF("Desacelere · pode acabar %@ antes", "1d 12h")
         )
         XCTAssertEqual(
             UsageForecastPresentation(forecast: forecast(state: .onPace), now: now).headline,
-            "No ritmo certo · chega perto da renovação"
+            L("No ritmo certo · chega perto da renovação")
         )
         XCTAssertEqual(
             UsageForecastPresentation(
                 forecast: forecast(state: .canAccelerate, gap: -30 * hour), now: now
             ).headline,
-            "Pode acelerar · chega com 1d 6h de folga"
+            LF("Pode acelerar · chega com %@ de folga", "1d 6h")
         )
         XCTAssertEqual(
             UsageForecastPresentation(forecast: forecast(state: .noExhaustion), now: now).headline,
-            "Pode acelerar · sem esgotamento previsto neste ritmo"
+            L("Pode acelerar · sem esgotamento previsto neste ritmo")
         )
         XCTAssertEqual(
             UsageForecastPresentation(
@@ -60,7 +60,7 @@ final class UsageForecastPresentationTests: XCTestCase {
                 ),
                 now: now
             ).headline,
-            "Coletando ritmo · 1h 30min de histórico"
+            LF("Coletando ritmo · %@ de histórico", "1h 30min")
         )
         XCTAssertEqual(
             UsageForecastPresentation(
@@ -73,7 +73,7 @@ final class UsageForecastPresentationTests: XCTestCase {
                 ),
                 now: now
             ).headline,
-            "Previsão indisponível para esta janela"
+            L("Previsão indisponível para esta janela")
         )
     }
 
@@ -152,5 +152,33 @@ final class UsageForecastPresentationTests: XCTestCase {
         )
         XCTAssertEqual(short.paceDuration, "30min")
         XCTAssertEqual(short.renewalDuration, "1h")
+    }
+
+    func test_metricasDoDetalheDiferenciamFaltaDeColetaSemInventarData() {
+        let risk = ForecastDetailMetrics(
+            forecast: forecast(
+                state: .slowDown,
+                exhaustionInHours: 16,
+                resetInHours: 24,
+                gap: 8 * hour
+            )
+        ).items
+        XCTAssertEqual(risk.first(where: { $0.label == L("Falta projetada") })?.value,
+                       UsageForecastPresentation.durationText(8 * hour))
+        XCTAssertEqual(risk.first(where: { $0.label == L("Ritmo observado") })?.value,
+                       LF("%@%%/dia", UsageForecastPresentation.decimal(14.2)))
+
+        let collecting = ForecastDetailMetrics(
+            forecast: forecast(
+                state: .collecting(observedHours: 2, sampleCount: 4),
+                exhaustionInHours: nil,
+                resetInHours: 24,
+                ratePerDay: nil,
+                safeRatePerDay: 11.8,
+                gap: nil
+            )
+        ).items
+        XCTAssertEqual(collecting.first(where: { $0.label == L("Esgotamento previsto") })?.value,
+                       L("Ainda coletando histórico"))
     }
 }

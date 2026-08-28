@@ -98,6 +98,49 @@
 "Provedor" = "Provider";
 "total" = "total";
 
+/* Quota forecast */
+"%d%%" = "%d%%";
+"Desacelere · pode acabar antes da renovação" = "Slow down · may run out before renewal";
+"Desacelere · pode acabar %@ antes" = "Slow down · may run out %@ early";
+"No ritmo certo · chega perto da renovação" = "On pace · should last until close to renewal";
+"Pode acelerar · chega depois da renovação" = "Can speed up · should last past renewal";
+"Pode acelerar · chega com %@ de folga" = "Can speed up · should last %@ past renewal";
+"Pode acelerar · sem esgotamento previsto neste ritmo" = "Can speed up · no exhaustion projected at this pace";
+"Coletando ritmo · %@ de histórico" = "Collecting pace · %@ of history";
+"Previsão indisponível para esta janela" = "Forecast unavailable for this window";
+"Chega à renovação" = "Reaches renewal";
+"Ritmo 24h: %@%%/dia · Seguro: até %@%%/dia" = "24h pace: %@%%/day · Safe: up to %@%%/day";
+"agora" = "now";
+"%dd %dh" = "%dd %dh";
+"%dd %dmin" = "%dd %dmin";
+"%dd" = "%dd";
+"%dh %dmin" = "%dh %dmin";
+"%dh" = "%dh";
+"%dmin" = "%dmin";
+"%@ · %@" = "%@ · %@";
+"Seu ritmo" = "Your pace";
+"Renovação" = "Renewal";
+"Coletando ritmo" = "Collecting pace";
+"Tempo" = "Time";
+"Restante" = "Remaining";
+"Série" = "Series";
+"Histórico" = "History";
+"Projeção" = "Projection";
+"Ritmo seguro" = "Safe pace";
+"Previsão de consumo" = "Consumption forecast";
+"Estimativa pelas últimas 24 horas" = "Estimate from the last 24 hours";
+"Janela" = "Window";
+"Esgotamento previsto" = "Estimated exhaustion";
+"Sem esgotamento previsto" = "No exhaustion projected";
+"Ainda coletando histórico" = "Still collecting history";
+"Falta projetada" = "Projected shortfall";
+"Folga projetada" = "Projected headroom";
+"Ritmo observado" = "Observed pace";
+"%@%%/dia" = "%@%%/day";
+"Ainda sem ritmo confiável" = "No reliable pace yet";
+"até %@%%/dia" = "up to %@%%/day";
+"Indisponível" = "Unavailable";
+
 /* Preferences */
 "Geral" = "General";
 "Contas" = "Accounts";
@@ -145,6 +188,8 @@
 "Nada fixado — a barra mostra automaticamente a janela mais próxima do limite." = "Nothing pinned — the bar automatically shows the window closest to its limit.";
 "Fixe janelas pelo alfinete no menu do OkTally — os pinos são o conjunto que os seletores abaixo usam no modo automático." = "Pin windows with the pin icon in the OkTally menu — pins are the set the selectors below draw from in automatic mode.";
 "Arraste para reordenar. Os pinos são o conjunto que os seletores abaixo usam no modo automático." = "Drag to reorder. Pins are the set the selectors below draw from in automatic mode.";
+"Automático — maior risco" = "Automatic — highest risk";
+"A estimativa usa a variação líquida observada nas últimas 24 horas e não depende dos pinos da barra." = "The estimate uses the net change observed over the last 24 hours and does not depend on menu bar pins.";
 "Alertas" = "Alerts";
 "Notificações de cota" = "Quota notifications";
 "Avisar quando o uso cruzar:" = "Warn when usage crosses:";
