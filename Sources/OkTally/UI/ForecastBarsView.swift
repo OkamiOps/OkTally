@@ -256,34 +256,127 @@ struct ForecastBarsView: View {
     }
 }
 
+/// Dense per-window pace shown inside the provider ledger. The expanded card above still
+/// explains the highest-risk target; this strip makes every other renewable model
+/// independently scannable without duplicating a full card for each one.
+struct ForecastInlinePaceView: View {
+    let providerId: String
+    let forecast: UsageForecast
+    let now: Date
+    var onHero: Bool = false
+
+    init(
+        providerId: String,
+        forecast: UsageForecast,
+        now: Date = Date(),
+        onHero: Bool = false
+    ) {
+        self.providerId = providerId
+        self.forecast = forecast
+        self.now = now
+        self.onHero = onHero
+    }
+
+    private var presentation: UsageForecastPresentation {
+        UsageForecastPresentation(forecast: forecast, now: now)
+    }
+
+    private var textStyle: AnyShapeStyle {
+        onHero ? AnyShapeStyle(Theme.onHero.opacity(0.82)) : AnyShapeStyle(HierarchicalShapeStyle.secondary)
+    }
+
+    private var backgroundStyle: AnyShapeStyle {
+        onHero
+            ? AnyShapeStyle(Color.black.opacity(0.16))
+            : AnyShapeStyle(Theme.track().opacity(0.55))
+    }
+
+    @ViewBuilder var body: some View {
+        if !presentation.isUnavailable {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(presentation.headline)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(textStyle)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+
+                if let collectionProgress = presentation.collectionProgress {
+                    ProgressView(value: collectionProgress)
+                        .tint(onHero ? Theme.onHero.opacity(0.75) : .secondary)
+                        .accessibilityLabel(L("Coletando ritmo"))
+                } else if presentation.showsTimeline {
+                    ForecastTimelineRow(
+                        title: L("Seu ritmo"),
+                        fraction: presentation.paceFraction,
+                        duration: presentation.paceDuration ?? L("agora"),
+                        color: QuotaPresentation.color(remaining: presentation.remainingFraction),
+                        compact: true,
+                        onHero: onHero
+                    )
+                    ForecastTimelineRow(
+                        title: L("Renovação"),
+                        fraction: presentation.renewalFraction,
+                        duration: presentation.renewalDuration ?? L("agora"),
+                        color: ProviderPalette.color(for: providerId),
+                        compact: true,
+                        onHero: onHero
+                    )
+                    if let rateSummary = presentation.rateSummary {
+                        Text(rateSummary)
+                            .font(.system(size: 8))
+                            .foregroundStyle(textStyle)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.78)
+                    }
+                }
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(backgroundStyle)
+            )
+            .accessibilityElement(children: .contain)
+        }
+    }
+}
+
 private struct ForecastTimelineRow: View {
     let title: String
     let fraction: Double
     let duration: String
     let color: Color
+    var compact: Bool = false
+    var onHero: Bool = false
+
+    private var trackStyle: AnyShapeStyle {
+        onHero
+            ? AnyShapeStyle(Color.black.opacity(0.24))
+            : AnyShapeStyle(Theme.track())
+    }
 
     var body: some View {
-        HStack(spacing: Theme.Space.sm) {
+        HStack(spacing: compact ? 5 : Theme.Space.sm) {
             Text(title)
-                .font(Theme.Font.label)
-                .foregroundStyle(.secondary)
-                .frame(width: 62, alignment: .leading)
+                .font(compact ? .system(size: 8) : Theme.Font.label)
+                .foregroundStyle(onHero ? Theme.onHero.opacity(0.72) : .secondary)
+                .frame(width: compact ? 48 : 62, alignment: .leading)
 
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Theme.track())
+                    Capsule().fill(trackStyle)
                     Capsule()
                         .fill(color)
                         .frame(width: max(2, geometry.size.width * Theme.clampFraction(fraction)))
                 }
             }
-            .frame(height: 6)
+            .frame(height: compact ? 4 : 6)
             .accessibilityValue(duration)
 
             Text(duration)
-                .font(Theme.Font.label.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 48, alignment: .trailing)
+                .font((compact ? Font.system(size: 8) : Theme.Font.label).monospacedDigit())
+                .foregroundStyle(onHero ? Theme.onHero.opacity(0.72) : .secondary)
+                .frame(width: compact ? 52 : 48, alignment: .trailing)
         }
     }
 }

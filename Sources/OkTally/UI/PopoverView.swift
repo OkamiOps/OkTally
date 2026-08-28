@@ -147,6 +147,16 @@ struct PopoverContentView: View {
         return false
     }
 
+    private var expandedForecastID: ForecastWindowID? {
+        appModel.selectedForecast?.id
+    }
+
+    private func forecast(providerId: String, windowLabel: String) -> UsageForecast? {
+        appModel.forecastsByWindow[
+            ForecastWindowID(providerId: providerId, windowLabel: windowLabel)
+        ]
+    }
+
     /// Volume de hoje + 14 dias, antes das cotas. Fix round 1: a versão original (label +
     /// valor empilhados + gráfico de 28pt) tomava ~100pt e derrubava uma linha inteira de
     /// linha inteira de cota para fora dos 480pt visíveis sem rolar — reprovada em revisão. Esta
@@ -220,7 +230,9 @@ struct PopoverContentView: View {
                     ).filter { $0.label != hero.window.label },
                     isPinned: { appModel.isPinned(providerId: hero.provider.id, windowLabel: $0) },
                     onPin: { appModel.togglePin(providerId: hero.provider.id, windowLabel: $0) },
-                    onHighlight: { appModel.popoverHeroSlot = .window(providerId: hero.provider.id, windowLabel: $0) }
+                    onHighlight: { appModel.popoverHeroSlot = .window(providerId: hero.provider.id, windowLabel: $0) },
+                    forecast: { forecast(providerId: hero.provider.id, windowLabel: $0) },
+                    expandedForecastID: expandedForecastID
                 )
             }
             if let forecast = appModel.selectedForecast,
@@ -251,7 +263,9 @@ struct PopoverContentView: View {
                             estimatedCost: appModel.estimatedCostByProvider[entry.provider.id],
                             isPinned: { appModel.isPinned(providerId: entry.provider.id, windowLabel: $0) },
                             onPin: { appModel.togglePin(providerId: entry.provider.id, windowLabel: $0) },
-                            onHighlight: { appModel.popoverHeroSlot = .window(providerId: entry.provider.id, windowLabel: $0) }
+                            onHighlight: { appModel.popoverHeroSlot = .window(providerId: entry.provider.id, windowLabel: $0) },
+                            forecast: { forecast(providerId: entry.provider.id, windowLabel: $0) },
+                            expandedForecastID: expandedForecastID
                         )
                     }
                 }
@@ -366,6 +380,8 @@ private struct HeroBlock: View {
     let isPinned: (String) -> Bool
     let onPin: (String) -> Void
     let onHighlight: (String) -> Void
+    let forecast: (String) -> UsageForecast?
+    let expandedForecastID: ForecastWindowID?
 
     /// Cor do bloco. Já `heroTint`ada: o glifo do chip é desenhado NELA sobre um chip
     /// off-white, então ele precisa do mesmo escurecimento que o fundo recebe — senão o
@@ -421,13 +437,30 @@ private struct HeroBlock: View {
                 QuotaCapsuleBar(remaining: remaining, color: Theme.onHero, height: 8,
                                 track: AnyShapeStyle(Color.black.opacity(0.22)))
             }
+            if let pace = forecast(window.label), pace.id != expandedForecastID {
+                ForecastInlinePaceView(
+                    providerId: provider.id,
+                    forecast: pace,
+                    onHero: true
+                )
+            }
             ForEach(others, id: \.label) { other in
-                SecondaryWindowLine(window: other,
-                                    identity: Theme.onHero,
-                                    onHero: true,
-                                    isPinned: isPinned(other.label),
-                                    onPin: { onPin(other.label) },
-                                    onHighlight: { onHighlight(other.label) })
+                VStack(alignment: .leading, spacing: 4) {
+                    SecondaryWindowLine(window: other,
+                                        identity: Theme.onHero,
+                                        onHero: true,
+                                        isPinned: isPinned(other.label),
+                                        onPin: { onPin(other.label) },
+                                        onHighlight: { onHighlight(other.label) })
+                    if let pace = forecast(other.label), pace.id != expandedForecastID {
+                        ForecastInlinePaceView(
+                            providerId: provider.id,
+                            forecast: pace,
+                            onHero: true
+                        )
+                        .padding(.leading, 30)
+                    }
+                }
             }
         }
         .padding(14)
@@ -452,6 +485,8 @@ private struct ProviderQuotaRow: View {
     let isPinned: (String) -> Bool
     let onPin: (String) -> Void
     let onHighlight: (String) -> Void
+    let forecast: (String) -> UsageForecast?
+    let expandedForecastID: ForecastWindowID?
 
     private var identity: Color { ProviderPalette.color(for: provider.id) }
     private var windows: [QuotaWindow] { PopoverLayout.orderedWindows(snapshot.quotas) }
@@ -534,12 +569,25 @@ private struct ProviderQuotaRow: View {
                     .padding(.top, 2)
                     .padding(.bottom, 8)
             }
+            if let primary,
+               let pace = forecast(primary.label),
+               pace.id != expandedForecastID {
+                ForecastInlinePaceView(providerId: provider.id, forecast: pace)
+                    .padding(.leading, 30)
+                    .padding(.bottom, 5)
+            }
             ForEach(windows.dropFirst(), id: \.label) { window in
-                SecondaryWindowLine(window: window, identity: identity,
-                                    isPinned: isPinned(window.label),
-                                    onPin: { onPin(window.label) },
-                                    onHighlight: { onHighlight(window.label) })
-                    .padding(.top, 3)
+                VStack(alignment: .leading, spacing: 4) {
+                    SecondaryWindowLine(window: window, identity: identity,
+                                        isPinned: isPinned(window.label),
+                                        onPin: { onPin(window.label) },
+                                        onHighlight: { onHighlight(window.label) })
+                    if let pace = forecast(window.label), pace.id != expandedForecastID {
+                        ForecastInlinePaceView(providerId: provider.id, forecast: pace)
+                            .padding(.leading, 30)
+                    }
+                }
+                .padding(.top, 3)
             }
             if let meta = metaText {
                 Text(meta)

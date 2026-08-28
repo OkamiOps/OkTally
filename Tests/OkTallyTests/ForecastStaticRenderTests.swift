@@ -68,6 +68,50 @@ final class ForecastStaticRenderTests: XCTestCase {
         }
     }
 
+    func test_inlinePacesRenderMultipleModelsAtPopoverWidth() throws {
+        for scheme in [ColorScheme.dark, .light] {
+            let name = scheme == .dark ? "dark" : "light"
+            let view = VStack(alignment: .leading, spacing: 8) {
+                ForecastInlinePaceView(
+                    providerId: forecast.id.providerId,
+                    forecast: forecast,
+                    now: now
+                )
+                ForecastInlinePaceView(
+                    providerId: saferForecast.id.providerId,
+                    forecast: saferForecast,
+                    now: now
+                )
+                ForecastInlinePaceView(
+                    providerId: collectingForecast.id.providerId,
+                    forecast: collectingForecast,
+                    now: now
+                )
+            }
+            let bitmap = try renderView(
+                view,
+                scheme: scheme,
+                size: CGSize(width: 330, height: 260),
+                artifactName: "OkTally-ForecastInline-\(name).png"
+            )
+            assertViewIsVisibleAndUnclipped(bitmap, named: "inline-\(name)")
+        }
+    }
+
+    func test_popoverRendersOneExpandedAndEveryOtherRenewablePaceInline() async throws {
+        let model = try await multiForecastPopoverModel()
+        XCTAssertEqual(model.forecastsByWindow.count, 4)
+        XCTAssertNotNil(model.selectedForecast)
+
+        let bitmap = try renderView(
+            PopoverContentView(appModel: model).frame(width: 360),
+            scheme: .dark,
+            size: CGSize(width: 384, height: 1_120),
+            artifactName: "OkTally-ForecastPopover-multiple.png"
+        )
+        assertViewIsVisibleAndUnclipped(bitmap, named: "popover-multiple")
+    }
+
     private var forecast: UsageForecast {
         let hour: TimeInterval = 3_600
         return UsageForecast(
@@ -103,6 +147,77 @@ final class ForecastStaticRenderTests: XCTestCase {
             gap: -24 * 3_600,
             state: .canAccelerate
         )
+    }
+
+    private var collectingForecast: UsageForecast {
+        UsageForecast(
+            id: ForecastWindowID(providerId: "cursor-grokbot", windowLabel: "weekly"),
+            cadence: .weekly,
+            currentUsedPercent: 25,
+            samples: Array(forecast.samples.prefix(4)),
+            ratePerDay: nil,
+            safeRatePerDay: 12,
+            exhaustionAt: nil,
+            resetAt: now.addingTimeInterval(36 * 3_600),
+            gap: nil,
+            state: .collecting(observedHours: 2, sampleCount: 4)
+        )
+    }
+
+    private func multiForecastPopoverModel() async throws -> AppModel {
+        let fixtureNow = Date()
+        let resetAt = fixtureNow.addingTimeInterval(4 * 24 * 3_600)
+        let registry = PluginRegistry()
+        let providers: [(id: String, name: String, labels: [String])] = [
+            ("claude", "Claude Code", ["weekly", "weekly-opus"]),
+            ("codex", "Codex", ["weekly", "gpt-reserve-weekly"])
+        ]
+        for provider in providers {
+            registry.register(FakeUsageProvider(id: provider.id, displayName: provider.name))
+        }
+
+        let storage = FakeStorage()
+        for provider in providers {
+            for sample in 0..<6 {
+                let fetchedAt = fixtureNow.addingTimeInterval(Double(sample - 5) * 3_600)
+                let quotas = provider.labels.enumerated().map { index, label in
+                    QuotaWindow(
+                        label: label,
+                        shape: .periodicCounter(
+                            used: Double(10 + index * 8 + sample * (index + 2)),
+                            limit: 100,
+                            resetAt: resetAt
+                        ),
+                        renewalCadence: .weekly
+                    )
+                }
+                try storage.save(ProviderSnapshot(
+                    providerId: provider.id,
+                    fetchedAt: fetchedAt,
+                    quotas: quotas,
+                    usageDetail: nil
+                ))
+            }
+        }
+
+        let defaults = UserDefaults(suiteName: "ForecastStaticRenderTests.Popover")!
+        defaults.removePersistentDomain(forName: "ForecastStaticRenderTests.Popover")
+        let scheduler = Scheduler(
+            registry: registry,
+            storage: storage,
+            alertEngine: AlertEngine(),
+            alertDispatcher: AlertDispatcher(sender: FakeNotificationSender())
+        )
+        let model = AppModel(
+            registry: registry,
+            scheduler: scheduler,
+            storage: storage,
+            defaults: defaults
+        )
+        for provider in providers {
+            await model.recomputeForecasts(providerId: provider.id, now: fixtureNow)
+        }
+        return model
     }
 
     private func render(scheme: ColorScheme, size: CGSize, name: String) throws -> NSBitmapImageRep {
