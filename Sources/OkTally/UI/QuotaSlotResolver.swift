@@ -109,14 +109,12 @@ enum QuotaSlotResolver {
     }
 
     /// O card-herói do popover: a escolha explícita do dono, ou — em automático — a pior
-    /// janela entre TODAS as que têm dado (o comportamento de sempre, antes travado sem
-    /// escolha nenhuma).
+    /// janela entre as candidatas relevantes. No Codex, a candidata automática é o
+    /// Weekly geral; limites do Spark continuam disponíveis como escolha explícita.
     ///
     /// Não recebe pinos de propósito: ao contrário das asas e da barra inferior do notch,
-    /// o herói do popover nunca foi restrito ao conjunto fixado — ele sempre respondeu
-    /// "o que está pior entre TODOS os provedores com dado", pinado ou não. Mudar isso
-    /// agora seria alterar um comportamento que ninguém pediu para mudar, só porque a
-    /// escolha explícita nasceu ao lado.
+    /// o herói do popover não é restrito ao conjunto fixado — ele responde ao que está
+    /// pior entre os provedores com dado, pinados ou não.
     ///
     /// `snapshots` já vem filtrado pelo chamador (sem provedores deslogados/sem dado) —
     /// é o mesmo filtro que decide o que aparece na lista abaixo do herói, então uma
@@ -141,7 +139,12 @@ enum QuotaSlotResolver {
         var bestReset = Date.distantFuture
         for providerId in order {
             guard let snapshot = snapshots[providerId] else { continue }
-            for window in snapshot.quotas {
+            // Model-specific Codex limits stay selectable explicitly, but the automatic
+            // headline represents Codex with its general Weekly quota.
+            let windows = providerId == "codex"
+                ? PopoverLayout.primaryWindow(providerId: providerId, quotas: snapshot.quotas).map { [$0] } ?? []
+                : snapshot.quotas
+            for window in windows {
                 guard let remaining = QuotaPresentation.remainingFraction(window.shape) else { continue }
                 let reset = window.shape.resetAt ?? .distantFuture
                 if remaining < bestFraction || (remaining == bestFraction && reset < bestReset) {

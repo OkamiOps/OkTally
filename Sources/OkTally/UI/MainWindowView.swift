@@ -264,7 +264,7 @@ struct OverviewScreen: View {
 /// Internal (não `private`) só para o `ReadmeAssetRenderer` conseguir fotografar a tela.
 ///
 /// Redesenhada: antes eram oito tiles idênticos com nada dominando — a tela mais fraca do
-/// app. Agora tem um herói (a janela mais crítica DESTE provedor, com o gráfico de 7 dias
+/// app. Agora tem um herói (a janela representativa DESTE provedor, com o gráfico de 7 dias
 /// dentro dele), a tabela densa das outras janelas e as estatísticas num objeto só.
 struct ProviderDetailScreen: View {
     @ObservedObject var appModel: AppModel
@@ -274,17 +274,15 @@ struct ProviderDetailScreen: View {
     private var identity: Color { ProviderPalette.color(for: provider.id) }
 
     private var windows: [QuotaLedgerEntry] {
-        snapshot.quotas.map {
+        PopoverLayout.orderedWindows(snapshot.quotas, providerId: provider.id).map {
             QuotaLedgerEntry(providerId: provider.id, providerName: provider.displayName, window: $0)
         }
     }
 
-    /// A janela mais apertada deste provedor. Sem percentual em nenhuma (saldo puro), o
-    /// herói é a primeira janela mesmo assim — um saldo é o número dominante da tela de
-    /// quem só tem saldo.
+    /// A janela representativa deste provedor. A ordem compartilhada com o popover
+    /// mantém o Weekly geral do Codex à frente dos limites específicos do Spark.
     private var hero: QuotaLedgerEntry? {
-        windows.filter { $0.remaining != nil }.min { ($0.remaining ?? 1) < ($1.remaining ?? 1) }
-            ?? windows.first
+        windows.first
     }
 
     private var others: [QuotaLedgerEntry] {

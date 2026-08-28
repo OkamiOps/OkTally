@@ -35,6 +35,30 @@ final class PopoverLayoutTests: XCTestCase {
         XCTAssertEqual(PopoverLayout.orderedWindows(windows).map(\.label), ["a", "b"])
     }
 
+    func test_orderedWindows_codexKeepsGeneralWeeklyAsPrimary() {
+        let windows = [
+            QuotaWindow(label: "semanal", shape: rolling(17, hours: 7 * 24)),
+            QuotaWindow(label: "GPT-5.3-Codex-Spark (5h)", shape: rolling(24)),
+            QuotaWindow(label: "GPT-5.3-Codex-Spark (semanal)", shape: rolling(11, hours: 7 * 24))
+        ]
+
+        XCTAssertEqual(
+            PopoverLayout.orderedWindows(windows, providerId: "codex").map(\.label),
+            ["semanal", "GPT-5.3-Codex-Spark (5h)", "GPT-5.3-Codex-Spark (semanal)"]
+        )
+    }
+
+    func test_orderedWindows_nonCodexStillUsesTightestWindow() {
+        let windows = [
+            QuotaWindow(label: "weekly", shape: rolling(17, hours: 7 * 24)),
+            QuotaWindow(label: "5h", shape: rolling(76))
+        ]
+        XCTAssertEqual(
+            PopoverLayout.orderedWindows(windows, providerId: "claude").map(\.label),
+            ["5h", "weekly"]
+        )
+    }
+
     /// The popover prints the number once (36pt) and the word "restante" beside it, so
     /// the value helper must not carry the word itself.
     func test_remainingValueText_isJustTheNumber() {

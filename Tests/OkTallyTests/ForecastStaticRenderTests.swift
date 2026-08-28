@@ -112,6 +112,24 @@ final class ForecastStaticRenderTests: XCTestCase {
         assertViewIsVisibleAndUnclipped(bitmap, named: "popover-multiple")
     }
 
+    func test_codexDetailRendersGeneralWeeklyAsHeroWhenSparkIsTighter() async throws {
+        let model = try await multiForecastPopoverModel()
+        let provider = try XCTUnwrap(model.orderedProviders.first { $0.id == "codex" })
+        let snapshot = try XCTUnwrap(model.snapshotsByProvider["codex"])
+        XCTAssertEqual(
+            PopoverLayout.primaryWindow(providerId: "codex", quotas: snapshot.quotas)?.label,
+            "semanal"
+        )
+
+        let bitmap = try renderView(
+            ProviderDetailScreen(appModel: model, provider: provider, snapshot: snapshot),
+            scheme: .dark,
+            size: CGSize(width: 760, height: 640),
+            artifactName: "OkTally-CodexWeeklyPriority-dark.png"
+        )
+        assertViewIsVisibleAndUnclipped(bitmap, named: "codex-weekly-priority")
+    }
+
     private var forecast: UsageForecast {
         let hour: TimeInterval = 3_600
         return UsageForecast(
@@ -170,7 +188,7 @@ final class ForecastStaticRenderTests: XCTestCase {
         let registry = PluginRegistry()
         let providers: [(id: String, name: String, labels: [String])] = [
             ("claude", "Claude Code", ["weekly", "weekly-opus"]),
-            ("codex", "Codex", ["weekly", "gpt-reserve-weekly"])
+            ("codex", "Codex", ["semanal", "GPT-5.3-Codex-Spark (5h)"])
         ]
         for provider in providers {
             registry.register(FakeUsageProvider(id: provider.id, displayName: provider.name))

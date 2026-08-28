@@ -238,18 +238,31 @@ final class QuotaSlotResolverTests: XCTestCase {
 
     // MARK: - Card-herói do popover
 
-    /// Em automático, o herói é a pior janela entre TODAS — não uma por provedor. Um
-    /// provedor com duas janelas apertadas não pode esconder a pior das duas atrás da
-    /// regra que as asas usam.
-    func test_popoverHero_automaticIsTheTightestAcrossAllWindows() {
+    /// Limites específicos do Spark continuam disponíveis, mas não substituem o Weekly
+    /// geral como resumo automático do Codex.
+    func test_popoverHero_automaticRepresentsCodexWithGeneralWeekly() {
         var withSpark = snapshots
         withSpark["codex"] = snapshot("codex", [
             window("semanal", usedPercent: 44),
-            window("spark", usedPercent: 97)
+            window("GPT-5.3-Codex-Spark (5h)", usedPercent: 97)
         ])
         let hero = QuotaSlotResolver.popoverHero(slot: .automatic, snapshots: withSpark, providerOrder: order)
+        XCTAssertEqual(hero?.providerId, "cursor")
+    }
+
+    func test_popoverHero_explicitSparkStillWins() {
+        var withSpark = snapshots
+        withSpark["codex"] = snapshot("codex", [
+            window("semanal", usedPercent: 44),
+            window("GPT-5.3-Codex-Spark (5h)", usedPercent: 97)
+        ])
+        let hero = QuotaSlotResolver.popoverHero(
+            slot: .window(providerId: "codex", windowLabel: "GPT-5.3-Codex-Spark (5h)"),
+            snapshots: withSpark,
+            providerOrder: order
+        )
         XCTAssertEqual(hero?.providerId, "codex")
-        XCTAssertEqual(hero?.window.label, "spark")
+        XCTAssertEqual(hero?.window.label, "GPT-5.3-Codex-Spark (5h)")
     }
 
     /// Escolha explícita manda, mesmo sendo a mais folgada de todas.

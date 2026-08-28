@@ -122,8 +122,8 @@ struct PopoverContentView: View {
     }
 
     /// O card-herói: a escolha do dono em `appModel.popoverHeroSlot`, ou — em automático,
-    /// o padrão de sempre — a janela mais crítica entre TODAS as que têm dado (menor
-    /// fração restante; empate desempata pelo reset mais próximo). A regra em si mora no
+    /// a janela mais crítica entre as representativas de cada produto (menor fração
+    /// restante; empate desempata pelo reset mais próximo). A regra em si mora no
     /// `QuotaSlotResolver`, testável sem tela; aqui só se traduz o `Candidate` de volta
     /// para o `UsageProvider` que a view precisa.
     private var hero: (provider: UsageProvider, window: QuotaWindow, remaining: Double?)? {
@@ -226,7 +226,8 @@ struct PopoverContentView: View {
                     window: hero.window,
                     remaining: hero.remaining,
                     others: PopoverLayout.orderedWindows(
-                        appModel.snapshotsByProvider[hero.provider.id]?.quotas ?? []
+                        appModel.snapshotsByProvider[hero.provider.id]?.quotas ?? [],
+                        providerId: hero.provider.id
                     ).filter { $0.label != hero.window.label },
                     isPinned: { appModel.isPinned(providerId: hero.provider.id, windowLabel: $0) },
                     onPin: { appModel.togglePin(providerId: hero.provider.id, windowLabel: $0) },
@@ -293,11 +294,11 @@ struct PopoverContentView: View {
 
 /// Pure ordering rules for the popover, kept out of the views so they can be tested.
 enum PopoverLayout {
-    /// Windows of one provider, tightest first. Windows without a percentage (pure
-    /// balances) have no "tightness" to compare, so they sink to the end instead of
-    /// being compared against 0. Stable for equal remainings: original order wins.
-    static func orderedWindows(_ quotas: [QuotaWindow]) -> [QuotaWindow] {
-        quotas.enumerated().sorted { lhs, rhs in
+    /// Windows of one provider, normally tightest first. The Codex general Weekly quota
+    /// is its semantic primary; model-specific windows remain below it. Windows without
+    /// a percentage sink to the end. Stable for equal remainings: original order wins.
+    static func orderedWindows(_ quotas: [QuotaWindow], providerId: String? = nil) -> [QuotaWindow] {
+        let tightestFirst = quotas.enumerated().sorted { lhs, rhs in
             let l = QuotaPresentation.remainingFraction(lhs.element.shape)
             let r = QuotaPresentation.remainingFraction(rhs.element.shape)
             switch (l, r) {
@@ -309,6 +310,27 @@ enum PopoverLayout {
             case (nil, nil): return lhs.offset < rhs.offset
             }
         }.map(\.element)
+
+        // Codex exposes the general plan windows plus model-specific limits. The
+        // standard weekly quota is the useful overview of frontier-model capacity;
+        // Spark remains visible below, but must not replace that overview merely
+        // because its percentage is lower.
+        guard providerId == "codex",
+              let weeklyIndex = tightestFirst.firstIndex(where: isGeneralCodexWeekly)
+        else { return tightestFirst }
+        var ordered = tightestFirst
+        let weekly = ordered.remove(at: weeklyIndex)
+        ordered.insert(weekly, at: 0)
+        return ordered
+    }
+
+    static func primaryWindow(providerId: String, quotas: [QuotaWindow]) -> QuotaWindow? {
+        orderedWindows(quotas, providerId: providerId).first
+    }
+
+    private static func isGeneralCodexWeekly(_ window: QuotaWindow) -> Bool {
+        let label = window.label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return label == "weekly" || label == "semanal"
     }
 }
 
@@ -489,7 +511,9 @@ private struct ProviderQuotaRow: View {
     let expandedForecastID: ForecastWindowID?
 
     private var identity: Color { ProviderPalette.color(for: provider.id) }
-    private var windows: [QuotaWindow] { PopoverLayout.orderedWindows(snapshot.quotas) }
+    private var windows: [QuotaWindow] {
+        PopoverLayout.orderedWindows(snapshot.quotas, providerId: provider.id)
+    }
 
     var body: some View {
         let primary = windows.first

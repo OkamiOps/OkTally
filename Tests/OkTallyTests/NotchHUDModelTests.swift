@@ -45,6 +45,19 @@ final class NotchHUDModelTests: XCTestCase {
         XCTAssertEqual(entries.filter { $0.providerId == "claude" }.count, 1)
     }
 
+    func test_automatic_codexUsesGeneralWeeklyInsteadOfSpark() {
+        let entries = NotchHUDModel.entries(
+            pins: [],
+            snapshots: ["codex": snapshot("codex", [
+                window("semanal", usedPercent: 17),
+                window("GPT-5.3-Codex-Spark (5h)", usedPercent: 76)
+            ])],
+            providerOrder: order
+        )
+        XCTAssertEqual(entries.first?.windowLabel, "semanal")
+        XCTAssertEqual(entries.first?.remaining ?? -1, 0.83, accuracy: 0.0001)
+    }
+
     /// Saldos não têm porcentagem para comparar; vão para o fim em vez de serem tratados
     /// como 0% (que os colocaria no topo como se fossem a emergência do dia).
     func test_automatic_balancesSinkToTheEnd() {

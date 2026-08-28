@@ -28,7 +28,7 @@ enum NotchHUDModel {
     /// As cotas que o dono está acompanhando.
     ///
     /// Com pinos: os pinos, na ordem em que foram fixados — a mesma ordem que as
-    /// Preferências deixam arrastar. Sem pinos: a janela mais apertada de CADA provedor,
+    /// Preferências deixam arrastar. Sem pinos: a janela representativa de CADA provedor,
     /// das mais apertadas para as mais folgadas. Um provedor não pode ocupar duas linhas
     /// no modo automático; senão o Claude (5h + semanal) sozinho comeria dois dos cinco
     /// lugares e esconderia um provedor inteiro.
@@ -44,7 +44,8 @@ enum NotchHUDModel {
         return chosen.prefix(max(0, limit)).map(entry(for:))
     }
 
-    /// Uma janela por provedor, da mais apertada para a mais folgada. `providerOrder` (a
+    /// Uma janela por provedor, da mais apertada para a mais folgada. No Codex, a janela
+    /// representativa é o Weekly geral, não uma cota específica do Spark. `providerOrder` (a
     /// ordem do registry) é o desempate: sem ele, dois provedores com a mesma sobra
     /// trocariam de lugar a cada recomposição, porque `snapshots` é um dicionário.
     static func automaticCandidates(
@@ -56,7 +57,7 @@ enum NotchHUDModel {
         let order = providerOrder + snapshots.keys.sorted().filter { !providerOrder.contains($0) }
         let tightest = order.compactMap { providerId -> (Int, MenuBarLabelModel.Candidate, Double)? in
             guard let snapshot = snapshots[providerId],
-                  let window = PopoverLayout.orderedWindows(snapshot.quotas).first
+                  let window = PopoverLayout.primaryWindow(providerId: providerId, quotas: snapshot.quotas)
             else { return nil }
             let rank = order.firstIndex(of: providerId) ?? order.count
             // Saldos vão para o fim: não há "aperto" para comparar com uma porcentagem.
