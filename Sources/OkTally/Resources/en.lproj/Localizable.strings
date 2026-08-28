@@ -109,7 +109,9 @@
 "Coletando ritmo · %@ de histórico" = "Collecting pace · %@ of history";
 "Previsão indisponível para esta janela" = "Forecast unavailable for this window";
 "Chega à renovação" = "Reaches renewal";
-"Ritmo 24h: %@%%/dia · Seguro: até %@%%/dia" = "24h pace: %@%%/day · Safe: up to %@%%/day";
+"Ritmo 24h: %@%%/dia · Reduza para no máximo %@%%/dia" = "24h pace: %@%%/day · Reduce to no more than %@%%/day";
+"Ritmo 24h: %@%%/dia · Meta: %@%%/dia" = "24h pace: %@%%/day · Target: %@%%/day";
+"Ritmo 24h: %@%%/dia · Pode usar até %@%%/dia" = "24h pace: %@%%/day · You can use up to %@%%/day";
 "agora" = "now";
 "%dd %dh" = "%dd %dh";
 "%dd %dmin" = "%dd %dmin";

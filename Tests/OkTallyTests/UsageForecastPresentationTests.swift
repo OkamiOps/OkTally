@@ -154,6 +154,47 @@ final class UsageForecastPresentationTests: XCTestCase {
         XCTAssertEqual(short.renewalDuration, "1h")
     }
 
+    func test_resumoDeRitmoOrientaCorretamenteCadaEstado() {
+        let slowDown = UsageForecastPresentation(
+            forecast: forecast(state: .slowDown, ratePerDay: 24, safeRatePerDay: 12.2),
+            now: now
+        )
+        XCTAssertEqual(
+            slowDown.rateSummary,
+            LF(
+                "Ritmo 24h: %@%%/dia · Reduza para no máximo %@%%/dia",
+                UsageForecastPresentation.decimal(24),
+                UsageForecastPresentation.decimal(12.2)
+            )
+        )
+
+        let onPace = UsageForecastPresentation(
+            forecast: forecast(state: .onPace, ratePerDay: 12.3, safeRatePerDay: 12.2),
+            now: now
+        )
+        XCTAssertEqual(
+            onPace.rateSummary,
+            LF(
+                "Ritmo 24h: %@%%/dia · Meta: %@%%/dia",
+                UsageForecastPresentation.decimal(12.3),
+                UsageForecastPresentation.decimal(12.2)
+            )
+        )
+
+        let canAccelerate = UsageForecastPresentation(
+            forecast: forecast(state: .canAccelerate, ratePerDay: 8, safeRatePerDay: 12.2),
+            now: now
+        )
+        XCTAssertEqual(
+            canAccelerate.rateSummary,
+            LF(
+                "Ritmo 24h: %@%%/dia · Pode usar até %@%%/dia",
+                UsageForecastPresentation.decimal(8),
+                UsageForecastPresentation.decimal(12.2)
+            )
+        )
+    }
+
     func test_metricasDoDetalheDiferenciamFaltaDeColetaSemInventarData() {
         let risk = ForecastDetailMetrics(
             forecast: forecast(

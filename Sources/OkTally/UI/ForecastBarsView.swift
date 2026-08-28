@@ -106,11 +106,18 @@ struct UsageForecastPresentation: Equatable {
               safeRatePerDay.isFinite else {
             return nil
         }
-        return LF(
-            "Ritmo 24h: %@%%/dia · Seguro: até %@%%/dia",
-            Self.decimal(ratePerDay),
-            Self.decimal(safeRatePerDay)
-        )
+        let current = Self.decimal(ratePerDay)
+        let safe = Self.decimal(safeRatePerDay)
+        switch forecast.state {
+        case .slowDown:
+            return LF("Ritmo 24h: %@%%/dia · Reduza para no máximo %@%%/dia", current, safe)
+        case .onPace:
+            return LF("Ritmo 24h: %@%%/dia · Meta: %@%%/dia", current, safe)
+        case .canAccelerate, .noExhaustion:
+            return LF("Ritmo 24h: %@%%/dia · Pode usar até %@%%/dia", current, safe)
+        case .collecting, .unavailable:
+            return nil
+        }
     }
 
     private func fraction(until event: Date) -> Double {
