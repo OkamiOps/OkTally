@@ -293,9 +293,9 @@ struct ForecastInlinePaceView: View {
 
     @ViewBuilder var body: some View {
         if !presentation.isUnavailable {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text(presentation.headline)
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(textStyle)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
@@ -323,15 +323,15 @@ struct ForecastInlinePaceView: View {
                     )
                     if let rateSummary = presentation.rateSummary {
                         Text(rateSummary)
-                            .font(.system(size: 8))
+                            .font(.system(size: 10))
                             .foregroundStyle(textStyle)
                             .lineLimit(1)
                             .minimumScaleFactor(0.78)
                     }
                 }
             }
-            .padding(.horizontal, 7)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(backgroundStyle)
@@ -356,11 +356,11 @@ private struct ForecastTimelineRow: View {
     }
 
     var body: some View {
-        HStack(spacing: compact ? 5 : Theme.Space.sm) {
+        HStack(spacing: compact ? 7 : Theme.Space.sm) {
             Text(title)
-                .font(compact ? .system(size: 8) : Theme.Font.label)
+                .font(compact ? .system(size: 10, weight: .medium) : Theme.Font.label)
                 .foregroundStyle(onHero ? Theme.onHero.opacity(0.72) : .secondary)
-                .frame(width: compact ? 48 : 62, alignment: .leading)
+                .frame(width: compact ? 58 : 62, alignment: .leading)
 
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
@@ -370,13 +370,13 @@ private struct ForecastTimelineRow: View {
                         .frame(width: max(2, geometry.size.width * Theme.clampFraction(fraction)))
                 }
             }
-            .frame(height: compact ? 4 : 6)
+            .frame(height: 6)
             .accessibilityValue(duration)
 
             Text(duration)
-                .font((compact ? Font.system(size: 8) : Theme.Font.label).monospacedDigit())
+                .font((compact ? Font.system(size: 10) : Theme.Font.label).monospacedDigit())
                 .foregroundStyle(onHero ? Theme.onHero.opacity(0.72) : .secondary)
-                .frame(width: compact ? 52 : 48, alignment: .trailing)
+                .frame(width: compact ? 62 : 48, alignment: .trailing)
         }
     }
 }

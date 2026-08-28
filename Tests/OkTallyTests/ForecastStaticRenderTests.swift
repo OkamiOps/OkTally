@@ -91,7 +91,7 @@ final class ForecastStaticRenderTests: XCTestCase {
             let bitmap = try renderView(
                 view,
                 scheme: scheme,
-                size: CGSize(width: 330, height: 260),
+                size: CGSize(width: 370, height: 300),
                 artifactName: "OkTally-ForecastInline-\(name).png"
             )
             assertViewIsVisibleAndUnclipped(bitmap, named: "inline-\(name)")
@@ -104,9 +104,9 @@ final class ForecastStaticRenderTests: XCTestCase {
         XCTAssertNotNil(model.selectedForecast)
 
         let bitmap = try renderView(
-            PopoverContentView(appModel: model).frame(width: 360),
+            PopoverContentView(appModel: model).frame(width: 410),
             scheme: .dark,
-            size: CGSize(width: 384, height: 1_120),
+            size: CGSize(width: 434, height: 1_240),
             artifactName: "OkTally-ForecastPopover-multiple.png"
         )
         assertViewIsVisibleAndUnclipped(bitmap, named: "popover-multiple")

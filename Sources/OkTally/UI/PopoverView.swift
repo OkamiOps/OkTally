@@ -18,7 +18,7 @@ struct PopoverView: View {
             Divider()
             footer
         }
-        .frame(width: 360)
+        .frame(width: 410)
     }
 
     private var header: some View {
