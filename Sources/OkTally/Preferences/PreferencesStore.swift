@@ -36,6 +36,7 @@ final class PreferencesStore {
         static let notchTrailingSlot = "notchTrailingSlot"
         static let notchBottomSlot = "notchBottomSlot"
         static let popoverHeroSlot = "popoverHeroSlot"
+        static let forecastSlot = "forecastSlot"
         static let usageColorScale = "usageColorScale"
         static let alertPercentThresholds = "alertPercentThresholds"
         static let alertLowBalanceThreshold = "alertLowBalanceThreshold"
@@ -224,6 +225,15 @@ final class PreferencesStore {
     var popoverHeroSlot: QuotaSlot {
         get { QuotaSlot(stored: store.string(forKey: Keys.popoverHeroSlot)) }
         set { store.set(newValue.stored.isEmpty ? nil : newValue.stored, forKey: Keys.popoverHeroSlot) }
+    }
+
+    // MARK: - Alvo da previsão
+
+    /// A janela usada para a previsão de uso. Sem escolha persistida, o engine decide
+    /// automaticamente qual é a mais relevante.
+    var forecastSlot: ForecastSlot {
+        get { ForecastSlot(stored: store.string(forKey: Keys.forecastSlot)) }
+        set { store.set(newValue.stored.isEmpty ? nil : newValue.stored, forKey: Keys.forecastSlot) }
     }
 
     // MARK: - Escala de cor do uso

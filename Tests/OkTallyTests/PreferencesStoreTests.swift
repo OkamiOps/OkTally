@@ -115,6 +115,21 @@ final class PreferencesStoreTests: XCTestCase {
         XCTAssertEqual(store.openCodeAPIKey, "oc-abc123")
     }
 
+    // MARK: - Forecast target
+
+    func test_forecastSlot_defaultsToAutomatic() {
+        XCTAssertEqual(makeStore().forecastSlot, .automatic)
+    }
+
+    func test_forecastSlot_roundTripsExplicitWindow() {
+        let store = makeStore()
+        let expected = ForecastSlot.window(providerId: "claude", windowLabel: "5h")
+
+        store.forecastSlot = expected
+
+        XCTAssertEqual(store.forecastSlot, expected)
+    }
+
     // MARK: IMPORTANT 8 regression — API keys must live in the Keychain, not UserDefaults.
 
     func test_apiKeys_areNotWrittenToUserDefaults() throws {
