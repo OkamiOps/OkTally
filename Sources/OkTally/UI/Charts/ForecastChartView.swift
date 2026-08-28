@@ -71,6 +71,12 @@ struct ForecastChartView: View {
         remainingPercent(fromUsed: forecast.currentUsedPercent)
     }
 
+    /// A projeção é uma estimativa de risco, não continuidade do histórico. A tinta vem
+    /// da mesma escala semântica das cotas e acompanha as paradas editáveis do app.
+    private var projectionColor: Color {
+        QuotaPresentation.color(remaining: currentRemaining / 100)
+    }
+
     private var seriesLabels: [String] {
         ForecastChartSeries.allCases.map(\.label)
     }
@@ -116,7 +122,7 @@ struct ForecastChartView: View {
         }
         .chartForegroundStyleScale(
             domain: seriesLabels,
-            range: [Theme.accent, Theme.accent.opacity(0.82), providerColor]
+            range: [Theme.accent, projectionColor, providerColor]
         )
         .chartXScale(domain: dateDomain)
         .chartYScale(domain: 0...100)

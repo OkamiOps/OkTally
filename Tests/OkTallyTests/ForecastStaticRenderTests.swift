@@ -126,18 +126,32 @@ final class ForecastStaticRenderTests: XCTestCase {
         XCTAssertLessThan(bounds.maxX, CGFloat(bitmap.pixelsWide - 1), "\(name): conteúdo cortado à direita")
         XCTAssertLessThan(bounds.maxY, CGFloat(bitmap.pixelsHigh - 1), "\(name): conteúdo cortado no topo")
 
-        let cyan = NSColor(Theme.accent).usingColorSpace(.sRGB) ?? .cyan
-        let provider = NSColor(ProviderPalette.color(for: forecast.id.providerId)).usingColorSpace(.sRGB) ?? .orange
-        XCTAssertGreaterThan(
-            pixelCount(in: bitmap, near: cyan),
-            8,
-            "\(name): histórico/projeção em ciano ausente"
-        )
-        XCTAssertGreaterThan(
-            pixelCount(in: bitmap, near: provider),
-            8,
-            "\(name): ritmo seguro na cor do provider ausente"
-        )
+        let history = NSColor(Theme.accent).usingColorSpace(.sRGB) ?? .cyan
+        let projection = NSColor(QuotaPresentation.color(remaining: currentRemainingFraction))
+            .usingColorSpace(.sRGB) ?? .yellow
+        let safePace = NSColor(ProviderPalette.color(for: forecast.id.providerId))
+            .usingColorSpace(.sRGB) ?? .orange
+        let expectedSeries = [
+            (name: "histórico em ciano", color: history),
+            (name: "projeção semântica", color: projection),
+            (name: "ritmo seguro do provider", color: safePace)
+        ]
+
+        for (index, series) in expectedSeries.enumerated() {
+            let hasDistinctColor = expectedSeries[..<index].allSatisfy {
+                colorDistance(series.color, $0.color) >= 0.18
+            }
+            guard hasDistinctColor else { continue }
+            XCTAssertGreaterThan(
+                pixelCount(in: bitmap, near: series.color),
+                8,
+                "\(name): \(series.name) ausente"
+            )
+        }
+    }
+
+    private var currentRemainingFraction: Double {
+        max(0, min(1, (100 - forecast.currentUsedPercent) / 100))
     }
 
     private func pixelCount(in bitmap: NSBitmapImageRep, near target: NSColor) -> Int {
@@ -145,14 +159,18 @@ final class ForecastStaticRenderTests: XCTestCase {
         for y in 0..<bitmap.pixelsHigh {
             for x in 0..<bitmap.pixelsWide {
                 guard let pixel = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
-                let distance = max(
-                    abs(pixel.redComponent - target.redComponent),
-                    abs(pixel.greenComponent - target.greenComponent),
-                    abs(pixel.blueComponent - target.blueComponent)
-                )
+                let distance = colorDistance(pixel, target)
                 if distance < 0.18 { count += 1 }
             }
         }
         return count
+    }
+
+    private func colorDistance(_ lhs: NSColor, _ rhs: NSColor) -> CGFloat {
+        max(
+            abs(lhs.redComponent - rhs.redComponent),
+            abs(lhs.greenComponent - rhs.greenComponent),
+            abs(lhs.blueComponent - rhs.blueComponent)
+        )
     }
 }
