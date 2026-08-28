@@ -90,7 +90,7 @@ struct UsageForecastPresentation: Equatable {
 
     var paceDuration: String? {
         guard showsTimeline else { return nil }
-        guard let exhaustionAt = forecast.exhaustionAt else { return L("Chega à renovação") }
+        guard let exhaustionAt = forecast.exhaustionAt else { return L("≥ renovação") }
         return Self.durationText(max(0, exhaustionAt.timeIntervalSince(now)))
     }
 

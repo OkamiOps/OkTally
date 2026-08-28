@@ -48,7 +48,9 @@ final class ReadmeAssetRenderer: XCTestCase {
         for scheme in [ColorScheme.dark, .light] {
             try write(view: PopoverContentView(appModel: model)
                         .environment(\.isStaticRender, true)
-                        .frame(width: 360),
+                        .frame(width: 410)
+                        .frame(height: 720, alignment: .top)
+                        .clipped(),
                       to: "popover.png", scheme: scheme)
             try write(view: menuBarStrip(model, scheme: scheme), to: "menubar.png", scheme: scheme)
             try write(view: OverviewScreen(
@@ -281,28 +283,31 @@ final class ReadmeAssetRenderer: XCTestCase {
         let entries: [(String, String, [QuotaWindow])] = [
             ("claude", "Claude Code", [
                 QuotaWindow(label: "5h", shape: rolling(22, hours: 2.7)),
-                QuotaWindow(label: "weekly", shape: rolling(53, hours: 41))
+                QuotaWindow(label: "weekly", shape: rolling(53, hours: 41), renewalCadence: .weekly)
             ]),
             ("codex", "Codex", [
-                QuotaWindow(label: "semanal", shape: rolling(14, hours: 126)),
-                QuotaWindow(label: "GPT-5.3-Codex-Spark (semanal)", shape: rolling(0, hours: 168))
+                QuotaWindow(label: "semanal", shape: rolling(14, hours: 126), renewalCadence: .weekly),
+                QuotaWindow(label: "GPT-5.3-Codex-Spark (semanal)", shape: rolling(0, hours: 168), renewalCadence: .weekly)
             ]),
             ("openrouter", "OpenRouter", [
                 QuotaWindow(label: "balance", shape: .creditBalance(remaining: Decimal(19.82), currency: "USD"))
             ]),
             ("minimax", "MiniMax", [
                 QuotaWindow(label: "5h", shape: rolling(1, hours: 0.1)),
-                QuotaWindow(label: "weekly", shape: rolling(1, hours: 0.1))
+                QuotaWindow(label: "weekly", shape: rolling(1, hours: 0.1), renewalCadence: .weekly)
             ]),
             ("cursor", "Cursor", [
-                QuotaWindow(label: "percent", shape: rolling(74, hours: 15.4))
+                QuotaWindow(label: "percent", shape: rolling(74, hours: 15.4), renewalCadence: .monthly)
+            ]),
+            ("cursor-grokbot", "GrokBot", [
+                QuotaWindow(label: "weekly", shape: rolling(25, hours: 62), renewalCadence: .weekly)
             ]),
             ("copilot", "GitHub Copilot", [
                 QuotaWindow(label: "premium", shape: rolling(35, hours: 460)),
                 QuotaWindow(label: "chat", shape: rolling(12, hours: 460))
             ]),
             ("mimo", "MiMo", [
-                QuotaWindow(label: "mensal", shape: rolling(6, hours: 500))
+                QuotaWindow(label: "mensal", shape: rolling(6, hours: 500), renewalCadence: .monthly)
             ]),
             // OpenCode expõe janelas de orçamento estimadas a partir dos tokens locais —
             // é assim que o provider real monta o snapshot, e é também a terceira fonte
@@ -338,7 +343,8 @@ final class ReadmeAssetRenderer: XCTestCase {
                 let past = quotas.map { window -> QuotaWindow in
                     guard case .rollingWindow(let used, let limit, let start, let reset) = window.shape else { return window }
                     return QuotaWindow(label: window.label, shape: .rollingWindow(
-                        used: used * factor, limit: limit, windowStart: start, resetAt: reset))
+                        used: used * factor, limit: limit, windowStart: start, resetAt: reset),
+                        renewalCadence: window.renewalCadence)
                 }
                 try storage.save(ProviderSnapshot(
                     providerId: id,
@@ -357,6 +363,9 @@ final class ReadmeAssetRenderer: XCTestCase {
         let model = AppModel(registry: registry, scheduler: scheduler, storage: storage, defaults: defaults)
         await model.refreshNow()
         try await Task.sleep(nanoseconds: 200_000_000) // let onResult callbacks land
+        for (id, _, _) in entries {
+            await model.recomputeForecasts(providerId: id, now: now)
+        }
         // As três fontes de analytics reais do app (Codex, Claude Code, OpenCode). Sem
         // loaders, a aba Análise renderiza só o estado vazio.
         model.analyticsLoaders["claude"] = { [self] in

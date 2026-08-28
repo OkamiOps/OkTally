@@ -9,7 +9,7 @@
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/Lizenz-MIT-blue?style=flat)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/OkamiOps/OkTally?include_prereleases&style=flat&color=orange)](https://github.com/OkamiOps/OkTally/releases)
-[![Tests](https://img.shields.io/badge/Tests-431%20bestanden-brightgreen?style=flat)](#entwicklung)
+[![Tests](https://img.shields.io/badge/Tests-478%20bestanden-brightgreen?style=flat)](#entwicklung)
 [![No telemetry](https://img.shields.io/badge/Telemetrie-keine-success?style=flat)](#datenschutz)
 
 [English](README.md) | **Deutsch** | [Français](README.fr.md) | [Português (BR)](README.pt-BR.md)
@@ -21,7 +21,7 @@
 <br />
 <br />
 
-<img src="docs/assets/popover.png" width="400" alt="OkTally-Popover mit Hero-Gauge, Provider-Karten und 24h-Sparklines" />
+<img src="docs/assets/popover.png" width="410" alt="OkTally-Popover mit erweiterter Kontingentprognose und kompakten Pace-Balken für jedes erneuerbare Provider- und Modelllimit" />
 
 <sub>Alle Screenshots zeigen Demo-Daten.</sub>
 
@@ -41,8 +41,8 @@ OkTally ist eine **native macOS-Menüleisten-App**, die all diese Kontingente au
 | :-: | --- | --- |
 | 📌 | **Eine Zahl in der Leiste** | Beliebig viele Fenster anheften; die Menüleiste zeigt das Markensymbol und das *knappste* Fenster, gefärbt nur wenn es eng wird |
 | 🕳️ | **Notch-Panel** | Auf dem eingebauten MacBook-Display: ein schwarzes Panel am Notch — schmale Striche im Ruhezustand, volle Kontingentzeilen beim Hover, Popover per Klick |
-| 🎯 | **Engpass-zuerst-Popover** | Ein Hero-Gauge zeigt das knappste Fenster mit Reset-Countdown; darunter Provider-Karten mit Ringen |
-| 📈 | **24h-Sparklines** | Jede Karte trägt einen Mini-Trend der letzten 24 Stunden aus der lokalen Historie |
+| 🎯 | **Engpass-zuerst-Popover** | Das riskanteste Limit erhält eine erweiterte Prognose; dichte Provider-/Modellzeilen behalten darunter ihre eigenen kompakten Pace-Balken |
+| 📈 | **24h-Pace-Prognosen** | Wochen- und Monatslimits vergleichen den jüngsten Verbrauch mit der Erneuerung und empfehlen langsamer, gleich schnell oder schneller zu nutzen |
 | 🪟 | **Übersichtsfenster** | Sidebar, KPI-Zeile (Provider · Engpass · geschätzte Kosten), Kapselbalken pro Fenster, 7-Tage-Trends |
 | 📊 | **Analyse-Tab** | Token-Statistiken + GitHub-artige Heatmap, aggregiert über Codex, Claude Code und OpenCode — Streaks, Tagesspitze, heute/gestern/30 Tage |
 | 🔔 | **Konfigurierbare Alarme** | macOS-Benachrichtigungen bei 70/90/100 % (deine Wahl) plus USD-Schwelle für niedriges Guthaben — einmal pro Überschreitung |
@@ -96,7 +96,7 @@ Der **Analyse**-Tab summiert alle Quellen in eine Heatmap + Chips (Gesamt, Tages
 
 Erfordert macOS 26 (Tahoe) oder neuer. Ältere macOS-Versionen werden nicht mehr unterstützt und erhalten keine Updates mehr.
 
-1. `OkTally-0.9.4.dmg` von der [Releases-Seite](https://github.com/OkamiOps/OkTally/releases) laden.
+1. `OkTally-0.9.5.dmg` von der [Releases-Seite](https://github.com/OkamiOps/OkTally/releases) laden.
 2. Öffnen und **OkTally** nach Programme ziehen.
 3. Die App ist nicht notarisiert: beim ersten Start Rechtsklick (Ctrl-Klick) auf `OkTally.app` → **Öffnen** → **Öffnen**.
 
@@ -123,7 +123,7 @@ bash Scripts/build_app.sh    # baut .build/OkTally.app
 ## Entwicklung
 
 ```bash
-swift test    # 431 Unit-Tests
+swift test    # 478 Unit-Tests
 ```
 
 Jeder Provider ist ein Plugin hinter einem einzigen `UsageProvider`-Protokoll und normalisiert in ein `QuotaShape`-Modell, damit die UI nie einen Anbieter als Sonderfall behandeln muss. Designdokumente liegen in `docs/superpowers/`.

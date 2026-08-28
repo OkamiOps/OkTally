@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.9.5-beta] — 2026-08-28
+
+### Added
+
+- **Quota pace forecasts for every renewable weekly and monthly limit**: OkTally now
+  learns from the last 24 hours of local history, compares the projected exhaustion date
+  with the real renewal date, and tells you whether to slow down, hold pace, or use more.
+  The highest-risk forecast stays expanded while every other eligible provider/model
+  keeps its own compact two-bar pace view in the popover. The Overview includes the full
+  forecast chart and lets you choose a specific quota or automatic risk selection.
+
+### Changed
+
+- **The popover is wider and pace cards are readable at a glance**: inline guidance now
+  uses larger type, thicker bars, and more spacing without turning every model into a
+  full-size card.
+- **Safe-rate guidance is directional**: a risky quota says “Reduce to no more than…”,
+  an on-pace quota shows a neutral target, and a quota with headroom says “You can use up
+  to…”. The rate calculation is unchanged; the copy now matches the forecast state.
+
+### Fixed
+
+- **GrokBot remains visible across transient Cursor reads**: a temporary failure while
+  refreshing the shared local Cursor session no longer makes the already-known GrokBot
+  quota disappear from the popover or Overview.
+
 ## [0.9.4-beta] — 2026-08-28
 
 ### Added
@@ -190,6 +216,7 @@ First public release. Everything below is new.
 - Secrets in the macOS Keychain only (with silent migration from legacy plaintext locations); usage data stays local; no telemetry.
 - Tri-state provider status (connected / needs reauth / not configured) so an expired login is never painted as "broken" or hidden as "fine".
 
+[0.9.5-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.5-beta
 [0.9.4-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.4-beta
 [0.9.3-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.3-beta
 [0.9.2-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.2-beta

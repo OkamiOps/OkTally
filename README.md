@@ -9,7 +9,7 @@
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/OkamiOps/OkTally?include_prereleases&style=flat&color=orange)](https://github.com/OkamiOps/OkTally/releases)
-[![Tests](https://img.shields.io/badge/tests-431%20passing-brightgreen?style=flat)](#development)
+[![Tests](https://img.shields.io/badge/tests-478%20passing-brightgreen?style=flat)](#development)
 [![No telemetry](https://img.shields.io/badge/telemetry-none-success?style=flat)](#privacy)
 
 **English** | [Deutsch](README.de.md) | [Français](README.fr.md) | [Português (BR)](README.pt-BR.md)
@@ -33,7 +33,7 @@
 <br />
 <br />
 
-<img src="docs/assets/popover.png" width="400" alt="OkTally popover dashboard with hero gauge, provider cards and 24h sparklines" />
+<img src="docs/assets/popover.png" width="410" alt="OkTally popover with an expanded quota forecast and compact pace bars for every renewable provider and model" />
 
 <sub>All screenshots use demo data.</sub>
 
@@ -53,8 +53,8 @@ OkTally is a **native macOS menu bar app** that keeps every one of those quotas 
 | :-: | --- | --- |
 | 📌 | **One number in the bar** | Pin any number of quota windows; the menu bar shows the brand symbol plus the *tightest* one, colored only when it is running out |
 | 🕳️ | **Notch panel** | On the MacBook's built-in display, a black panel hugging the notch: one quota of your choosing on each wing when idle, full quota rows on hover, the popover on click |
-| 🎯 | **Bottleneck-first popover** | A hero gauge spotlights the window closest to running out, with reset countdown; two-column provider cards with ring gauges below |
-| 📈 | **24h sparklines** | Every provider card carries a mini trend of the last 24 hours, straight from the local history database |
+| 🎯 | **Bottleneck-first popover** | The highest-risk quota gets one expanded forecast; dense provider/model rows keep their own compact pace bars below |
+| 📈 | **24h pace forecasts** | Weekly and monthly limits compare your recent burn rate with the renewal date and say whether to slow down, hold pace, or use more |
 | 🪟 | **Overview window** | Sidebar navigation, KPI row (providers · bottleneck · estimated cost), capsule bars per window, 7-day trends per provider |
 | 📊 | **Analytics tab** | Token stats + GitHub-style usage heatmap, aggregated across Codex, Claude Code and OpenCode — streaks, daily peak, today/yesterday/30 days |
 | 🔔 | **Configurable alerts** | Edge-triggered macOS notifications at 70/90/100% (your pick) and a low-balance USD threshold — once per crossing, not once per poll |
@@ -117,7 +117,8 @@ flowchart LR
     S --> DB[(SQLite history<br/>30-day retention)]
     S --> AE[Alert engine<br/>edge-triggered]
     AE --> N[macOS notifications]
-    DB --> UI["Menu bar · Popover<br/>Overview window · Analytics"]
+    DB --> FE[24h pace forecast<br/>weekly + monthly]
+    FE --> UI["Menu bar · Popover<br/>Overview window · Analytics"]
     S --> UI
     PE[Pricing engine<br/>OpenRouter price table] --> UI
 ```
@@ -130,7 +131,7 @@ Every provider is a plugin conforming to a single `UsageProvider` protocol and n
 
 Requires macOS 26 (Tahoe) or later. Older macOS versions are no longer supported and will not receive updates.
 
-1. Download `OkTally-0.9.4.dmg` from the [Releases page](https://github.com/OkamiOps/OkTally/releases).
+1. Download `OkTally-0.9.5.dmg` from the [Releases page](https://github.com/OkamiOps/OkTally/releases).
 2. Open it and drag **OkTally** to Applications.
 3. The app is not notarized: on first launch, right-click (Ctrl-click) `OkTally.app` → **Open** → **Open**.
 
@@ -164,14 +165,14 @@ bash Scripts/make_dmg.sh               # package a drag-to-install DMG
 ## Development
 
 ```bash
-swift test    # 431 unit tests
+swift test    # 478 unit tests
 ```
 
 | Directory | What lives there |
 | --- | --- |
-| `Sources/OkTally/Core` | `QuotaShape`, scheduler, alert engine, history & analytics models — pure and unit-tested |
+| `Sources/OkTally/Core` | `QuotaShape`, scheduler, forecast engine, alerts, history & analytics models — pure and unit-tested |
 | `Sources/OkTally/Plugins` | One folder per provider; each normalizes into `ProviderSnapshot` |
-| `Sources/OkTally/UI` | Popover, overview window, heatmap, sparkline, palette — presentation logic in pure models |
+| `Sources/OkTally/UI` | Popover, per-quota pace, forecast chart, overview, analytics and palette |
 | `Sources/OkTally/Pricing` | Price table source + cost engine |
 | `Sources/OkTally/Storage` | GRDB/SQLite snapshot history with retention |
 | `docs/superpowers/` | Design documents and research notes |

@@ -105,6 +105,7 @@ final class UsageForecastPresentationTests: XCTestCase {
         )
         XCTAssertEqual(noExhaustion.paceFraction, 1)
         XCTAssertEqual(noExhaustion.renewalFraction, 1)
+        XCTAssertEqual(noExhaustion.paceDuration, L("≥ renovação"))
     }
 
     func test_coletaEIndisponivelNaoInventamDatasOuBarras() throws {
@@ -208,6 +209,21 @@ final class UsageForecastPresentationTests: XCTestCase {
                        UsageForecastPresentation.durationText(8 * hour))
         XCTAssertEqual(risk.first(where: { $0.label == L("Ritmo observado") })?.value,
                        LF("%@%%/dia", UsageForecastPresentation.decimal(14.2)))
+        XCTAssertEqual(risk.first(where: { $0.label == L("Reduza para") })?.value,
+                       LF("no máximo %@%%/dia", UsageForecastPresentation.decimal(11.8)))
+
+        let headroom = ForecastDetailMetrics(
+            forecast: forecast(
+                state: .canAccelerate,
+                exhaustionInHours: 36,
+                resetInHours: 24,
+                ratePerDay: 8,
+                safeRatePerDay: 12.2,
+                gap: -12 * hour
+            )
+        ).items
+        XCTAssertEqual(headroom.first(where: { $0.label == L("Pode usar") })?.value,
+                       LF("até %@%%/dia", UsageForecastPresentation.decimal(12.2)))
 
         let collecting = ForecastDetailMetrics(
             forecast: forecast(

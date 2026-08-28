@@ -137,11 +137,7 @@ struct ForecastDetailMetrics: Equatable {
             value: forecast.ratePerDay.map { LF("%@%%/dia", UsageForecastPresentation.decimal($0)) }
                 ?? L("Ainda sem ritmo confiável")
         ))
-        result.append(ForecastDetailMetric(
-            label: L("Ritmo seguro"),
-            value: forecast.safeRatePerDay.map { LF("até %@%%/dia", UsageForecastPresentation.decimal($0)) }
-                ?? L("Indisponível")
-        ))
+        result.append(safeRateMetric)
 
         return result
     }
@@ -155,6 +151,26 @@ struct ForecastDetailMetrics: Equatable {
             return L("Indisponível")
         case .noExhaustion, .slowDown, .onPace, .canAccelerate:
             return L("Sem esgotamento previsto")
+        }
+    }
+
+    private var safeRateMetric: ForecastDetailMetric {
+        guard let safeRate = forecast.safeRatePerDay else {
+            return ForecastDetailMetric(label: L("Ritmo seguro"), value: L("Indisponível"))
+        }
+        let value = UsageForecastPresentation.decimal(safeRate)
+        switch forecast.state {
+        case .slowDown:
+            return ForecastDetailMetric(
+                label: L("Reduza para"),
+                value: LF("no máximo %@%%/dia", value)
+            )
+        case .onPace:
+            return ForecastDetailMetric(label: L("Meta diária"), value: LF("%@%%/dia", value))
+        case .canAccelerate, .noExhaustion:
+            return ForecastDetailMetric(label: L("Pode usar"), value: LF("até %@%%/dia", value))
+        case .collecting, .unavailable:
+            return ForecastDetailMetric(label: L("Ritmo seguro"), value: L("Indisponível"))
         }
     }
 

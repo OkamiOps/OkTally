@@ -9,7 +9,7 @@
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/licence-MIT-blue?style=flat)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/OkamiOps/OkTally?include_prereleases&style=flat&color=orange)](https://github.com/OkamiOps/OkTally/releases)
-[![Tests](https://img.shields.io/badge/tests-431%20r%C3%A9ussis-brightgreen?style=flat)](#d%C3%A9veloppement)
+[![Tests](https://img.shields.io/badge/tests-478%20r%C3%A9ussis-brightgreen?style=flat)](#d%C3%A9veloppement)
 [![No telemetry](https://img.shields.io/badge/t%C3%A9l%C3%A9m%C3%A9trie-aucune-success?style=flat)](#confidentialit%C3%A9)
 
 [English](README.md) | [Deutsch](README.de.md) | **Français** | [Português (BR)](README.pt-BR.md)
@@ -21,7 +21,7 @@
 <br />
 <br />
 
-<img src="docs/assets/popover.png" width="400" alt="Popover OkTally avec jauge principale, cartes par fournisseur et sparklines 24h" />
+<img src="docs/assets/popover.png" width="410" alt="Popover OkTally avec une prévision détaillée et des barres de rythme compactes pour chaque quota renouvelable par fournisseur et modèle" />
 
 <sub>Toutes les captures utilisent des données de démonstration.</sub>
 
@@ -41,8 +41,8 @@ OkTally est une **app native de barre de menus macOS** qui garde tous ces quotas
 | :-: | --- | --- |
 | 📌 | **Un seul chiffre dans la barre** | Épinglez autant de fenêtres que voulu ; la barre affiche le symbole de la marque et la fenêtre la *plus tendue*, colorée seulement quand ça serre |
 | 🕳️ | **Panneau dans l'encoche** | Sur l'écran intégré du MacBook, un panneau noir collé à l'encoche : petits traits au repos, quotas complets au survol, popover au clic |
-| 🎯 | **Popover goulot-d'abord** | Une jauge-héros met en avant la fenêtre la plus proche de l'épuisement, avec compte à rebours ; cartes par fournisseur en dessous |
-| 📈 | **Sparklines 24h** | Chaque carte porte une mini-tendance des dernières 24 heures, issue de l'historique local |
+| 🎯 | **Popover goulot-d'abord** | Le quota le plus risqué reçoit une prévision détaillée ; les lignes fournisseur/modèle gardent chacune leurs barres de rythme compactes |
+| 📈 | **Prévisions de rythme sur 24h** | Les limites hebdomadaires et mensuelles comparent le rythme récent au renouvellement et indiquent s'il faut ralentir, maintenir ou accélérer |
 | 🪟 | **Fenêtre Vue d'ensemble** | Sidebar, ligne de KPI (fournisseurs · goulot · coût estimé), barres capsules par fenêtre, tendances 7 jours |
 | 📊 | **Onglet Analyse** | Statistiques de tokens + heatmap façon GitHub, agrégées sur Codex, Claude Code et OpenCode — streaks, pic quotidien, aujourd'hui/hier/30 jours |
 | 🔔 | **Alertes configurables** | Notifications macOS à 70/90/100 % (au choix) et seuil de solde bas en USD — une fois par franchissement |
@@ -96,7 +96,7 @@ L'onglet **Análise** somme toutes les sources dans une heatmap + chips (total, 
 
 Nécessite macOS 26 (Tahoe) ou ultérieur. Les versions antérieures de macOS ne sont plus prises en charge et ne recevront plus de mises à jour.
 
-1. Téléchargez `OkTally-0.9.4.dmg` depuis la [page Releases](https://github.com/OkamiOps/OkTally/releases).
+1. Téléchargez `OkTally-0.9.5.dmg` depuis la [page Releases](https://github.com/OkamiOps/OkTally/releases).
 2. Ouvrez-le et glissez **OkTally** dans Applications.
 3. L'app n'est pas notariée : au premier lancement, clic droit (Ctrl-clic) sur `OkTally.app` → **Ouvrir** → **Ouvrir**.
 
@@ -123,7 +123,7 @@ bash Scripts/build_app.sh    # construit .build/OkTally.app
 ## Développement
 
 ```bash
-swift test    # 431 tests unitaires
+swift test    # 478 tests unitaires
 ```
 
 Chaque fournisseur est un plugin derrière un unique protocole `UsageProvider` et normalise ses données dans un modèle `QuotaShape`, si bien que l'UI n'a jamais à traiter un vendeur comme un cas particulier. Les documents de conception vivent dans `docs/superpowers/`.
