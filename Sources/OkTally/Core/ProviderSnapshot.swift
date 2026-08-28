@@ -26,9 +26,24 @@ struct ProviderSnapshot: Codable, Equatable {
     }
 }
 
+enum RenewalCadence: String, Codable, Equatable {
+    case weekly
+    case monthly
+}
+
 struct QuotaWindow: Codable, Equatable {
     let label: String
     let shape: QuotaShape
+    /// Only real renewable subscription windows opt in. A missing value keeps snapshots
+    /// written by older builds decodable and excludes synthetic/short windows from pace
+    /// forecasting.
+    let renewalCadence: RenewalCadence?
+
+    init(label: String, shape: QuotaShape, renewalCadence: RenewalCadence? = nil) {
+        self.label = label
+        self.shape = shape
+        self.renewalCadence = renewalCadence
+    }
 }
 
 struct UsageDetail: Codable, Equatable {

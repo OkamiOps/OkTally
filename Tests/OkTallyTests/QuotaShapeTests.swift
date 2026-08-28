@@ -60,4 +60,33 @@ final class QuotaShapeTests: XCTestCase {
         let decoded = try JSONDecoder().decode(QuotaShape.self, from: data)
         XCTAssertEqual(decoded, original)
     }
+
+    func test_quotaWindow_renewalCadenceRoundTrips() throws {
+        let reset = Date(timeIntervalSince1970: 1_003_600)
+        let original = QuotaWindow(
+            label: "weekly",
+            shape: .periodicCounter(used: 15, limit: 100, resetAt: reset),
+            renewalCadence: .weekly
+        )
+
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(QuotaWindow.self, from: data)
+
+        XCTAssertEqual(decoded, original)
+        XCTAssertEqual(decoded.renewalCadence, .weekly)
+    }
+
+    func test_quotaWindow_legacyJSONWithoutCadenceDecodesAsNil() throws {
+        let reset = Date(timeIntervalSinceReferenceDate: 3_600)
+        let shape = QuotaShape.periodicCounter(used: 15, limit: 100, resetAt: reset)
+        let shapeObject = try JSONSerialization.jsonObject(with: JSONEncoder().encode(shape))
+        let legacyData = try JSONSerialization.data(withJSONObject: [
+            "label": "weekly",
+            "shape": shapeObject,
+        ])
+
+        let decoded = try JSONDecoder().decode(QuotaWindow.self, from: legacyData)
+
+        XCTAssertNil(decoded.renewalCadence)
+    }
 }
