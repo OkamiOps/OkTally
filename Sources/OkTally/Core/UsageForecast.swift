@@ -17,13 +17,13 @@ enum UsageForecastState: Equatable {
 
 struct UsageForecast: Equatable {
     let id: ForecastWindowID
-    let cadence: RenewalCadence
+    let cadence: RenewalCadence?
     let currentUsedPercent: Double
     let samples: [UsageHistoryPoint]
     let ratePerDay: Double?
     let safeRatePerDay: Double?
     let exhaustionAt: Date?
-    let resetAt: Date
+    let resetAt: Date?
     let gap: TimeInterval?
     let state: UsageForecastState
 }
@@ -45,7 +45,7 @@ enum UsageForecastEngine {
         let id = ForecastWindowID(providerId: providerId, windowLabel: current.label)
 
         guard let eligible = eligible(current: current, now: now) else {
-            return unavailable(id: id, current: current, now: now)
+            return unavailable(id: id, current: current)
         }
 
         let samples = UsageHistory.series(
@@ -164,25 +164,21 @@ enum UsageForecastEngine {
 
     private static func unavailable(
         id: ForecastWindowID,
-        current: QuotaWindow,
-        now: Date
+        current: QuotaWindow
     ) -> UsageForecast {
         let currentUsedPercent = current.shape.usedPercent
             .flatMap { $0.isFinite ? min(max($0, 0), 100) : nil }
             ?? 0
 
-        // `UsageForecast` retains the nonoptional interface consumed by later UI tasks.
-        // In this state neither date is a prediction: `exhaustionAt` and `gap` stay nil,
-        // and presentation must use `state` rather than this sentinel reset value.
         return UsageForecast(
             id: id,
-            cadence: current.renewalCadence ?? .weekly,
+            cadence: current.renewalCadence,
             currentUsedPercent: currentUsedPercent,
             samples: [],
             ratePerDay: nil,
             safeRatePerDay: nil,
             exhaustionAt: nil,
-            resetAt: current.shape.resetAt ?? now,
+            resetAt: current.shape.resetAt,
             gap: nil,
             state: .unavailable
         )

@@ -70,12 +70,13 @@ final class UsageForecastEngineTests: XCTestCase {
         let forecast = forecast(samples: risingSamples)
 
         XCTAssertEqual(forecast.id, ForecastWindowID(providerId: "claude", windowLabel: "weekly"))
-        XCTAssertEqual(forecast.cadence, .weekly)
+        XCTAssertEqual(forecast.cadence, .some(.weekly))
         XCTAssertEqual(forecast.currentUsedPercent, 40, accuracy: 0.0001)
         XCTAssertEqual(forecast.samples.count, 6)
         assertApproximatelyEqual(forecast.ratePerDay, 120)
         assertApproximatelyEqual(forecast.safeRatePerDay, 60)
         XCTAssertEqual(forecast.exhaustionAt, now.addingTimeInterval(12 * hour))
+        XCTAssertEqual(forecast.resetAt, now.addingTimeInterval(24 * hour))
         assertApproximatelyEqual(forecast.gap, 12 * hour)
         XCTAssertEqual(forecast.state, .slowDown)
     }
@@ -170,7 +171,34 @@ final class UsageForecastEngineTests: XCTestCase {
         let expired = UsageForecastEngine.forecast(providerId: "claude", current: expiredReset, snapshots: [], now: now)
 
         XCTAssertEqual(missing.state, .unavailable)
+        XCTAssertEqual(missing.cadence, .some(.weekly))
+        XCTAssertNil(missing.resetAt)
         XCTAssertEqual(expired.state, .unavailable)
+        XCTAssertEqual(expired.cadence, .some(.weekly))
+        XCTAssertEqual(expired.resetAt, now.addingTimeInterval(-1))
+        XCTAssertNotEqual(expired.resetAt, now)
+    }
+
+    func test_forecast_doesNotInventCadenceOrResetWhenBothAreAbsent() {
+        let noCadenceOrReset = QuotaWindow(
+            label: "balance",
+            shape: .creditBalance(remaining: 10, currency: "USD")
+        )
+
+        let forecast = UsageForecastEngine.forecast(
+            providerId: "openrouter",
+            current: noCadenceOrReset,
+            snapshots: [],
+            now: now
+        )
+
+        XCTAssertEqual(forecast.state, .unavailable)
+        XCTAssertNil(forecast.cadence)
+        XCTAssertNil(forecast.resetAt)
+        XCTAssertNil(forecast.ratePerDay)
+        XCTAssertNil(forecast.safeRatePerDay)
+        XCTAssertNil(forecast.exhaustionAt)
+        XCTAssertNil(forecast.gap)
     }
 
     func test_forecast_isUnavailable_forMissingCadenceEstimatedAndNonPercentageWindows() {
@@ -187,7 +215,11 @@ final class UsageForecastEngineTests: XCTestCase {
             renewalCadence: .weekly
         )
 
-        XCTAssertEqual(UsageForecastEngine.forecast(providerId: "claude", current: missingCadence, snapshots: [], now: now).state, .unavailable)
+        let missingCadenceForecast = UsageForecastEngine.forecast(providerId: "claude", current: missingCadence, snapshots: [], now: now)
+
+        XCTAssertEqual(missingCadenceForecast.state, .unavailable)
+        XCTAssertNil(missingCadenceForecast.cadence)
+        XCTAssertEqual(missingCadenceForecast.resetAt, resetAt)
         XCTAssertEqual(UsageForecastEngine.forecast(providerId: "claude", current: estimated, snapshots: [], now: now).state, .unavailable)
         XCTAssertEqual(UsageForecastEngine.forecast(providerId: "claude", current: metered, snapshots: [], now: now).state, .unavailable)
     }
@@ -195,7 +227,7 @@ final class UsageForecastEngineTests: XCTestCase {
     func test_forecast_acceptsMonthlyRealPercentageWindow() {
         let forecast = forecast(cadence: .monthly, samples: risingSamples)
 
-        XCTAssertEqual(forecast.cadence, .monthly)
+        XCTAssertEqual(forecast.cadence, .some(.monthly))
         XCTAssertEqual(forecast.state, .slowDown)
     }
 
