@@ -335,9 +335,16 @@ final class AppModel: ObservableObject {
         let since = now.addingTimeInterval(-24 * 3_600)
 
         let recomputed = await Task.detached(priority: .utility) { () -> [ForecastWindowID: UsageForecast]? in
-            guard let snapshots = try? storage.snapshots(providerId: providerId, since: since) else {
+            guard let persistedSnapshots = try? storage.snapshots(providerId: providerId, since: since) else {
                 return nil
             }
+            // `Scheduler` publishes the successful fetch before its following `save`.
+            // If this detached read wins that race, the current sample still belongs to
+            // the 24h series; append it once, while preserving the persisted path when
+            // the save has already completed.
+            let snapshots = persistedSnapshots.contains(capturedSnapshot)
+                ? persistedSnapshots
+                : persistedSnapshots + [capturedSnapshot]
 
             var forecasts: [ForecastWindowID: UsageForecast] = [:]
             for window in capturedSnapshot.quotas where UsageForecastEngine.isEligible(current: window, now: now) {

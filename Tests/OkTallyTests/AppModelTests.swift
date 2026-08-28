@@ -4,6 +4,32 @@ import XCTest
 
 @MainActor
 final class AppModelTests: XCTestCase {
+    /// Simula a janela entre `Scheduler.onResult(.success)` e `storage.save(snapshot)`:
+    /// o modelo já tem a leitura atual, mas a consulta de histórico ainda não a enxerga.
+    private final class ForecastHistoryLagStorage: StorageManaging {
+        private let latest: ProviderSnapshot
+        private let historicalSnapshots: [ProviderSnapshot]
+
+        init(latest: ProviderSnapshot, historicalSnapshots: [ProviderSnapshot]) {
+            self.latest = latest
+            self.historicalSnapshots = historicalSnapshots
+        }
+
+        func save(_ snapshot: ProviderSnapshot) throws {}
+
+        func latestSnapshot(providerId: String) throws -> ProviderSnapshot? {
+            latest.providerId == providerId ? latest : nil
+        }
+
+        func snapshots(providerId: String, since: Date) throws -> [ProviderSnapshot] {
+            historicalSnapshots.filter {
+                $0.providerId == providerId && $0.fetchedAt >= since
+            }
+        }
+
+        func prune(olderThan cutoff: Date) throws {}
+    }
+
     private final class ForecastReadFailingStorage: StorageManaging {
         var snapshotsByProvider: [String: [ProviderSnapshot]] = [:]
         var shouldFailSnapshotsRead = false
@@ -349,6 +375,33 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(forecast.currentUsedPercent, 40, accuracy: 0.0001)
         XCTAssertEqual(model.forecasts(providerId: "claude").map(\.id), [id])
         XCTAssertEqual(model.selectedForecast?.id, id)
+    }
+
+    func test_recomputeForecastsIncludesCapturedSnapshotOnceWhenHistoryLagsWrite() async throws {
+        let now = Date()
+        let snapshots = renewableForecastSnapshots(now: now)
+        let current = try XCTUnwrap(snapshots.last)
+        let provider = FakeUsageProvider(id: "claude", displayName: "Claude Code")
+        let registry = PluginRegistry()
+        registry.register(provider)
+        let storage = ForecastHistoryLagStorage(
+            latest: current,
+            historicalSnapshots: Array(snapshots.dropLast())
+        )
+        let model = AppModel(
+            registry: registry,
+            scheduler: forecastScheduler(registry: registry, storage: storage),
+            storage: storage,
+            defaults: freshDefaults(#function)
+        )
+        let id = ForecastWindowID(providerId: "claude", windowLabel: "weekly")
+
+        let result = await waitForForecast(id, in: model)
+        let forecast = try XCTUnwrap(result)
+
+        XCTAssertEqual(forecast.state, .slowDown)
+        XCTAssertEqual(forecast.samples.map(\.usedPercent), [10, 15, 20, 25, 30, 40])
+        XCTAssertEqual(forecast.samples.filter { $0.date == current.fetchedAt }.count, 1)
     }
 
     func test_initRecomputesForecastsFromPersistedSeedInBackground() async throws {
