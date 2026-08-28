@@ -95,9 +95,11 @@ struct PopoverContentView: View {
     /// `.notConfigured` hides the row: the owner signed out, so old numbers are noise.
     private var withData: [(provider: UsageProvider, snapshot: ProviderSnapshot)] {
         providers.compactMap { provider in
-            guard let snapshot = appModel.snapshotsByProvider[provider.id],
-                  !snapshot.quotas.isEmpty,
-                  appModel.errorKindByProvider[provider.id] != .notConfigured
+            let snapshot = appModel.snapshotsByProvider[provider.id]
+            guard ProviderPresentationPolicy.showsSnapshot(
+                snapshot,
+                errorKind: appModel.errorKindByProvider[provider.id]
+            ), let snapshot
             else { return nil }
             return (provider, snapshot)
         }
@@ -668,10 +670,10 @@ private struct ProblemsSection: View {
     /// Reconexão e configuração inicial têm remédio nas Preferências; erro genérico
     /// (rede, HTTP 500) não tem botão porque não há nada para o dono clicar lá.
     private func actionTitle(for kind: ProviderErrorPresentation?) -> String? {
-        switch kind {
-        case .needsReauth: return L("Reconectar")
-        case .notConfigured: return L("Configurar")
-        default: return nil
+        switch ProviderPresentationPolicy.recoveryAction(for: kind) {
+        case .reconnect: return L("Reconectar")
+        case .configure: return L("Configurar")
+        case nil: return nil
         }
     }
 
@@ -679,6 +681,7 @@ private struct ProblemsSection: View {
         switch kind {
         case .notConfigured: return .secondary
         case .needsReauth: return Theme.Brand.heatOrange
+        case .dependencyUnavailable: return .secondary
         case .error: return Theme.Brand.neonMagenta
         case nil: return .secondary
         }

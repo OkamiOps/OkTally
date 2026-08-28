@@ -118,6 +118,7 @@
 "Abra %@ e digite:" = "Open %@ and enter:";
 "Lê a sessão do app Cursor automaticamente" = "Reads the Cursor app session automatically";
 "Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho." = "Nothing to configure — if the Cursor app is signed in on this machine, usage shows up on its own.";
+"Sessão do Cursor temporariamente indisponível." = "Cursor session temporarily unavailable.";
 "Login do Copilot/gh CLI detectado" = "Copilot/gh CLI login detected";
 "Nenhum login do Copilot/gh CLI encontrado" = "No Copilot/gh CLI login found";
 "Nada a configurar — detectado automaticamente a partir do login do Copilot ou do gh CLI neste Mac." = "Nothing to configure — detected automatically from the Copilot or gh CLI login on this Mac.";

@@ -12,6 +12,17 @@ protocol GrokBotUsageFetching {
     func fetchUsage(accessToken: String) async throws -> GrokBotUsageResponse
 }
 
+enum GrokBotUsageError: Error, Equatable, LocalizedError {
+    case cursorSessionUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .cursorSessionUnavailable:
+            return L("Sessão do Cursor temporariamente indisponível.")
+        }
+    }
+}
+
 final class GrokBotUsageAPIClient: GrokBotUsageFetching {
     private let session: URLSession
 
@@ -59,12 +70,18 @@ final class GrokBotUsageProvider: UsageProvider {
     }
 
     func isAuthenticated() async -> Bool {
-        tokenReader.readAccessToken() != nil
+        // GrokBot has no independent credential to configure. Let the fetch perform the
+        // Cursor dependency check so a transient SQLite read cannot be promoted by the
+        // scheduler to the misleading "not configured" state.
+        true
     }
 
     func fetchSnapshot() async throws -> ProviderSnapshot {
-        guard let token = tokenReader.readAccessToken() else {
-            throw CursorUsageError.notDetected
+        // Cursor can be writing state.vscdb while OkTally opens its read-only queue.
+        // One immediate second read avoids turning that brief race into ten minutes of
+        // hidden data (this provider refreshes every 600 seconds).
+        guard let token = tokenReader.readAccessToken() ?? tokenReader.readAccessToken() else {
+            throw GrokBotUsageError.cursorSessionUnavailable
         }
         let response = try await client.fetchUsage(accessToken: token)
         let fetchedAt = now()

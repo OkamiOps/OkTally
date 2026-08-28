@@ -17,9 +17,11 @@ struct MainWindowView: View {
 
     private var providersWithData: [(provider: UsageProvider, snapshot: ProviderSnapshot)] {
         appModel.orderedProviders.compactMap { provider in
-            guard let snapshot = appModel.snapshotsByProvider[provider.id],
-                  !snapshot.quotas.isEmpty,
-                  appModel.errorKindByProvider[provider.id] != .notConfigured
+            let snapshot = appModel.snapshotsByProvider[provider.id]
+            guard ProviderPresentationPolicy.showsSnapshot(
+                snapshot,
+                errorKind: appModel.errorKindByProvider[provider.id]
+            ), let snapshot
             else { return nil }
             return (provider, snapshot)
         }

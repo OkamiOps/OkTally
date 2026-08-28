@@ -11,6 +11,19 @@ final class FakeGrokBotUsageFetching: GrokBotUsageFetching {
     }
 }
 
+final class SequencedCursorTokenReading: CursorTokenReading {
+    private var values: [String?]
+
+    init(_ values: [String?]) {
+        self.values = values
+    }
+
+    func readAccessToken() -> String? {
+        guard !values.isEmpty else { return nil }
+        return values.removeFirst()
+    }
+}
+
 final class GrokBotUsageProviderTests: XCTestCase {
     override func tearDown() {
         URLProtocolStub.stubResponses = [:]
@@ -71,5 +84,36 @@ final class GrokBotUsageProviderTests: XCTestCase {
         XCTAssertTrue(response.hasNonZeroIncludedLimit)
         XCTAssertTrue(response.hasAvailableUsage)
         XCTAssertEqual(response.grokPlanLabel, "Grok Bot Plan")
+    }
+
+    func test_scheduler_survivesTransientCursorTokenReadInsteadOfMarkingGrokBotUnconfigured() async {
+        let reader = SequencedCursorTokenReading([nil, "cursor-session-token"])
+        let fetcher = FakeGrokBotUsageFetching()
+        fetcher.responseToReturn = GrokBotUsageResponse(
+            usagePercent: 22.156489,
+            nextResetTimestampUtc: "2026-08-31T00:31:02.272Z",
+            hasNonZeroIncludedLimit: true,
+            hasAvailableUsage: true,
+            grokPlanLabel: "Grok Bot Plan"
+        )
+        let provider = GrokBotUsageProvider(tokenReader: reader, client: fetcher)
+        let registry = PluginRegistry()
+        registry.register(provider)
+        let storage = FakeStorage()
+        let scheduler = Scheduler(
+            registry: registry,
+            storage: storage,
+            alertEngine: AlertEngine(),
+            alertDispatcher: AlertDispatcher(sender: FakeNotificationSender())
+        )
+
+        let results = await scheduler.fetchAll()
+
+        guard case .success(let snapshot) = results.first?.outcome else {
+            return XCTFail("expected GrokBot snapshot instead of notConfigured")
+        }
+        XCTAssertEqual(snapshot.providerId, "cursor-grokbot")
+        XCTAssertEqual(storage.saveCount, 1)
+        XCTAssertNil(scheduler.lastError["cursor-grokbot"])
     }
 }

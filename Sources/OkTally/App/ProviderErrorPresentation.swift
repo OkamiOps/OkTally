@@ -13,6 +13,10 @@ enum ProviderErrorPresentation: Equatable {
     /// missing/rejected, device-code flow denied/expired). Needs the owner to log in
     /// again, but isn't a crash or a network problem.
     case needsReauth
+    /// A zero-config provider depends on another local app/session. There is nothing to
+    /// configure or reconnect inside OkTally, so keep the last snapshot visible and do
+    /// not offer a misleading Settings action.
+    case dependencyUnavailable
     /// Something unexpected happened (bad HTTP status, malformed response, timeout, …).
     case error
 
@@ -43,6 +47,7 @@ enum ProviderErrorPresentation: Equatable {
         }
         if let error = error as? OpenRouterError, error == .missingAPIKey { return .notConfigured }
         if let error = error as? MiniMaxError, error == .missingAPIKey { return .notConfigured }
+        if error is GrokBotUsageError { return .dependencyUnavailable }
         if let error = error as? CursorUsageError, error == .notDetected { return .notConfigured }
         if let error = error as? OpenCodeError, error == .notDetected { return .notConfigured }
         if let error = error as? CopilotError {
@@ -60,5 +65,28 @@ enum ProviderErrorPresentation: Equatable {
             }
         }
         return .error
+    }
+}
+
+enum ProviderRecoveryAction: Equatable {
+    case configure
+    case reconnect
+}
+
+enum ProviderPresentationPolicy {
+    static func showsSnapshot(
+        _ snapshot: ProviderSnapshot?,
+        errorKind: ProviderErrorPresentation?
+    ) -> Bool {
+        guard let snapshot, !snapshot.quotas.isEmpty else { return false }
+        return errorKind != .notConfigured
+    }
+
+    static func recoveryAction(for kind: ProviderErrorPresentation?) -> ProviderRecoveryAction? {
+        switch kind {
+        case .needsReauth: return .reconnect
+        case .notConfigured: return .configure
+        case .dependencyUnavailable, .error, nil: return nil
+        }
     }
 }
