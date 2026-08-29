@@ -46,7 +46,7 @@ enum NotchHUDModel {
 
     /// Uma janela por provedor, da mais apertada para a mais folgada. No Codex, a janela
     /// representativa é o Weekly geral, não uma cota específica do Spark. `providerOrder` (a
-    /// ordem do registry) é o desempate: sem ele, dois provedores com a mesma sobra
+    /// ordem visível das contas) é o desempate: sem ele, dois provedores com a mesma sobra
     /// trocariam de lugar a cada recomposição, porque `snapshots` é um dicionário.
     static func automaticCandidates(
         snapshots: [String: ProviderSnapshot],

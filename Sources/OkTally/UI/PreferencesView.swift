@@ -50,6 +50,7 @@ struct PreferencesView: View {
                     ForEach(providerIds, id: \.self) { id in
                         sidebarRow(id)
                             .tag(PreferencesPane.provider(id))
+                            .contentShape(Rectangle())
                             .draggable(ProviderOrderTransfer(id: id))
                             .dropDestination(for: ProviderOrderTransfer.self) { items, _ in
                                 guard let dragged = items.first else { return false }

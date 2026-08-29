@@ -91,10 +91,10 @@ enum QuotaSlotResolver {
     }
 
     /// Todas as janelas que um `Picker` pode oferecer, na ordem de leitura das
-    /// Preferências: os provedores na ordem do registry e, dentro de cada um, a ordem em
-    /// que o provedor devolveu as janelas.
+    /// Preferências: os provedores na ordem visível das contas e, dentro de cada um, a
+    /// ordem em que o provedor devolveu as janelas.
     ///
-    /// Ordem de registry e não de aperto: uma lista que se reordena sozinha entre duas
+    /// Ordem das contas e não de aperto: uma lista que se reordena sozinha entre duas
     /// aberturas do menu é impossível de usar.
     static func availableWindows(
         snapshots: [String: ProviderSnapshot],

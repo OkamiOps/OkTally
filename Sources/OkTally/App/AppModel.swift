@@ -46,7 +46,7 @@ final class AppModel: ObservableObject {
     private var analyticsLoadedAt: [String: Date] = [:]
     var analyticsLoaders: [String: () async -> TokenAnalytics?] = [:]
 
-    /// Providers com fonte de analytics, na ordem do registry (para a aba "Análise").
+    /// Providers com fonte de analytics, na ordem visível das contas (para a aba "Análise").
     var analyticsProviderIds: [String] {
         orderedProviders.map(\.id).filter { analyticsLoaders[$0] != nil }
     }
