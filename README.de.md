@@ -9,7 +9,7 @@
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/Lizenz-MIT-blue?style=flat)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/OkamiOps/OkTally?include_prereleases&style=flat&color=orange)](https://github.com/OkamiOps/OkTally/releases)
-[![Tests](https://img.shields.io/badge/Tests-478%20bestanden-brightgreen?style=flat)](#entwicklung)
+[![Tests](https://img.shields.io/badge/Tests-498%20bestanden-brightgreen?style=flat)](#entwicklung)
 [![No telemetry](https://img.shields.io/badge/Telemetrie-keine-success?style=flat)](#datenschutz)
 
 [English](README.md) | **Deutsch** | [Français](README.fr.md) | [Português (BR)](README.pt-BR.md)
@@ -40,6 +40,7 @@ OkTally ist eine **native macOS-Menüleisten-App**, die all diese Kontingente au
 | | Funktion | Was sie tut |
 | :-: | --- | --- |
 | 📌 | **Eine Zahl in der Leiste** | Beliebig viele Fenster anheften; die Menüleiste zeigt das Markensymbol und das *knappste* Fenster, gefärbt nur wenn es eng wird |
+| ↕️ | **Eigene Konto-Reihenfolge** | Konten in Einstellungen ▸ Contas per Drag-and-drop sortieren; Übersicht, Popover, Notch und Analyse folgen |
 | 🕳️ | **Notch-Panel** | Auf dem eingebauten MacBook-Display: ein schwarzes Panel am Notch — schmale Striche im Ruhezustand, volle Kontingentzeilen beim Hover, Popover per Klick |
 | 🎯 | **Engpass-zuerst-Popover** | Das riskanteste Limit erhält eine erweiterte Prognose; dichte Provider-/Modellzeilen behalten darunter ihre eigenen kompakten Pace-Balken |
 | 📈 | **24h-Pace-Prognosen** | Wochen- und Monatslimits vergleichen den jüngsten Verbrauch mit der Erneuerung und empfehlen langsamer, gleich schnell oder schneller zu nutzen |
@@ -96,7 +97,7 @@ Der **Analyse**-Tab summiert alle Quellen in eine Heatmap + Chips (Gesamt, Tages
 
 Erfordert macOS 26 (Tahoe) oder neuer. Ältere macOS-Versionen werden nicht mehr unterstützt und erhalten keine Updates mehr.
 
-1. `OkTally-0.9.5.dmg` von der [Releases-Seite](https://github.com/OkamiOps/OkTally/releases) laden.
+1. `OkTally-0.9.6.dmg` von der [Releases-Seite](https://github.com/OkamiOps/OkTally/releases) laden.
 2. Öffnen und **OkTally** nach Programme ziehen.
 3. Die App ist nicht notarisiert: beim ersten Start Rechtsklick (Ctrl-Klick) auf `OkTally.app` → **Öffnen** → **Öffnen**.
 
@@ -116,14 +117,15 @@ bash Scripts/build_app.sh    # baut .build/OkTally.app
 
 1. OkTally in der Menüleiste anklicken — der erste Start zeigt einen **Provider-verbinden**-Aufruf.
 2. In den **Einstellungen** jeden genutzten Provider verbinden — OAuth, API-Key oder gar nichts (Cursor/GrokBot/Copilot).
-3. Im Popover die wichtigen Fenster mit dem Pin-Symbol anheften.
-4. Alarmschwellen (70/90/100 % + Guthaben) unter **Einstellungen → Allgemein** anpassen.
-5. **Visão geral** für das volle Dashboard und den **Análise**-Tab öffnen.
+3. Konten unter **Einstellungen → Contas** in die gewünschte Reihenfolge ziehen.
+4. Im Popover die wichtigen Fenster mit dem Pin-Symbol anheften.
+5. Alarmschwellen (70/90/100 % + Guthaben) unter **Einstellungen → Allgemein** anpassen.
+6. **Visão geral** für das volle Dashboard und den **Análise**-Tab öffnen.
 
 ## Entwicklung
 
 ```bash
-swift test    # 478 Unit-Tests
+swift test    # 498 Unit-Tests
 ```
 
 Jeder Provider ist ein Plugin hinter einem einzigen `UsageProvider`-Protokoll und normalisiert in ein `QuotaShape`-Modell, damit die UI nie einen Anbieter als Sonderfall behandeln muss. Designdokumente liegen in `docs/superpowers/`.

@@ -9,7 +9,7 @@
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/licen%C3%A7a-MIT-blue?style=flat)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/OkamiOps/OkTally?include_prereleases&style=flat&color=orange)](https://github.com/OkamiOps/OkTally/releases)
-[![Tests](https://img.shields.io/badge/testes-478%20passando-brightgreen?style=flat)](#desenvolvimento)
+[![Tests](https://img.shields.io/badge/testes-498%20passando-brightgreen?style=flat)](#desenvolvimento)
 [![No telemetry](https://img.shields.io/badge/telemetria-nenhuma-success?style=flat)](#privacidade)
 
 [English](README.md) | [Deutsch](README.de.md) | [Français](README.fr.md) | **Português (BR)**
@@ -40,6 +40,7 @@ O OkTally é um app **nativo de barra de menu do macOS** que mantém todas essas
 | | Recurso | O que faz |
 | :-: | --- | --- |
 | 📌 | **Um número na barra** | Fixe quantas janelas quiser; a barra mostra o símbolo da marca e a *mais apertada*, colorida só quando aperta |
+| ↕️ | **Ordem das contas** | Arraste a lista Contas nas Preferências; a mesma sequência vale na Visão geral, popover, notch e Análise |
 | 🕳️ | **Painel no notch** | Na tela embutida do MacBook, um painel preto abraçando o notch: uma cota escolhida em cada asa quando discreto, cotas completas no hover, popover no clique |
 | 🎯 | **Popover gargalo-primeiro** | A cota com maior risco ganha uma previsão expandida; as linhas densas de provedor/modelo mantêm seu próprio pace compacto abaixo |
 | 📈 | **Previsão de pace em 24h** | Limites semanais e mensais comparam seu ritmo recente com a renovação e dizem se é preciso reduzir, manter ou usar mais |
@@ -119,7 +120,7 @@ Cada provedor é um plugin que implementa um único protocolo `UsageProvider` e 
 
 Requer macOS 26 (Tahoe) ou mais recente. Versões anteriores do macOS não são mais suportadas e não recebem atualizações.
 
-1. Baixe `OkTally-0.9.5.dmg` na [página de Releases](https://github.com/OkamiOps/OkTally/releases).
+1. Baixe `OkTally-0.9.6.dmg` na [página de Releases](https://github.com/OkamiOps/OkTally/releases).
 2. Abra e arraste **OkTally** para Aplicativos.
 3. O app não é notarizado: no primeiro uso, clique com o botão direito (Ctrl-clique) em `OkTally.app` → **Abrir** → **Abrir**.
 
@@ -146,14 +147,15 @@ bash Scripts/make_dmg.sh               # empacotar um DMG de arrastar-e-soltar
 
 1. Clique no item do OkTally na barra de menu — o primeiro uso mostra a chamada **conecte seu primeiro provedor**.
 2. Abra as **Preferências** e conecte cada provedor que você usa — login OAuth, chave de API, ou nada no caso de Cursor/GrokBot/Copilot.
-3. De volta ao popover, fixe as janelas que importam com o ícone de alfinete.
-4. Ajuste os limites de alerta (70/90/100% + saldo baixo) em **Preferências → Geral**.
-5. Abra a **Visão geral** para o painel completo e a aba **Análise**.
+3. Arraste as contas em **Preferências → Contas** na ordem que você quer.
+4. De volta ao popover, fixe as janelas que importam com o ícone de alfinete.
+5. Ajuste os limites de alerta (70/90/100% + saldo baixo) em **Preferências → Geral**.
+6. Abra a **Visão geral** para o painel completo e a aba **Análise**.
 
 ## Desenvolvimento
 
 ```bash
-swift test    # 478 testes unitários
+swift test    # 498 testes unitários
 ```
 
 | Diretório | O que mora lá |

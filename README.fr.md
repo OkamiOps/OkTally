@@ -9,7 +9,7 @@
 [![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat)](https://developer.apple.com/xcode/swiftui/)
 [![License](https://img.shields.io/badge/licence-MIT-blue?style=flat)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/OkamiOps/OkTally?include_prereleases&style=flat&color=orange)](https://github.com/OkamiOps/OkTally/releases)
-[![Tests](https://img.shields.io/badge/tests-478%20r%C3%A9ussis-brightgreen?style=flat)](#d%C3%A9veloppement)
+[![Tests](https://img.shields.io/badge/tests-498%20r%C3%A9ussis-brightgreen?style=flat)](#d%C3%A9veloppement)
 [![No telemetry](https://img.shields.io/badge/t%C3%A9l%C3%A9m%C3%A9trie-aucune-success?style=flat)](#confidentialit%C3%A9)
 
 [English](README.md) | [Deutsch](README.de.md) | **Français** | [Português (BR)](README.pt-BR.md)
@@ -40,6 +40,7 @@ OkTally est une **app native de barre de menus macOS** qui garde tous ces quotas
 | | Fonctionnalité | Ce qu'elle fait |
 | :-: | --- | --- |
 | 📌 | **Un seul chiffre dans la barre** | Épinglez autant de fenêtres que voulu ; la barre affiche le symbole de la marque et la fenêtre la *plus tendue*, colorée seulement quand ça serre |
+| ↕️ | **Ordre des comptes** | Glissez la liste Contas dans Préférences ; Vue d'ensemble, popover, encoche et Analyse suivent |
 | 🕳️ | **Panneau dans l'encoche** | Sur l'écran intégré du MacBook, un panneau noir collé à l'encoche : petits traits au repos, quotas complets au survol, popover au clic |
 | 🎯 | **Popover goulot-d'abord** | Le quota le plus risqué reçoit une prévision détaillée ; les lignes fournisseur/modèle gardent chacune leurs barres de rythme compactes |
 | 📈 | **Prévisions de rythme sur 24h** | Les limites hebdomadaires et mensuelles comparent le rythme récent au renouvellement et indiquent s'il faut ralentir, maintenir ou accélérer |
@@ -96,7 +97,7 @@ L'onglet **Análise** somme toutes les sources dans une heatmap + chips (total, 
 
 Nécessite macOS 26 (Tahoe) ou ultérieur. Les versions antérieures de macOS ne sont plus prises en charge et ne recevront plus de mises à jour.
 
-1. Téléchargez `OkTally-0.9.5.dmg` depuis la [page Releases](https://github.com/OkamiOps/OkTally/releases).
+1. Téléchargez `OkTally-0.9.6.dmg` depuis la [page Releases](https://github.com/OkamiOps/OkTally/releases).
 2. Ouvrez-le et glissez **OkTally** dans Applications.
 3. L'app n'est pas notariée : au premier lancement, clic droit (Ctrl-clic) sur `OkTally.app` → **Ouvrir** → **Ouvrir**.
 
@@ -116,14 +117,15 @@ bash Scripts/build_app.sh    # construit .build/OkTally.app
 
 1. Cliquez sur OkTally dans la barre de menus — le premier lancement affiche l'appel **connectez votre premier fournisseur**.
 2. Ouvrez les **Préférences** et connectez chaque fournisseur — OAuth, clé d'API, ou rien du tout (Cursor/GrokBot/Copilot).
-3. Dans le popover, épinglez les fenêtres importantes avec l'icône d'épingle.
-4. Réglez les seuils d'alerte (70/90/100 % + solde bas) dans **Préférences → Général**.
-5. Ouvrez **Visão geral** pour le tableau de bord complet et l'onglet **Análise**.
+3. Glissez les comptes dans **Préférences → Contas** dans l'ordre voulu.
+4. Dans le popover, épinglez les fenêtres importantes avec l'icône d'épingle.
+5. Réglez les seuils d'alerte (70/90/100 % + solde bas) dans **Préférences → Général**.
+6. Ouvrez **Visão geral** pour le tableau de bord complet et l'onglet **Análise**.
 
 ## Développement
 
 ```bash
-swift test    # 478 tests unitaires
+swift test    # 498 tests unitaires
 ```
 
 Chaque fournisseur est un plugin derrière un unique protocole `UsageProvider` et normalise ses données dans un modèle `QuotaShape`, si bien que l'UI n'a jamais à traiter un vendeur comme un cas particulier. Les documents de conception vivent dans `docs/superpowers/`.

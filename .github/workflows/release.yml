@@ -4,7 +4,7 @@
 # Existe porque cortar release exige criar uma TAG e construir um APP DE MACOS, e nem
 # todo ambiente de onde se trabalha no repositório pode fazer qualquer das duas coisas
 # (sessões remotas do Claude Code rodam em Linux e só empurram branches). Disparo
-# manual: Actions ▸ Release ▸ Run workflow, com a versão (ex.: 0.9.5-beta). As notas
+# manual: Actions ▸ Release ▸ Run workflow, com a versão (ex.: 0.9.6-beta). As notas
 # saem da seção correspondente do CHANGELOG — uma fonte de verdade só.
 #
 # O runner não tem a identidade "OkTally Dev" da máquina do dono, então o build_app.sh
@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Versão (ex.: 0.9.5-beta) — vira a tag v<versão>"
+        description: "Versão (ex.: 0.9.6-beta) — vira a tag v<versão>"
         required: true
         type: string
 
@@ -43,7 +43,7 @@ jobs:
 
       - name: Construir o DMG
         # Sem argumento: make_dmg.sh lê a versão do Info.plist, que é o nome que os
-        # READMEs anunciam (OkTally-0.9.5.dmg, sem o sufixo -beta da tag).
+        # READMEs anunciam (OkTally-0.9.6.dmg, sem o sufixo -beta da tag).
         run: bash Scripts/make_dmg.sh
 
       - name: Extrair notas do CHANGELOG

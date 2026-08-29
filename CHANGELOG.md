@@ -6,11 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.9.6-beta] — 2026-08-29
+
 ### Added
 
 - **Custom account order in Preferences**: drag the Contas sidebar into the
   order you want. The same sequence is used in Overview, the popover, the
   notch, and Analytics. Newly added providers land at the end.
+
+### Fixed
+
+- **Codex weekly quota is the representative window**: Spark-specific Codex
+  windows no longer steal the primary slot in the popover, notch, and Overview
+  when a Weekly window exists.
 
 ## [0.9.5-beta] — 2026-08-28
 
@@ -222,6 +230,7 @@ First public release. Everything below is new.
 - Secrets in the macOS Keychain only (with silent migration from legacy plaintext locations); usage data stays local; no telemetry.
 - Tri-state provider status (connected / needs reauth / not configured) so an expired login is never painted as "broken" or hidden as "fine".
 
+[0.9.6-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.6-beta
 [0.9.5-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.5-beta
 [0.9.4-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.4-beta
 [0.9.3-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.3-beta
