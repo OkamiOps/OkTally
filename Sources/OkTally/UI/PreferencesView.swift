@@ -37,8 +37,9 @@ struct PreferencesView: View {
     @State private var mimoLoggedIn = false
     @State private var statusMessage: String = ""
 
-    /// Sidebar order — mirrors the old card order, not registration order.
-    private let providerIds = ["claude", "codex", "supergrok", "cursor", "cursor-grokbot", "copilot", "antigravity", "openrouter", "minimax", "opencode", "mimo"]
+    /// Ordem da sidebar: a que o dono arrumou, persistida em `AppModel`. Sem
+    /// arrasto salvo, o modelo cai na lista histórica das Preferências.
+    private var providerIds: [String] { appModel.orderedProviders.map(\.id) }
 
     var body: some View {
         NavigationSplitView {
@@ -47,7 +48,13 @@ struct PreferencesView: View {
                     .tag(PreferencesPane.general)
                 Section {
                     ForEach(providerIds, id: \.self) { id in
-                        sidebarRow(id).tag(PreferencesPane.provider(id))
+                        sidebarRow(id)
+                            .tag(PreferencesPane.provider(id))
+                            .draggable(ProviderOrderTransfer(id: id))
+                            .dropDestination(for: ProviderOrderTransfer.self) { items, _ in
+                                guard let dragged = items.first else { return false }
+                                return appModel.moveProvider(dragging: dragged.id, onto: id)
+                            }
                     }
                 } header: {
                     HStack {

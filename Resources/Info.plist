@@ -34,6 +34,16 @@
 			<key>UTTypeIdentifier</key>
 			<string>com.oktally.app.menubarpin</string>
 		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>OkTally provider order</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.oktally.app.providerorder</string>
+		</dict>
 	</array>
 </dict>
 </plist>

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Custom account order in Preferences**: drag the Contas sidebar into the
+  order you want. The same sequence is used in Overview, the popover, the
+  notch, and Analytics. Newly added providers land at the end.
+
 ## [0.9.5-beta] — 2026-08-28
 
 ### Added
