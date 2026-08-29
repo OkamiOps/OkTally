@@ -481,4 +481,66 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.errorsByProvider["claude"])
         XCTAssertNil(model.errorKindByProvider["claude"])
     }
+
+    // MARK: - Provider order
+
+    private func isolatedProviderOrderDefaults() -> UserDefaults {
+        let suite = "oktally.tests.provider-order.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return defaults
+    }
+
+    private func providerOrderScheduler(registry: PluginRegistry) -> Scheduler {
+        Scheduler(
+            registry: registry,
+            storage: FakeStorage(),
+            alertEngine: AlertEngine(),
+            alertDispatcher: AlertDispatcher(sender: FakeNotificationSender())
+        )
+    }
+
+    func test_orderedProviders_withoutSavedOrder_followsPreferencesDefaultNotRegistry() {
+        let registry = PluginRegistry()
+        for id in ["openrouter", "claude", "mimo"] {
+            registry.register(FakeUsageProvider(id: id, displayName: id))
+        }
+        let defaults = isolatedProviderOrderDefaults()
+        let model = AppModel(
+            registry: registry,
+            scheduler: providerOrderScheduler(registry: registry),
+            defaults: defaults
+        )
+        XCTAssertEqual(model.orderedProviders.map(\.id), ["claude", "openrouter", "mimo"])
+    }
+
+    func test_moveProvider_persistsFullResolvedOrder() {
+        let registry = PluginRegistry()
+        for id in ["claude", "codex", "mimo"] {
+            registry.register(FakeUsageProvider(id: id, displayName: id))
+        }
+        let defaults = isolatedProviderOrderDefaults()
+        let scheduler = providerOrderScheduler(registry: registry)
+        let model = AppModel(registry: registry, scheduler: scheduler, defaults: defaults)
+        XCTAssertTrue(model.moveProvider(dragging: "mimo", onto: "claude"))
+        XCTAssertEqual(model.orderedProviders.map(\.id), ["mimo", "claude", "codex"])
+        XCTAssertEqual(model.providerOrder, ["mimo", "claude", "codex"])
+
+        let reloaded = AppModel(registry: registry, scheduler: scheduler, defaults: defaults)
+        XCTAssertEqual(reloaded.orderedProviders.map(\.id), ["mimo", "claude", "codex"])
+    }
+
+    func test_moveProvider_droppingOnSelf_returnsFalseAndDoesNotWrite() {
+        let registry = PluginRegistry()
+        registry.register(FakeUsageProvider(id: "claude", displayName: "Claude"))
+        registry.register(FakeUsageProvider(id: "mimo", displayName: "MiMo"))
+        let defaults = isolatedProviderOrderDefaults()
+        let model = AppModel(
+            registry: registry,
+            scheduler: providerOrderScheduler(registry: registry),
+            defaults: defaults
+        )
+        XCTAssertFalse(model.moveProvider(dragging: "claude", onto: "claude"))
+        XCTAssertEqual(model.providerOrder, [])
+    }
 }

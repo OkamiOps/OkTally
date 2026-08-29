@@ -100,6 +100,12 @@ final class AppModel: ObservableObject {
     /// janela some temporariamente; `selectedForecast` então cai para automático.
     @Published var forecastSlot: ForecastSlot { didSet { preferences.forecastSlot = forecastSlot } }
 
+    /// Ordem das contas na sidebar / popover / análise. Vazio = nunca arrastou,
+    /// e `orderedProviders` cai na lista histórica das Preferências.
+    @Published var providerOrder: [String] {
+        didSet { preferences.providerOrder = providerOrder }
+    }
+
     /// A escala de cor do uso. `@Published` pelo mesmo motivo dos slots: editar as
     /// paradas em Preferências tem que repintar TODA a tela na hora, e as views observam
     /// este modelo.
@@ -165,6 +171,7 @@ final class AppModel: ObservableObject {
         self.menuBarSlot = preferences.menuBarSlot
         self.popoverHeroSlot = preferences.popoverHeroSlot
         self.forecastSlot = preferences.forecastSlot
+        self.providerOrder = preferences.providerOrder
         self.usageColorScale = preferences.usageColorScale
         if let joined = defaults.string(forKey: Self.menuBarPinsKey) {
             self.menuBarPins = joined.split(separator: "\u{2}").compactMap { MenuBarPin(stored: String($0)) }
@@ -301,7 +308,24 @@ final class AppModel: ObservableObject {
         )
     }
 
-    var orderedProviders: [UsageProvider] { registry.providers }
+    var orderedProviders: [UsageProvider] {
+        let known = registry.providers
+        let ids = ProviderOrder.resolved(saved: providerOrder, known: known.map(\.id))
+        let byId = Dictionary(uniqueKeysWithValues: known.map { ($0.id, $0) })
+        return ids.compactMap { byId[$0] }
+    }
+
+    /// Move a conta arrastada para a posição do alvo e persiste a lista visível
+    /// inteira. `false` quando o arrasto não muda nada (`PinReorder` devolve nil).
+    @discardableResult
+    func moveProvider(dragging: String, onto target: String) -> Bool {
+        let current = orderedProviders.map(\.id)
+        guard let next = PinReorder.reordered(current, dragging: dragging, onto: target) else {
+            return false
+        }
+        providerOrder = next
+        return true
+    }
 
     /// Série sob demanda com janela arbitrária (a janela principal mostra 7 dias; o
     /// popover usa o `historyByProvider` de 24h já publicado).
