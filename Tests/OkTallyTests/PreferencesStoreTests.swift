@@ -252,4 +252,25 @@ final class PreferencesStoreTests: XCTestCase {
         store.alertLowBalanceThreshold = 12.5
         XCTAssertEqual(store.alertLowBalanceThreshold, 12.5)
     }
+
+    // MARK: - Provider order
+
+    func test_providerOrder_emptyWhenUnset() {
+        let store = makeStore()
+        XCTAssertEqual(store.providerOrder, [])
+    }
+
+    func test_providerOrder_roundTrips() {
+        let store = makeStore()
+        store.providerOrder = ["mimo", "claude"]
+        XCTAssertEqual(store.providerOrder, ["mimo", "claude"])
+    }
+
+    func test_providerOrder_emptyArrayClearsStorage() {
+        let kv = FakeKeyValueStore()
+        let store = makeStore(kv: kv)
+        store.providerOrder = ["claude"]
+        store.providerOrder = []
+        XCTAssertNil(kv.string(forKey: "providerOrder"))
+    }
 }

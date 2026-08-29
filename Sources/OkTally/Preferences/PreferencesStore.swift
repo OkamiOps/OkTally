@@ -40,6 +40,7 @@ final class PreferencesStore {
         static let usageColorScale = "usageColorScale"
         static let alertPercentThresholds = "alertPercentThresholds"
         static let alertLowBalanceThreshold = "alertLowBalanceThreshold"
+        static let providerOrder = "providerOrder"
         static func refreshInterval(_ providerId: String) -> String { "refreshInterval.\(providerId)" }
         /// Posição horizontal da ilha, POR TELA. A chave carrega o id do display porque
         /// o dono tem dois monitores lado a lado e arrasta a pílula para lugares
@@ -284,5 +285,18 @@ final class PreferencesStore {
 
     func setRefreshInterval(_ interval: TimeInterval, for providerId: String) {
         store.set(interval, forKey: Keys.refreshInterval(providerId))
+    }
+
+    /// Ordem das contas escolhida pelo dono. Array vazio = nunca escolheu, e quem
+    /// lê usa `ProviderOrder.defaultIDs`. Separador `\u{2}` — o mesmo dos pins da
+    /// barra — porque os ids são tokens simples sem esse caractere.
+    var providerOrder: [String] {
+        get {
+            guard let raw = store.string(forKey: Keys.providerOrder), !raw.isEmpty else { return [] }
+            return raw.split(separator: "\u{2}", omittingEmptySubsequences: true).map(String.init)
+        }
+        set {
+            store.set(newValue.isEmpty ? nil : newValue.joined(separator: "\u{2}"), forKey: Keys.providerOrder)
+        }
     }
 }
