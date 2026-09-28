@@ -355,3 +355,9 @@
 "Login Google próprio do OkTally, separado do IDE Antigravity." = "OkTally's own Google sign-in, separate from the Antigravity IDE.";
 "Entrar com Google…" = "Sign in with Google…";
 "Login direto na Google fora do IDE pode violar os termos do Antigravity; use por sua conta." = "Signing in to Google outside the IDE may violate Antigravity's terms; use at your own risk.";
+"Sessão própria do OkTally — trocar de conta no Cursor não afeta esta conta." = "OkTally's own session — switching accounts in Cursor doesn't affect this account.";
+"Sessão própria do OkTally — trocar de conta no Cursor não afeta esta conta. A sessão dura cerca de 60 dias; depois, é só entrar de novo." = "OkTally's own session — switching accounts in Cursor doesn't affect this account. The session lasts about 60 days; after that, just sign in again.";
+"Segue a conta %@ — login, apelido e remoção ficam lá." = "Follows the %@ account — sign-in, nickname and removal live there.";
+"Aguardando o login no navegador…" = "Waiting for the browser sign-in…";
+"Entrar no navegador…" = "Sign in in the browser…";
+"Conclua o login no navegador — o OkTally espera por até 20 minutos." = "Finish signing in in the browser — OkTally waits up to 20 minutes.";

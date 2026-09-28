@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Extra Cursor accounts (with their GrokBot)**: an extra Cursor account signs in
+  through Cursor's browser login and gets OkTally's own session, so switching accounts
+  in the Cursor app doesn't affect it. Each extra Cursor account brings its own GrokBot
+  card. The session lasts about 60 days; after that the account asks to reconnect.
 - **Extra Antigravity accounts**: an extra Antigravity account signs in to Google
   with OkTally's own login (the IDE's account keeps being read from the IDE). The add
   screen warns that signing in outside the IDE may violate Antigravity's terms.

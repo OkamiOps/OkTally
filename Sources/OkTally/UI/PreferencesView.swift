@@ -44,6 +44,8 @@ struct PreferencesView: View {
     @State private var pendingRemoval: String?
     /// Conta sendo adicionada (menu "+").
     @State private var draft: AccountDraft?
+    /// Logins do Cursor esperando o navegador (poll em andamento), por conta.
+    @State private var cursorPolls: [String: Task<Void, Never>] = [:]
 
     @State private var mimoAllowance: String = ""
     @State private var mimoUsed: String = ""
@@ -422,35 +424,77 @@ struct PreferencesView: View {
         }
     }
 
-    private func cursorPane(_ id: String) -> some View {
-        ProviderPaneScaffold(
-            providerId: id,
-            snapshot: appModel.snapshotsByProvider[id],
-            problem: appModel.errorsByProvider[id],
-            name: providerName(id),
-            status: .connected(L("Lê a sessão do app Cursor automaticamente"))
-        ) {
-            Text(L("Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho."))
-                .font(.caption).foregroundStyle(.secondary)
-        } details: {
-            EmptyView()
-        } account: {
-            accountSection(id)
+    @ViewBuilder private func cursorPane(_ id: String) -> some View {
+        if AccountID.isLegacy(id) {
+            ProviderPaneScaffold(
+                providerId: id,
+                snapshot: appModel.snapshotsByProvider[id],
+                problem: appModel.errorsByProvider[id],
+                name: providerName(id),
+                status: .connected(L("Lê a sessão do app Cursor automaticamente"))
+            ) {
+                Text(L("Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho."))
+                    .font(.caption).foregroundStyle(.secondary)
+            } details: {
+                EmptyView()
+            } account: {
+                accountSection(id)
+            }
+        } else {
+            ProviderPaneScaffold(
+                providerId: id,
+                snapshot: appModel.snapshotsByProvider[id],
+                problem: appModel.errorsByProvider[id],
+                name: providerName(id),
+                status: oauthStatus(id)
+            ) {
+                HStack {
+                    if loggedIn.contains(id) {
+                        Button(L("Sair")) { logout(providerId: id) }.buttonStyle(.bordered)
+                    } else {
+                        cursorLoginButton(id)
+                    }
+                    Spacer()
+                }
+            } details: {
+                Text(L("Sessão própria do OkTally — trocar de conta no Cursor não afeta esta conta. A sessão dura cerca de 60 dias; depois, é só entrar de novo."))
+                    .font(.caption).foregroundStyle(.secondary)
+            } account: {
+                accountSection(id)
+            }
         }
     }
 
     private func grokBotPane(_ id: String) -> some View {
-        ProviderPaneScaffold(
+        let cursorId = AccountPaneRouting.accountId(forProviderId: id)
+        let isLegacy = AccountID.isLegacy(cursorId)
+        return ProviderPaneScaffold(
             providerId: id,
             snapshot: appModel.snapshotsByProvider[id],
             problem: appModel.errorsByProvider[id],
             name: providerName(id),
-            status: .connected(L("Lê a sessão do app Cursor automaticamente"))
+            status: isLegacy
+                ? .connected(L("Lê a sessão do app Cursor automaticamente"))
+                : oauthStatus(cursorId)
         ) {
-            Text(L("Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho."))
+            Text(isLegacy
+                 ? L("Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho.")
+                 : LF("Segue a conta %@ — login, apelido e remoção ficam lá.", providerName(cursorId)))
                 .font(.caption).foregroundStyle(.secondary)
         } details: {
             EmptyView()
+        }
+    }
+
+    /// Botão do login próprio do Cursor. Enquanto o navegador não conclui, vira um
+    /// indicador com "Cancelar".
+    @ViewBuilder private func cursorLoginButton(_ id: String) -> some View {
+        if cursorPolls[id] != nil {
+            ProgressView().controlSize(.small)
+            Text(L("Aguardando o login no navegador…")).font(.caption).foregroundStyle(.secondary)
+            Button(L("Cancelar")) { cancelCursorLogin(id) }.buttonStyle(.bordered)
+        } else {
+            Button(L("Entrar no navegador…")) { loginCursor(id) }.buttonStyle(.borderedProminent)
         }
     }
 
@@ -743,6 +787,31 @@ struct PreferencesView: View {
         }
     }
 
+    private func loginCursor(_ id: String) {
+        let flow = CursorDeepLoginFlow(tokenStore: tokenStore)
+        let start = flow.begin()
+        flow.open(start)
+        statusMessage = L("Conclua o login no navegador — o OkTally espera por até 20 minutos.")
+        cursorPolls[id] = Task { @MainActor in
+            do {
+                _ = try await flow.poll(start, instanceId: id)
+                cursorPolls[id] = nil
+                afterLogin(id)
+            } catch is CancellationError {
+                cursorPolls[id] = nil
+            } catch {
+                cursorPolls[id] = nil
+                statusMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func cancelCursorLogin(_ id: String) {
+        cursorPolls[id]?.cancel()
+        cursorPolls[id] = nil
+        statusMessage = ""
+    }
+
     private func loginSuperGrok(_ id: String) {
         statusMessage = L("Solicitando código de dispositivo…")
         let config = SuperGrokOAuth.config.forInstance(id)
@@ -821,8 +890,11 @@ struct PreferencesView: View {
     /// Avisos do painel de adicionar, por tipo.
     private func draftNotes(_ kind: AccountKind) -> [String] {
         var notes: [String] = []
+        if kind == .cursor {
+            notes.append(L("Sessão própria do OkTally — trocar de conta no Cursor não afeta esta conta."))
+        }
         switch kind {
-        case .claude, .codex, .supergrok, .antigravity:
+        case .claude, .codex, .supergrok, .antigravity, .cursor:
             notes.append(L("Entre com a OUTRA conta. Se o navegador já estiver logado na conta atual, troque de conta (ou use uma janela anônima) antes de autorizar."))
         default:
             break
@@ -849,6 +921,8 @@ struct PreferencesView: View {
         case .antigravity:
             Button(L("Entrar com Google…")) { login(config: AntigravityOAuth.config.forInstance(id), id: id) }
                 .buttonStyle(.borderedProminent)
+        case .cursor:
+            cursorLoginButton(id)
         default:
             EmptyView()
         }
@@ -874,6 +948,8 @@ struct PreferencesView: View {
 
     private func cancelDraft() {
         guard let current = draft else { return }
+        cursorPolls[current.id]?.cancel()
+        cursorPolls[current.id] = nil
         AccountEnrollment(model: appModel).abandon(draftId: current.id, kind: current.kind)
         claudeSessions[current.id] = nil
         pastedCodes[current.id] = nil
