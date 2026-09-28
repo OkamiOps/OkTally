@@ -9,7 +9,7 @@ struct OkTallyApp: App {
     private let browserFlow: BrowserOAuthFlow
     private let manualFlow: ManualCodeOAuthFlow
     private let deviceCodeFlow: DeviceCodeFlow
-    private let claudeProvider: ClaudeUsageProvider
+    private let claudeProvider: ClaudeUsageProvider?
     private let mimoSessionStore = MiMoSessionStore()
     /// O painel do notch. Criado aqui e mantido vivo pelo `App`: ele não pertence a cena
     /// nenhuma (é uma janela flutuante própria), então precisa de um dono com o mesmo
@@ -51,29 +51,25 @@ struct OkTallyApp: App {
         self.manualFlow = manualFlow
         self.deviceCodeFlow = deviceCodeFlow
 
-        let claudeProvider = ClaudeUsageProvider(oauthManager: oauthManager, tokenStore: tokenStore)
-        claudeProvider.importLegacyCredentialsIfAvailable()
+        // O registry nasce das contas persistidas. Sem nenhuma conta extra, isto rende
+        // exatamente os mesmos ids, na mesma ordem e com os mesmos nomes de antes.
+        let factory = ProviderFactory(dependencies: .init(
+            oauthManager: oauthManager,
+            tokenStore: tokenStore,
+            preferences: preferencesStore,
+            mimoSessionStore: mimoSessionStore
+        ))
+        let accounts = preferencesStore.accounts
+        for account in accounts {
+            factory.providers(for: account, all: accounts).forEach(registry.register)
+        }
+        // O import do login do Claude Code CLI só semeia a conta legada — e só se ela
+        // ainda existe na lista (o dono pode tê-la removido).
+        let claudeProvider = registry.providers
+            .first { $0.id == AccountKind.claude.rawValue }
+            .flatMap { ($0 as? LabeledProvider)?.base as? ClaudeUsageProvider }
+        claudeProvider?.importLegacyCredentialsIfAvailable()
         self.claudeProvider = claudeProvider
-
-        registry.register(claudeProvider)
-        registry.register(CodexUsageProvider(oauthManager: oauthManager, tokenStore: tokenStore))
-        registry.register(OpenRouterUsageProvider(apiKeyProvider: { preferencesStore.openRouterAPIKey }))
-        registry.register(MiniMaxUsageProvider(
-            apiKeyProvider: { preferencesStore.minimaxAPIKey },
-            region: { preferencesStore.minimaxRegionRaw == "china" ? .china : .global }
-        ))
-        registry.register(CursorUsageProvider())
-        registry.register(GrokBotUsageProvider())
-        registry.register(CopilotUsageProvider())
-        registry.register(AntigravityUsageProvider())
-        registry.register(OpenCodeUsageProvider(apiKeyProvider: { preferencesStore.openCodeAPIKey }))
-        registry.register(MiMoUsageProvider(
-            sessionStore: mimoSessionStore,
-            usageFetcher: MiMoWebSession.shared,
-            allowanceProvider: { preferencesStore.mimoMonthlyAllowanceCredits },
-            usedCreditsProvider: { preferencesStore.mimoUsedCredits }
-        ))
-        registry.register(SuperGrokUsageProvider(oauthManager: oauthManager, tokenStore: tokenStore))
 
         let pricingEngine = PricingEngine(source: OpenRouterPricingSource())
         let model = AppModel(registry: registry, scheduler: scheduler, storage: storage, pricingEngine: pricingEngine)
@@ -144,7 +140,7 @@ struct OkTallyApp: App {
                 deviceCodeFlow: deviceCodeFlow,
                 mimoSessionStore: mimoSessionStore,
                 appModel: appModel,
-                onImportClaudeLegacy: { claudeProvider.importLegacyCredentialsIfAvailable() },
+                onImportClaudeLegacy: { claudeProvider?.importLegacyCredentialsIfAvailable() ?? false },
                 onNotchPreferenceChanged: { notchController.refresh() }
             )
         }
