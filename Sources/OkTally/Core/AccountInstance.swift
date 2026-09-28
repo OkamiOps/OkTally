@@ -89,3 +89,54 @@ enum AccountDedup {
         return "key:" + digest.map { String(format: "%02x", $0) }.joined().prefix(16)
     }
 }
+
+/// Consulta rápida sobre as contas, para quem desenha: o glifo com ordinal ("C2") que
+/// separa contas irmãs na barra de menu e o rótulo curto do notch.
+struct AccountDirectory {
+    let accounts: [AccountInstance]
+
+    static let empty = AccountDirectory(accounts: [])
+
+    /// A conta dona de um provedor (o GrokBot pertence à conta do Cursor dele).
+    func account(forProviderId id: String) -> AccountInstance? {
+        let accountId = AccountID.kind(of: id) == .grokbot ? AccountID.cursorId(forGrokBot: id) : id
+        return accounts.first { $0.id == accountId }
+    }
+
+    /// Posição (1…) da conta entre as do mesmo tipo, na ordem da lista.
+    func ordinal(of id: String) -> Int? {
+        guard let account = account(forProviderId: id) else { return nil }
+        let siblings = accounts.filter { $0.kind == account.kind }
+        return siblings.firstIndex { $0.id == account.id }.map { $0 + 1 }
+    }
+
+    /// Glifo do tipo, com o ordinal a partir da SEGUNDA conta. Quem tem uma conta só de
+    /// cada tipo vê exatamente os glifos de sempre.
+    func glyph(for id: String) -> String {
+        let base = ProviderPalette.baseGlyph(forId: id)
+        guard let ordinal = ordinal(of: id), ordinal > 1 else { return base }
+        return "\(base)\(ordinal)"
+    }
+
+    /// Rótulo curto para onde a largura é pouca (notch): o apelido, ou o começo do
+    /// e-mail, ou o rótulo automático — só quando há irmãs do mesmo tipo para distinguir.
+    func shortLabel(for id: String) -> String? {
+        guard let account = account(forProviderId: id) else { return nil }
+        if let nickname = account.nickname?.trimmingCharacters(in: .whitespacesAndNewlines), !nickname.isEmpty {
+            return nickname
+        }
+        guard accounts.filter({ $0.kind == account.kind }).count > 1 else { return nil }
+        if let email = account.email, let local = email.split(separator: "@").first, !local.isEmpty {
+            return String(local)
+        }
+        if let autoLabel = account.autoLabel, !autoLabel.isEmpty { return autoLabel }
+        return ordinal(of: id).map { "#\($0)" }
+    }
+}
+
+/// O diretório vigente, para código estático que não recebe o modelo (a paleta é
+/// chamada de dentro do `ImageRenderer` da barra de menu). Mesmo padrão do
+/// `UsageColorScaleHolder`: só o `AppModel` escreve aqui.
+enum AccountDirectoryHolder {
+    static var current: AccountDirectory = .empty
+}

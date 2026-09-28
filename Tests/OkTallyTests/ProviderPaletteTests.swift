@@ -5,6 +5,11 @@ import SwiftUI
 /// Contas extras herdam a identidade visual e as regras do tipo — nada de cor genérica
 /// ou de Codex tratado como "outro provedor" só porque o id ganhou sufixo.
 final class ProviderPaletteTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        AccountDirectoryHolder.current = .empty
+    }
+
     private func rolling(_ used: Double, hours: Double = 5) -> QuotaShape {
         .rollingWindow(used: used, limit: 100, windowStart: Date(),
                        resetAt: Date().addingTimeInterval(hours * 3600))

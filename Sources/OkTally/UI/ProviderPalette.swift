@@ -40,8 +40,14 @@ enum ProviderPalette {
     }
 
     /// Short distinct glyph per provider id (displayName initials collide:
-    /// Claude/Codex/Cursor all start with "C").
+    /// Claude/Codex/Cursor all start with "C"). Contas irmãs ganham ordinal ("C2") pelo
+    /// `AccountDirectoryHolder`; conta única fica com o glifo de sempre.
     static func glyph(forId id: String) -> String {
+        AccountDirectoryHolder.current.glyph(for: id)
+    }
+
+    /// O glifo do TIPO, sem ordinal.
+    static func baseGlyph(forId id: String) -> String {
         switch AccountID.kind(of: id)?.rawValue ?? id {
         case "claude": return "C"
         case "codex": return "X"

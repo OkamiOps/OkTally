@@ -2,6 +2,11 @@ import XCTest
 @testable import OkTally
 
 final class MenuBarLabelModelTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        AccountDirectoryHolder.current = .empty
+    }
+
     private func snapshot(_ id: String, _ quotas: [QuotaWindow]) -> ProviderSnapshot {
         ProviderSnapshot(providerId: id, fetchedAt: Date(), quotas: quotas, usageDetail: nil)
     }

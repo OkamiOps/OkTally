@@ -136,7 +136,9 @@ final class AppModel: ObservableObject {
 
     /// As contas acompanhadas. Espelho publicado de `PreferencesStore.accounts` — a
     /// escrita passa sempre por aqui para disco e tela ficarem juntos.
-    @Published private(set) var accounts: [AccountInstance]
+    @Published private(set) var accounts: [AccountInstance] {
+        didSet { AccountDirectoryHolder.current = AccountDirectory(accounts: accounts) }
+    }
 
     /// Monta os provedores de uma conta nova (injetado pelo app com o `ProviderFactory`).
     var providerFactory: ((AccountInstance) -> [UsageProvider])?
@@ -230,6 +232,7 @@ final class AppModel: ObservableObject {
         // O holder só é povoado depois de `self` estar inteiro (o `didSet` não roda para
         // atribuições feitas dentro do `init`).
         UsageColorScaleHolder.current = usageColorScale
+        AccountDirectoryHolder.current = AccountDirectory(accounts: accounts)
         for providerId in seededForecastProviderIds {
             Task { [weak self] in
                 await self?.recomputeForecasts(providerId: providerId)
