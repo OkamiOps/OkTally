@@ -474,23 +474,46 @@ struct PreferencesView: View {
         }
     }
 
-    private func antigravityPane(_ id: String) -> some View {
-        let detected = AntigravityTokenReader().readTokens() != nil
-        return ProviderPaneScaffold(
-            providerId: id,
-            snapshot: appModel.snapshotsByProvider[id],
-            problem: appModel.errorsByProvider[id],
-            name: providerName(id),
-            status: detected
-                ? .connected(L("Login do IDE Antigravity detectado"))
-                : .notConfigured(L("Nenhum login do Antigravity encontrado"))
-        ) {
-            Text(L("Nada a configurar — detectado automaticamente a partir do login do IDE Antigravity neste Mac."))
-                .font(.caption).foregroundStyle(.secondary)
-        } details: {
-            EmptyView()
-        } account: {
-            accountSection(id)
+    @ViewBuilder private func antigravityPane(_ id: String) -> some View {
+        if AccountID.isLegacy(id) {
+            let detected = AntigravityTokenReader().readTokens() != nil
+            ProviderPaneScaffold(
+                providerId: id,
+                snapshot: appModel.snapshotsByProvider[id],
+                problem: appModel.errorsByProvider[id],
+                name: providerName(id),
+                status: detected
+                    ? .connected(L("Login do IDE Antigravity detectado"))
+                    : .notConfigured(L("Nenhum login do Antigravity encontrado"))
+            ) {
+                Text(L("Nada a configurar — detectado automaticamente a partir do login do IDE Antigravity neste Mac."))
+                    .font(.caption).foregroundStyle(.secondary)
+            } details: {
+                EmptyView()
+            } account: {
+                accountSection(id)
+            }
+        } else {
+            // Conta extra: login Google próprio do OkTally, independente do IDE.
+            ProviderPaneScaffold(
+                providerId: id,
+                snapshot: appModel.snapshotsByProvider[id],
+                problem: appModel.errorsByProvider[id],
+                name: providerName(id),
+                status: oauthStatus(id)
+            ) {
+                if loggedIn.contains(id) {
+                    Button(L("Sair")) { logout(providerId: id) }.buttonStyle(.bordered)
+                } else {
+                    Button(L("Entrar…")) { login(config: AntigravityOAuth.config.forInstance(id), id: id) }
+                        .buttonStyle(.borderedProminent)
+                }
+            } details: {
+                Text(L("Login Google próprio do OkTally, separado do IDE Antigravity."))
+                    .font(.caption).foregroundStyle(.secondary)
+            } account: {
+                accountSection(id)
+            }
         }
     }
 
@@ -771,6 +794,14 @@ struct PreferencesView: View {
                 .toggleStyle(.switch)
                 .controlSize(.small)
             }
+            if draft.kind == .antigravity {
+                // Aviso pedido pelo dono antes de liberar o login Google fora do IDE.
+                Label(L("Login direto na Google fora do IDE pode violar os termos do Antigravity; use por sua conta."),
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(Theme.Brand.heatOrange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if draft.kind == .claude { claudeCodeEntry(id) }
             if draft.kind == .supergrok, let info = deviceCodes[id] {
                 VStack(alignment: .leading, spacing: Theme.Space.xs) {
@@ -791,7 +822,7 @@ struct PreferencesView: View {
     private func draftNotes(_ kind: AccountKind) -> [String] {
         var notes: [String] = []
         switch kind {
-        case .claude, .codex, .supergrok:
+        case .claude, .codex, .supergrok, .antigravity:
             notes.append(L("Entre com a OUTRA conta. Se o navegador já estiver logado na conta atual, troque de conta (ou use uma janela anônima) antes de autorizar."))
         default:
             break
@@ -815,6 +846,9 @@ struct PreferencesView: View {
             Button(L("Entrar…")) { login(config: CodexOAuth.config.forInstance(id), id: id) }.buttonStyle(.borderedProminent)
         case .supergrok:
             Button(L("Entrar…")) { loginSuperGrok(id) }.buttonStyle(.borderedProminent)
+        case .antigravity:
+            Button(L("Entrar com Google…")) { login(config: AntigravityOAuth.config.forInstance(id), id: id) }
+                .buttonStyle(.borderedProminent)
         default:
             EmptyView()
         }

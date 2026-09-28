@@ -49,7 +49,7 @@ final class AccountKindTests: XCTestCase {
     }
 
     func test_addableKinds_matchTheOwnersDecisions() {
-        for kind in [AccountKind.claude, .codex, .supergrok, .openrouter, .minimax] {
+        for kind in [AccountKind.claude, .codex, .supergrok, .openrouter, .minimax, .antigravity] {
             XCTAssertTrue(AccountKind.addableKinds.contains(kind), "\(kind)")
         }
         // Decisão do dono: OpenCode e MiMo ficam com uma conta só.

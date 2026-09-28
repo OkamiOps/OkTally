@@ -352,3 +352,6 @@
 "Esta conta já está no OkTally — nada foi adicionado." = "This account is already in OkTally — nothing was added.";
 "Não foi possível adicionar a conta." = "Couldn't add the account.";
 "Cole a chave da outra conta e tecle Enter. A chave fica no Keychain desta máquina; a mesma chave duas vezes não é adicionada." = "Paste the other account's key and press Return. The key stays in this Mac's Keychain; the same key is never added twice.";
+"Login Google próprio do OkTally, separado do IDE Antigravity." = "OkTally's own Google sign-in, separate from the Antigravity IDE.";
+"Entrar com Google…" = "Sign in with Google…";
+"Login direto na Google fora do IDE pode violar os termos do Antigravity; use por sua conta." = "Signing in to Google outside the IDE may violate Antigravity's terms; use at your own risk.";

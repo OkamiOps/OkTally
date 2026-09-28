@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Extra Antigravity accounts**: an extra Antigravity account signs in to Google
+  with OkTally's own login (the IDE's account keeps being read from the IDE). The add
+  screen warns that signing in outside the IDE may violate Antigravity's terms.
 - **Multiple API-key accounts — OpenRouter, MiniMax**: add another key as its own
   account (MiniMax keeps a region per account). The same key is recognised by a
   one-way fingerprint and never added twice; OpenRouter accounts are labelled with the
