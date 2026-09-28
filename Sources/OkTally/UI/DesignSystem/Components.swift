@@ -164,6 +164,11 @@ struct DeltaBadge: View {
             )
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(tint)
+            // Uma linha, no tamanho natural. Dentro do `ChartTooltip` a cápsula quebrava em
+            // duas ("−28" em cima, "%" embaixo) e a altura extra estourava o fundo do
+            // cartão, que já tinha sido desenhado na altura de uma linha só.
+            .lineLimit(1)
+            .fixedSize()
             .padding(.horizontal, Theme.Space.sm)
             .padding(.vertical, 2)
             .background(Capsule().fill(tint.opacity(onHero ? 0.22 : 0.16)))

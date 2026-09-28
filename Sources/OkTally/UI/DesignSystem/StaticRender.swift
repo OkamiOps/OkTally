@@ -20,3 +20,29 @@ extension EnvironmentValues {
         set { self[StaticRenderKey.self] = newValue }
     }
 }
+
+/// Seleção de hover FORÇADA, pela mesma razão do `isStaticRender`: `onContinuousHover` e
+/// `chartAngleSelection` dependem de um cursor de verdade, e num render offscreen não
+/// existe cursor nenhum — os tooltips simplesmente não apareceriam no PNG, e o estado
+/// mais fácil de estragar (cartão cortado pela borda do card) seria justamente o que
+/// nenhuma imagem mostraria.
+///
+/// Só o harness de render preenche isto. No app o valor é `nil` e cada gráfico responde
+/// exclusivamente ao cursor.
+struct ChartHoverPreview: Equatable {
+    /// Dia "yyyy-MM-dd" a destacar nos gráficos com eixo de tempo e no heatmap.
+    var day: String?
+    /// Provedor a destacar no donut de participação.
+    var providerId: String?
+}
+
+private struct ChartHoverPreviewKey: EnvironmentKey {
+    static let defaultValue: ChartHoverPreview? = nil
+}
+
+extension EnvironmentValues {
+    var chartHoverPreview: ChartHoverPreview? {
+        get { self[ChartHoverPreviewKey.self] }
+        set { self[ChartHoverPreviewKey.self] = newValue }
+    }
+}

@@ -99,19 +99,17 @@ struct TokenAnalytics: Equatable {
 
     /// Intensidade 0–4 por dia para o heatmap: 0 = sem uso; 1–4 = quartis dos dias com
     /// uso (padrão GitHub contributions).
+    ///
+    /// Os cortes saem de `ChartHover.quartiles`, e não de uma cópia local: o tooltip do
+    /// heatmap descreve o MESMO dia em palavras ("top 25% dos dias"), e duas contas
+    /// paralelas acabariam discordando — célula na cor mais forte com texto de quartil
+    /// mais fraco.
     func heatLevels() -> [String: Int] {
-        let active = dailyBuckets.filter { $0.tokens > 0 }.map(\.tokens).sorted()
-        guard !active.isEmpty else { return [:] }
-        func quantile(_ q: Double) -> Int {
-            active[Int((Double(active.count - 1) * q).rounded())]
-        }
-        let q1 = quantile(0.25), q2 = quantile(0.5), q3 = quantile(0.75)
+        let active = dailyBuckets.filter { $0.tokens > 0 }.map(\.tokens)
+        guard let quartiles = ChartHover.quartiles(active) else { return [:] }
         var levels: [String: Int] = [:]
         for bucket in dailyBuckets where bucket.tokens > 0 {
-            if bucket.tokens <= q1 { levels[bucket.day] = 1 }
-            else if bucket.tokens <= q2 { levels[bucket.day] = 2 }
-            else if bucket.tokens <= q3 { levels[bucket.day] = 3 }
-            else { levels[bucket.day] = 4 }
+            levels[bucket.day] = ChartHover.quartileLevel(tokens: bucket.tokens, quartiles: quartiles)
         }
         return levels
     }
