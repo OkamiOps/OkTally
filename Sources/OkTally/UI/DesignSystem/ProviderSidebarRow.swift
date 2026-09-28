@@ -14,13 +14,25 @@ struct ProviderSidebarRow: View {
     let name: String
     let statusColor: Color
     var statusHelp: String = ""
+    /// E-mail da conta, quando conhecido — é o que separa duas contas do mesmo provedor
+    /// sem apelido. Trunca no meio: o começo e o domínio são as partes que identificam.
+    var subtitle: String? = nil
 
     var body: some View {
         HStack(spacing: Theme.Space.sm) {
             IconChip(glyph: ProviderPalette.glyph(forId: providerId),
                      color: ProviderPalette.color(for: providerId),
                      size: 18)
-            Text(name).font(Theme.Font.body)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(name).font(Theme.Font.body).lineLimit(1)
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
             Spacer()
             Circle()
                 .fill(statusColor)

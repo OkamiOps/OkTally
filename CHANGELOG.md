@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Account nicknames and e-mail labels**: every account pane in Preferences has an
+  Account section with the e-mail OkTally discovered after login and an editable
+  nickname. A nickname shows everywhere the account does ("Claude Code · Work") —
+  sidebar, popover, notch, pins and notifications. Accounts that aren't tied to an
+  app installed on this Mac can be removed, together with their history and pins.
+
 ## [0.9.6-beta] — 2026-08-29
 
 ### Added

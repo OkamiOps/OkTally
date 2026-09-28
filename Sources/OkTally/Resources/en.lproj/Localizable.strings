@@ -325,3 +325,18 @@
 "Restaurar padrão" = "Restore default";
 "% restante" = "% left";
 "Remover parada" = "Remove stop";
+
+/* Multiple accounts */
+"Adicionar conta" = "Add account";
+"Apelido (opcional)" = "Nickname (optional)";
+"Conta" = "Account";
+"Conta não encontrada." = "Account not found.";
+"E-mail" = "Email";
+"Esta conta vem de um app instalado neste Mac e não pode ser removida." = "This account comes from an app installed on this Mac and can't be removed.";
+"Remove a conta, o histórico e os pins. Não dá para desfazer." = "Removes the account, its history and its pins. This can't be undone.";
+"Remover conta" = "Remove account";
+"Remover conta…" = "Remove account…";
+"Remover esta conta?" = "Remove this account?";
+
+/* MiMo session recovery */
+"Renovando a sessão do MiMo — o próximo ciclo deve voltar." = "Renewing the MiMo session — the next cycle should recover.";
