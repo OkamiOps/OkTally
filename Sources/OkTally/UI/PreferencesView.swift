@@ -977,6 +977,7 @@ struct PreferencesView: View {
     /// Login concluído. Numa conta existente só marca conectado; num rascunho, é a hora
     /// de descobrir quem é a conta e decidir se entra.
     private func afterLogin(_ id: String) {
+        guard AccountEnrollment(model: appModel).loginCompleted(id: id) != .orphaned else { return }
         loggedIn.insert(id)
         guard let current = draft, current.id == id else {
             statusMessage = L("Conectado.")

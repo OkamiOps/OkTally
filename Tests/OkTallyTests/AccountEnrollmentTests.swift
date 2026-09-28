@@ -185,4 +185,29 @@ final class AccountEnrollmentTests: XCTestCase {
         XCTAssertEqual(result, .committed)
         XCTAssertNil(env.model.activeDraftId)
     }
+
+    // MARK: - Revisão: login que termina depois de o rascunho ter sido trocado
+
+    func test_loginCompleted_forAbandonedDraft_erasesTheOrphanToken() throws {
+        let env = EnrollmentEnv(existing: [])
+        let first = env.enrollment.beginDraft(kind: .claude)
+        env.enrollment.abandon(draftId: first, kind: .claude)
+        _ = env.enrollment.beginDraft(kind: .codex) // o dono trocou de tipo
+        // O fluxo do primeiro rascunho termina agora e grava o token dele.
+        try env.tokens.save(OAuthToken(accessToken: "late", refreshToken: nil, expiresAt: nil, extra: [:]), providerId: first)
+
+        XCTAssertEqual(env.enrollment.loginCompleted(id: first), .orphaned)
+        XCTAssertNil(env.tokens.load(providerId: first))
+    }
+
+    func test_loginCompleted_forActiveDraftOrAccount_keepsTheToken() throws {
+        let env = EnrollmentEnv(existing: [])
+        let draft = env.enrollment.beginDraft(kind: .codex)
+        try env.tokens.save(OAuthToken(accessToken: "t", refreshToken: nil, expiresAt: nil, extra: [:]), providerId: draft)
+        try env.tokens.save(OAuthToken(accessToken: "t", refreshToken: nil, expiresAt: nil, extra: [:]), providerId: "claude")
+        XCTAssertEqual(env.enrollment.loginCompleted(id: draft), .activeDraft)
+        XCTAssertEqual(env.enrollment.loginCompleted(id: "claude"), .existingAccount)
+        XCTAssertNotNil(env.tokens.load(providerId: draft))
+        XCTAssertNotNil(env.tokens.load(providerId: "claude"))
+    }
 }

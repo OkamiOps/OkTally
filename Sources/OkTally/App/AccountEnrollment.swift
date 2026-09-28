@@ -71,6 +71,26 @@ final class AccountEnrollment {
         return .committed
     }
 
+    enum LoginCompletion: Equatable {
+        case existingAccount
+        case activeDraft
+        /// O login terminou para um rascunho que já não é o ativo (o dono trocou de tipo
+        /// ou cancelou no meio): o token gravado foi apagado.
+        case orphaned
+    }
+
+    /// Chamado quando QUALQUER fluxo de login grava uma credencial. Um fluxo em voo pode
+    /// terminar depois de o rascunho dele ter sido abandonado; sem esta limpeza, o token
+    /// ficaria órfão no Keychain sob um id que ninguém usa.
+    func loginCompleted(id: String) -> LoginCompletion {
+        if model.accounts.contains(where: { $0.id == id }) { return .existingAccount }
+        if model.activeDraftId == id { return .activeDraft }
+        if let kind = AccountID.kind(of: id) {
+            try? model.credentialEraser?(AccountInstance(id: id, kind: kind))
+        }
+        return .orphaned
+    }
+
     /// O dono desistiu do rascunho: apaga o que o login possa ter gravado. Nunca toca
     /// numa conta já adicionada (o id do rascunho só coincide com uma se algo deu errado).
     func abandon(draftId: String, kind: AccountKind) {
