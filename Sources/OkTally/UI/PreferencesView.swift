@@ -755,6 +755,22 @@ struct PreferencesView: View {
                     .buttonStyle(.bordered)
                 Spacer()
             }
+            if draft.kind == .openrouter || draft.kind == .minimax {
+                AutoSaveField(placeholder: "API Key", text: apiKeyBinding(id), isSecure: true,
+                              onCommit: { saveDraftKey(id) })
+                    .frame(maxWidth: 380)
+            }
+            if draft.kind == .minimax {
+                Toggle(L("Região China (minimaxi.com)"), isOn: Binding(
+                    get: { minimaxChina[id] ?? false },
+                    set: { isChina in
+                        minimaxChina[id] = isChina
+                        setMinimaxRegion(isChina ? "china" : "global", id: id)
+                    }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+            }
             if draft.kind == .claude { claudeCodeEntry(id) }
             if draft.kind == .supergrok, let info = deviceCodes[id] {
                 VStack(alignment: .leading, spacing: Theme.Space.xs) {
@@ -783,6 +799,9 @@ struct PreferencesView: View {
         if kind == .codex {
             notes.append(L("O login do Codex usa a porta 1455 — feche o Codex CLI se ele estiver fazendo login ao mesmo tempo."))
         }
+        if kind == .openrouter || kind == .minimax {
+            notes.append(L("Cole a chave da outra conta e tecle Enter. A chave fica no Keychain desta máquina; a mesma chave duas vezes não é adicionada."))
+        }
         notes.append(L("A conta nova aparece ao lado da atual, rotulada pelo e-mail. Se for a mesma conta, nada é adicionado."))
         return notes
     }
@@ -799,6 +818,15 @@ struct PreferencesView: View {
         default:
             EmptyView()
         }
+    }
+
+    /// Chave colada num rascunho: grava sob o id reservado e, se gravou de fato, segue o
+    /// mesmo caminho de um login concluído.
+    private func saveDraftKey(_ id: String) {
+        let before = savedAPIKey(id) ?? ""
+        saveAPIKey(id)
+        let after = savedAPIKey(id) ?? ""
+        if !after.isEmpty, after != before { afterLogin(id) }
     }
 
     private func beginAddAccount(_ kind: AccountKind) {
@@ -846,6 +874,7 @@ struct PreferencesView: View {
                 // O rascunho continua aberto: o dono pode trocar de conta no navegador e
                 // tentar de novo, ou cancelar.
                 loggedIn.remove(current.id)
+                apiKeyFields[current.id] = ""
                 statusMessage = email.map { LF("%@ já está no OkTally — nada foi adicionado.", $0) }
                     ?? L("Esta conta já está no OkTally — nada foi adicionado.")
             case .failed:

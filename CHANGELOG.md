@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Multiple API-key accounts — OpenRouter, MiniMax**: add another key as its own
+  account (MiniMax keeps a region per account). The same key is recognised by a
+  one-way fingerprint and never added twice; OpenRouter accounts are labelled with the
+  key's name from OpenRouter. OpenCode stays single-account: its numbers are a local
+  estimate shared by the whole Mac.
 - **Multiple accounts per provider — Claude, Codex, SuperGrok**: the "+" next to
   Accounts in Preferences adds a second (third…) account of the same provider. Each one
   signs in on its own, keeps its own credential in the Keychain, and appears side by side

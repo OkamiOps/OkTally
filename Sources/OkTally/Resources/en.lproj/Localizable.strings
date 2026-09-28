@@ -351,3 +351,4 @@
 "%@ já está no OkTally — nada foi adicionado." = "%@ is already in OkTally — nothing was added.";
 "Esta conta já está no OkTally — nada foi adicionado." = "This account is already in OkTally — nothing was added.";
 "Não foi possível adicionar a conta." = "Couldn't add the account.";
+"Cole a chave da outra conta e tecle Enter. A chave fica no Keychain desta máquina; a mesma chave duas vezes não é adicionada." = "Paste the other account's key and press Return. The key stays in this Mac's Keychain; the same key is never added twice.";
