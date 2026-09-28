@@ -14,8 +14,26 @@ struct AccountEmailResolver {
     let cursorEmail: () -> String?
     /// E-mail do login do IDE Antigravity (só para a conta legada).
     let antigravityEmail: () -> String?
+    /// Chave de API salva de uma conta (por id).
+    var apiKey: (String) -> String? = { _ in nil }
+    /// Rótulo da chave no OpenRouter (`OpenRouterAPIClient.fetchKeyLabel`).
+    var openRouterKeyLabel: (String) async -> String? = { _ in nil }
 
-    func resolve(_ account: AccountInstance) async -> (email: String?, identityKey: String?) {
+    func resolve(_ account: AccountInstance) async -> AccountIdentity {
+        switch account.kind {
+        case .openrouter, .minimax, .opencode:
+            // Contas de chave não têm e-mail: a identidade é a impressão digital da chave.
+            guard let key = apiKey(account.id), !key.isEmpty else { return AccountIdentity() }
+            let label = account.kind == .openrouter ? await openRouterKeyLabel(key) : nil
+            return AccountIdentity(identityKey: AccountDedup.fingerprint(apiKey: key), autoLabel: label)
+        default:
+            let email = await resolveEmail(account)
+            guard let email, !email.isEmpty else { return AccountIdentity() }
+            return AccountIdentity(email: email, identityKey: email.lowercased())
+        }
+    }
+
+    private func resolveEmail(_ account: AccountInstance) async -> String? {
         let email: String?
         switch account.kind {
         case .claude:
@@ -23,7 +41,7 @@ struct AccountEmailResolver {
             // não entra na chave, então a mesma pessoa em Pro e Team conta como uma.
             guard let accessToken = try? await oauthManager.validAccessToken(
                 providerId: account.id, config: ClaudeOAuth.config.forInstance(account.id)
-            ) else { return (nil, nil) }
+            ) else { return nil }
             email = await claudeProfile?.fetchIdentity(accessToken: accessToken)?.email
         case .codex:
             email = tokenStore.load(providerId: account.id).flatMap {
@@ -42,8 +60,7 @@ struct AccountEmailResolver {
         case .grokbot, .copilot, .mimo, .openrouter, .minimax, .opencode:
             email = nil
         }
-        guard let email, !email.isEmpty else { return (nil, nil) }
-        return (email, email.lowercased())
+        return email
     }
 
     /// Codex: o `email` do `id_token` (guardado em `extra` no login) ou, para logins

@@ -144,4 +144,42 @@ final class AccountEmailResolverTests: XCTestCase {
         let result = await makeResolver().resolve(AccountInstance(id: "mimo", kind: .mimo))
         XCTAssertNil(result.email); XCTAssertNil(result.identityKey)
     }
+
+    // MARK: - Chave de API
+
+    private func makeKeyResolver(keys: [String: String], label: String?) -> AccountEmailResolver {
+        AccountEmailResolver(tokenStore: InMemoryTokenStore(), oauthManager: FakeOAuthManaging(), claudeProfile: nil,
+                             cursorEmail: { nil }, antigravityEmail: { nil },
+                             apiKey: { keys[$0] }, openRouterKeyLabel: { _ in label })
+    }
+
+    func test_resolve_openRouter_fingerprintAndKeyLabel() async {
+        let resolver = makeKeyResolver(keys: ["openrouter#abc123": "sk-or-2"], label: "sk-or-v1-bbb...222")
+        let identity = await resolver.resolve(AccountInstance(id: "openrouter#abc123", kind: .openrouter))
+        XCTAssertNil(identity.email)
+        XCTAssertEqual(identity.identityKey, AccountDedup.fingerprint(apiKey: "sk-or-2"))
+        XCTAssertEqual(identity.autoLabel, "sk-or-v1-bbb...222")
+    }
+
+    func test_resolve_miniMax_fingerprintOnly() async {
+        let resolver = makeKeyResolver(keys: ["minimax": "mm"], label: "unused")
+        let identity = await resolver.resolve(AccountInstance(id: "minimax", kind: .minimax))
+        XCTAssertEqual(identity.identityKey, AccountDedup.fingerprint(apiKey: "mm"))
+        XCTAssertNil(identity.autoLabel)
+    }
+
+    func test_resolve_apiKeyAccountWithoutKey_isEmpty() async {
+        let identity = await makeKeyResolver(keys: [:], label: "x").resolve(AccountInstance(id: "openrouter", kind: .openrouter))
+        XCTAssertEqual(identity, AccountIdentity())
+    }
+
+    func test_openRouterClient_fetchKeyLabel_readsDataLabel() async throws {
+        let url = URL(string: "https://openrouter.ai/api/v1/key")!
+        URLProtocolStub.stubResponses[url] = (Data(#"{"data":{"label":"sk-or-v1-0e6...1c96","limit":null,"usage":1.5}}"#.utf8), 200)
+        let label = await OpenRouterAPIClient(session: makeSession()).fetchKeyLabel(apiKey: "k")
+        XCTAssertEqual(label, "sk-or-v1-0e6...1c96")
+        URLProtocolStub.stubResponses[url] = (Data(), 401)
+        let missing = await OpenRouterAPIClient(session: makeSession()).fetchKeyLabel(apiKey: "k")
+        XCTAssertNil(missing)
+    }
 }

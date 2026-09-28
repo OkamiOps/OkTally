@@ -32,7 +32,7 @@ final class AccountEnrollment {
     func finish(draftId: String, kind: AccountKind) async -> Result {
         guard !model.accounts.contains(where: { $0.id == draftId }) else { return .failed }
         var account = AccountInstance(id: draftId, kind: kind)
-        let identity: (email: String?, identityKey: String?) = await model.identityResolver?(account) ?? (nil, nil)
+        let identity = await model.identityResolver?(account) ?? AccountIdentity()
         if AccountDedup.isDuplicate(identityKey: identity.identityKey, kind: kind,
                                     among: model.accounts, excluding: draftId) {
             // A credencial gravada sob o rascunho é de uma conta que já acompanhamos:
@@ -42,6 +42,7 @@ final class AccountEnrollment {
         }
         account.email = identity.email
         account.identityKey = identity.identityKey
+        account.autoLabel = identity.autoLabel
         model.commitAccount(account)
         return .committed
     }

@@ -145,7 +145,7 @@ final class AppModel: ObservableObject {
 
     /// Descobre e-mail/identidade de uma conta (injetado pelo app com o
     /// `AccountEmailResolver`).
-    var identityResolver: ((AccountInstance) async -> (email: String?, identityKey: String?))?
+    var identityResolver: ((AccountInstance) async -> AccountIdentity)?
     /// Contas cuja identidade já foi procurada neste launch — uma tentativa só, para não
     /// somar chamadas ao perfil a cada poll quando a fonte não tem e-mail.
     private var identityAttempted: Set<String> = []
@@ -350,10 +350,11 @@ final class AppModel: ObservableObject {
     }
 
     /// E-mail e chave de dedup descobertos depois do login.
-    func setIdentity(id: String, email: String?, identityKey: String?) {
+    func setIdentity(id: String, email: String?, identityKey: String?, autoLabel: String? = nil) {
         updateAccount(id: id) {
             $0.email = email
             $0.identityKey = identityKey
+            if let autoLabel { $0.autoLabel = autoLabel }
         }
     }
 
@@ -363,17 +364,25 @@ final class AppModel: ObservableObject {
         guard let resolver = identityResolver,
               let account = accounts.first(where: { $0.id == id }),
               account.email == nil,
+              account.identityKey == nil || AccountID.kind(of: id).map(Self.isAPIKeyKind) != true,
               identityAttempted.insert(id).inserted
         else { return }
         Task { [weak self] in
             let identity = await resolver(account)
-            guard identity.email != nil || identity.identityKey != nil else { return }
+            guard !identity.isEmpty else { return }
             await MainActor.run {
                 guard let self, let current = self.accounts.first(where: { $0.id == id }) else { return }
                 self.setIdentity(id: id, email: identity.email ?? current.email,
-                                 identityKey: identity.identityKey ?? current.identityKey)
+                                 identityKey: identity.identityKey ?? current.identityKey,
+                                 autoLabel: identity.autoLabel)
             }
         }
+    }
+
+    /// Contas de chave nunca terão e-mail; uma vez com a impressão digital, não há mais
+    /// o que procurar.
+    private static func isAPIKeyKind(_ kind: AccountKind) -> Bool {
+        kind == .openrouter || kind == .minimax || kind == .opencode
     }
 
     private func updateAccount(id: String, _ change: (inout AccountInstance) -> Void) {

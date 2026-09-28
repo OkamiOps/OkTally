@@ -5,7 +5,7 @@ import XCTest
 final class AccountEnrollmentTests: XCTestCase {
     /// Resolver falso: devolve o que o teste mandar.
     final class FakeResolver {
-        var next: (email: String?, identityKey: String?) = (nil, nil)
+        var next = AccountIdentity()
     }
 
     /// Modelo com as contas legadas mais `existing`, provedores falsos e o Keychain em
@@ -53,7 +53,7 @@ final class AccountEnrollmentTests: XCTestCase {
 
     func test_enroll_commitsWhenIdentityIsNew() async throws {
         let env = EnrollmentEnv(existing: [AccountInstance(id: "claude", kind: .claude, identityKey: "a@x.com")])
-        env.resolver.next = ("b@x.com", "b@x.com")
+        env.resolver.next = AccountIdentity(email: "b@x.com", identityKey: "b@x.com")
         let result = await env.enrollment.finish(draftId: "claude#abc123", kind: .claude)
         XCTAssertEqual(result, .committed)
         XCTAssertEqual(env.model.accounts.last?.id, "claude#abc123")
@@ -64,7 +64,7 @@ final class AccountEnrollmentTests: XCTestCase {
     func test_enroll_duplicateIsRefusedAndCredentialDeleted() async throws {
         let env = EnrollmentEnv(existing: [AccountInstance(id: "claude", kind: .claude, identityKey: "a@x.com")])
         try env.tokens.save(OAuthToken(accessToken: "t", refreshToken: nil, expiresAt: nil, extra: [:]), providerId: "claude#abc123")
-        env.resolver.next = ("A@x.com", "a@x.com")
+        env.resolver.next = AccountIdentity(email: "A@x.com", identityKey: "a@x.com")
         let result = await env.enrollment.finish(draftId: "claude#abc123", kind: .claude)
         XCTAssertEqual(result, .duplicate(email: "A@x.com"))
         XCTAssertNil(env.tokens.load(providerId: "claude#abc123"))
@@ -74,14 +74,14 @@ final class AccountEnrollmentTests: XCTestCase {
     /// Decisão do dono: mesma pessoa em outra org do Claude continua sendo a mesma conta.
     func test_enroll_claudeSameEmailOtherOrg_isStillDuplicate() async {
         let env = EnrollmentEnv(existing: [AccountInstance(id: "claude", kind: .claude, email: "a@x.com", identityKey: "a@x.com")])
-        env.resolver.next = ("a@x.com", "a@x.com")
+        env.resolver.next = AccountIdentity(email: "a@x.com", identityKey: "a@x.com")
         let result = await env.enrollment.finish(draftId: "claude#abc123", kind: .claude)
         XCTAssertEqual(result, .duplicate(email: "a@x.com"))
     }
 
     func test_enroll_unresolvableIdentity_commitsWithoutEmail() async {
         let env = EnrollmentEnv(existing: [])
-        env.resolver.next = (nil, nil)
+        env.resolver.next = AccountIdentity()
         let result = await env.enrollment.finish(draftId: "codex#abc123", kind: .codex)
         XCTAssertEqual(result, .committed)
         XCTAssertNil(env.model.accounts.last?.email)
@@ -105,5 +105,18 @@ final class AccountEnrollmentTests: XCTestCase {
         try env.tokens.save(OAuthToken(accessToken: "t", refreshToken: nil, expiresAt: nil, extra: [:]), providerId: "codex")
         env.enrollment.abandon(draftId: "codex", kind: .codex)
         XCTAssertNotNil(env.tokens.load(providerId: "codex"))
+    }
+
+    func test_enroll_apiKeyAccount_sameKeyIsDuplicate_newKeyStoresAutoLabel() async {
+        let fingerprint = AccountDedup.fingerprint(apiKey: "sk-or-1")
+        let env = EnrollmentEnv(existing: [AccountInstance(id: "openrouter", kind: .openrouter, identityKey: fingerprint)])
+        env.resolver.next = AccountIdentity(email: nil, identityKey: fingerprint, autoLabel: "sk-or-v1-aaa...111")
+        let duplicate = await env.enrollment.finish(draftId: "openrouter#abc123", kind: .openrouter)
+        XCTAssertEqual(duplicate, .duplicate(email: nil))
+
+        env.resolver.next = AccountIdentity(email: nil, identityKey: AccountDedup.fingerprint(apiKey: "sk-or-2"), autoLabel: "Trabalho key")
+        let committed = await env.enrollment.finish(draftId: "openrouter#abc123", kind: .openrouter)
+        XCTAssertEqual(committed, .committed)
+        XCTAssertEqual(env.model.accounts.last?.autoLabel, "Trabalho key")
     }
 }

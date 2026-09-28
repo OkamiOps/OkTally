@@ -706,7 +706,7 @@ final class AppModelTests: XCTestCase {
         var calls = 0
         model.identityResolver = { _ in
             calls += 1
-            return (email: "c@x.com", identityKey: "c@x.com")
+            return AccountIdentity(email: "c@x.com", identityKey: "c@x.com")
         }
 
         await model.refreshNow()

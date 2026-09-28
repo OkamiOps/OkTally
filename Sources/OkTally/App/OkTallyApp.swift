@@ -81,7 +81,9 @@ struct OkTallyApp: App {
             oauthManager: oauthManager,
             claudeProfile: ClaudeProfileClient(),
             cursorEmail: { CursorTokenReader().readEmail() },
-            antigravityEmail: { AntigravityTokenReader().readEmail() }
+            antigravityEmail: { AntigravityTokenReader().readEmail() },
+            apiKey: { preferencesStore.apiKey(instanceId: $0) },
+            openRouterKeyLabel: { await OpenRouterAPIClient().fetchKeyLabel(apiKey: $0) }
         )
         model.identityResolver = { account in await emailResolver.resolve(account) }
         model.updateFetcher = GitHubLatestReleaseFetcher()
