@@ -106,6 +106,13 @@ final class AppModel: ObservableObject {
         didSet { preferences.providerOrder = providerOrder }
     }
 
+    /// Contas escondidas do POPOVER — só ele. Pinos da barra de menu, notch e alertas
+    /// continuam enxergando a conta normalmente; esconder é puramente "não quero ver
+    /// isso na lista do menu", não "pare de acompanhar".
+    @Published var popoverHiddenProviders: Set<String> {
+        didSet { preferences.popoverHiddenProviders = popoverHiddenProviders }
+    }
+
     /// A escala de cor do uso. `@Published` pelo mesmo motivo dos slots: editar as
     /// paradas em Preferências tem que repintar TODA a tela na hora, e as views observam
     /// este modelo.
@@ -172,6 +179,7 @@ final class AppModel: ObservableObject {
         self.popoverHeroSlot = preferences.popoverHeroSlot
         self.forecastSlot = preferences.forecastSlot
         self.providerOrder = preferences.providerOrder
+        self.popoverHiddenProviders = preferences.popoverHiddenProviders
         self.usageColorScale = preferences.usageColorScale
         if let joined = defaults.string(forKey: Self.menuBarPinsKey) {
             self.menuBarPins = joined.split(separator: "\u{2}").compactMap { MenuBarPin(stored: String($0)) }
@@ -313,6 +321,13 @@ final class AppModel: ObservableObject {
         let ids = ProviderOrder.resolved(saved: providerOrder, known: known.map(\.id))
         let byId = Dictionary(uniqueKeysWithValues: known.map { ($0.id, $0) })
         return ids.compactMap { byId[$0] }
+    }
+
+    /// `orderedProviders` menos as contas escondidas do popover. É a única lista que o
+    /// popover consulta — pinos da barra, notch e Preferências continuam usando
+    /// `orderedProviders` sem filtro nenhum.
+    var popoverProviders: [UsageProvider] {
+        orderedProviders.filter { !popoverHiddenProviders.contains($0.id) }
     }
 
     /// Move a conta arrastada para a posição do alvo e persiste a lista visível
