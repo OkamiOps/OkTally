@@ -20,10 +20,10 @@ struct NotchQuotaEntry: Equatable, Identifiable {
 /// mentiria durante a animação de expansão — o tracinho que o olho estava seguindo viraria
 /// outra coisa.
 enum NotchHUDModel {
-    /// Teto de itens. Fechado, os tracinhos precisam caber nos ~90pt de cada lado do
-    /// notch sem empurrar o painel para cima dos menus do app da frente; expandido, seis
-    /// linhas ou mais transformariam um HUD de relance numa segunda janela.
-    static let maxEntries = 5
+    /// Teto de itens. Fechado, o painel só mostra o chip e a régua de baixo, então o teto
+    /// vale para o expandido: oito linhas ainda cabem sem rolagem (limite escolhido pelo
+    /// dono, que acompanha mais de cinco cotas).
+    static let maxEntries = 8
 
     /// As cotas que o dono está acompanhando.
     ///

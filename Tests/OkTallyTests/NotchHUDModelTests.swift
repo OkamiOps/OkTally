@@ -41,7 +41,7 @@ final class NotchHUDModelTests: XCTestCase {
         XCTAssertEqual(entries.map(\.providerId), ["claude", "codex"])
         XCTAssertEqual(entries.first?.windowLabel, "weekly")
         // Um provedor não ocupa duas linhas: senão o Claude sozinho comeria dois dos
-        // cinco lugares e esconderia um provedor inteiro.
+        // oito lugares e esconderia um provedor inteiro.
         XCTAssertEqual(entries.filter { $0.providerId == "claude" }.count, 1)
     }
 
@@ -107,6 +107,20 @@ final class NotchHUDModelTests: XCTestCase {
         let entries = NotchHUDModel.entries(pins: [], snapshots: snapshots,
                                             providerOrder: snapshots.keys.sorted())
         XCTAssertEqual(entries.count, NotchHUDModel.maxEntries)
+    }
+
+    /// O dono acompanha mais de cinco cotas; o teto de 5 escondia pinos em silêncio.
+    func test_eightPins_allShow() {
+        var snapshots: [String: ProviderSnapshot] = [:]
+        var pins: [AppModel.MenuBarPin] = []
+        for index in 0..<8 {
+            let id = "p\(index)"
+            snapshots[id] = snapshot(id, [window("w", usedPercent: 10)])
+            pins.append(.init(providerId: id, windowLabel: "w"))
+        }
+        let entries = NotchHUDModel.entries(pins: pins, snapshots: snapshots,
+                                            providerOrder: snapshots.keys.sorted())
+        XCTAssertEqual(entries.count, 8)
     }
 
     /// Fechado e expandido desenham a MESMA lista. Se divergissem, o tracinho que o olho
