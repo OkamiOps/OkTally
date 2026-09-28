@@ -321,7 +321,7 @@ enum PopoverLayout {
         // standard weekly quota is the useful overview of frontier-model capacity;
         // Spark remains visible below, but must not replace that overview merely
         // because its percentage is lower.
-        guard providerId == "codex",
+        guard let providerId, AccountID.kind(of: providerId) == .codex,
               let weeklyIndex = tightestFirst.firstIndex(where: isGeneralCodexWeekly)
         else { return tightestFirst }
         var ordered = tightestFirst

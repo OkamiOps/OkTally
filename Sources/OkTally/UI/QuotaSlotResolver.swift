@@ -141,7 +141,7 @@ enum QuotaSlotResolver {
             guard let snapshot = snapshots[providerId] else { continue }
             // Model-specific Codex limits stay selectable explicitly, but the automatic
             // headline represents Codex with its general Weekly quota.
-            let windows = providerId == "codex"
+            let windows = AccountID.kind(of: providerId) == .codex
                 ? PopoverLayout.primaryWindow(providerId: providerId, quotas: snapshot.quotas).map { [$0] } ?? []
                 : snapshot.quotas
             for window in windows {

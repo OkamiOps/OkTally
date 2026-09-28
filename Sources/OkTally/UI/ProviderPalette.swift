@@ -10,8 +10,11 @@ enum ProviderPalette {
     /// subiram de saturação e luminosidade — as antigas eram pastéis de tema claro e
     /// desapareciam contra a base quase preta. Cada par vizinho mantém pelo menos ~20°
     /// de distância de matiz para continuarem distinguíveis entre si.
+    ///
+    /// Resolve pelo TIPO da conta: `claude#abc123` pinta igual a `claude`. É o que acerta
+    /// de uma vez todos os pontos de chamada da paleta.
     static func color(for providerId: String) -> Color {
-        switch providerId {
+        switch AccountID.kind(of: providerId)?.rawValue ?? providerId {
         case "claude":      return Color(hex: 0xFF6A3D) // terracota, vizinho do Heat Orange
         case "mimo":        return Color(hex: 0xFFB020) // âmbar
         case "codex":       return Color(hex: 0x00D69B) // verde-azulado
@@ -39,7 +42,7 @@ enum ProviderPalette {
     /// Short distinct glyph per provider id (displayName initials collide:
     /// Claude/Codex/Cursor all start with "C").
     static func glyph(forId id: String) -> String {
-        switch id {
+        switch AccountID.kind(of: id)?.rawValue ?? id {
         case "claude": return "C"
         case "codex": return "X"
         case "supergrok": return "G"
