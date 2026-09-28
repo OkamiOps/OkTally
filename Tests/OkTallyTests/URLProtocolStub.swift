@@ -5,6 +5,35 @@ final class URLProtocolStub: URLProtocol {
 
     private static let countLock = NSLock()
     private static var _requestCounts: [URL: Int] = [:]
+    private static var _lastBodies: [URL: Data] = [:]
+
+    /// Corpo da última requisição para a URL (o `URLProtocol` recebe o corpo como stream).
+    static func lastBody(for url: URL) -> String? {
+        countLock.lock()
+        defer { countLock.unlock() }
+        return _lastBodies[url].map { String(decoding: $0, as: UTF8.self) }
+    }
+
+    private static func recordBody(_ data: Data, for url: URL) {
+        countLock.lock()
+        defer { countLock.unlock() }
+        _lastBodies[url] = data
+    }
+
+    private static func body(of request: URLRequest) -> Data? {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let read = stream.read(&buffer, maxLength: buffer.count)
+            if read <= 0 { break }
+            data.append(buffer, count: read)
+        }
+        return data
+    }
 
     static func requestCount(for url: URL) -> Int {
         countLock.lock()
@@ -33,6 +62,7 @@ final class URLProtocolStub: URLProtocol {
             return
         }
         Self.recordRequest(to: url)
+        if let body = Self.body(of: request) { Self.recordBody(body, for: url) }
         let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: data)
