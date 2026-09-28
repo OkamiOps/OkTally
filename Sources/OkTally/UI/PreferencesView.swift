@@ -7,6 +7,13 @@ enum PreferencesPane: Hashable {
     case provider(String)
 }
 
+/// Conta sendo adicionada: ainda não está na lista, só tem o id reservado. Vira conta de
+/// verdade quando o login grava a credencial e `AccountEnrollment.finish` aprova.
+struct AccountDraft: Equatable {
+    let id: String
+    let kind: AccountKind
+}
+
 struct PreferencesView: View {
     let preferencesStore: PreferencesStore
     let tokenStore: TokenStoring
@@ -35,6 +42,8 @@ struct PreferencesView: View {
     @State private var nicknameFields: [String: String] = [:]
     /// Conta aguardando a confirmação de remoção.
     @State private var pendingRemoval: String?
+    /// Conta sendo adicionada (menu "+").
+    @State private var draft: AccountDraft?
 
     @State private var mimoAllowance: String = ""
     @State private var mimoUsed: String = ""
@@ -60,6 +69,15 @@ struct PreferencesView: View {
                                 guard let dragged = items.first else { return false }
                                 return appModel.moveProvider(dragging: dragged.id, onto: id)
                             }
+                    }
+                    if let draft {
+                        ProviderSidebarRow(
+                            providerId: draft.id,
+                            name: LF("Nova conta · %@", Self.kindName(draft.kind)),
+                            statusColor: Color.secondary.opacity(0.35),
+                            statusHelp: L("Não configurado")
+                        )
+                        .tag(PreferencesPane.provider(draft.id))
                     }
                 } header: {
                     HStack {
@@ -232,6 +250,8 @@ struct PreferencesView: View {
         switch pane {
         case .general:
             EmptyView() // tratado no branch anterior do detalhe, por rolar sozinho
+        case .provider(let id) where draft?.id == id:
+            if let draft { draftPane(draft) }
         case .provider(let id):
             switch AccountPaneRouting.route(for: id) {
             case .claude(let id): claudePane(id)
@@ -322,27 +342,31 @@ struct PreferencesView: View {
             }
             // O código colado continua sendo um passo da conexão — fica na mesma seção
             // dos botões para não virar um detalhe descolado do fluxo.
-            if claudeSessions[id] != nil {
-                VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                    Text(L("Autorize no navegador, copie o código e cole abaixo:"))
-                        .font(.caption).foregroundStyle(.secondary)
-                    TextField("CÓDIGO#STATE", text: Binding(get: { pastedCodes[id] ?? "" }, set: { pastedCodes[id] = $0 }))
-                        .textFieldStyle(.roundedBorder)
-                        .labelsHidden()
-                    HStack {
-                        Button(L("Concluir")) { completeClaudeLogin(id) }
-                            .buttonStyle(.borderedProminent)
-                            .disabled((pastedCodes[id] ?? "").trimmingCharacters(in: .whitespaces).isEmpty)
-                        Button(L("Cancelar")) { claudeSessions[id] = nil; pastedCodes[id] = nil; statusMessage = "" }
-                            .buttonStyle(.bordered)
-                    }
-                }
-            }
+            claudeCodeEntry(id)
         } details: {
             Text(L("O uso de cota vem da conta; o volume em tokens é estimado dos transcritos locais."))
                 .font(.caption).foregroundStyle(.secondary)
         } account: {
             accountSection(id)
+        }
+    }
+
+    @ViewBuilder private func claudeCodeEntry(_ id: String) -> some View {
+        if claudeSessions[id] != nil {
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                Text(L("Autorize no navegador, copie o código e cole abaixo:"))
+                    .font(.caption).foregroundStyle(.secondary)
+                TextField("CÓDIGO#STATE", text: Binding(get: { pastedCodes[id] ?? "" }, set: { pastedCodes[id] = $0 }))
+                    .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
+                HStack {
+                    Button(L("Concluir")) { completeClaudeLogin(id) }
+                        .buttonStyle(.borderedProminent)
+                        .disabled((pastedCodes[id] ?? "").trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button(L("Cancelar")) { claudeSessions[id] = nil; pastedCodes[id] = nil; statusMessage = "" }
+                        .buttonStyle(.bordered)
+                }
+            }
         }
     }
 
@@ -676,7 +700,7 @@ struct PreferencesView: View {
         Task {
             do {
                 _ = try await browserFlow.login(config: config)
-                await MainActor.run { loggedIn.insert(id); statusMessage = L("Conectado.") }
+                await MainActor.run { afterLogin(id) }
             } catch {
                 await MainActor.run { statusMessage = error.localizedDescription }
             }
@@ -697,7 +721,8 @@ struct PreferencesView: View {
             do {
                 _ = try await manualFlow.complete(pasted: pasted, session: session)
                 await MainActor.run {
-                    loggedIn.insert(id); claudeSessions[id] = nil; pastedCodes[id] = nil; statusMessage = L("Conectado.")
+                    claudeSessions[id] = nil; pastedCodes[id] = nil
+                    afterLogin(id)
                 }
             } catch {
                 await MainActor.run { statusMessage = error.localizedDescription }
@@ -717,7 +742,7 @@ struct PreferencesView: View {
                     NSWorkspace.shared.open(request.info.verificationURL)
                 }
                 _ = try await deviceCodeFlow.poll(request, config: config)
-                await MainActor.run { loggedIn.insert(id); deviceCodes[id] = nil; statusMessage = L("Conectado.") }
+                await MainActor.run { deviceCodes[id] = nil; afterLogin(id) }
             } catch {
                 await MainActor.run { deviceCodes[id] = nil; statusMessage = error.localizedDescription }
             }
@@ -726,8 +751,118 @@ struct PreferencesView: View {
 
     // MARK: - Adicionar conta
 
+    /// Painel do rascunho: os mesmos botões de login do tipo, gravando sob o id reservado.
+    private func draftPane(_ draft: AccountDraft) -> some View {
+        let id = draft.id
+        return ProviderPaneScaffold(
+            providerId: id,
+            name: LF("Nova conta · %@", Self.kindName(draft.kind)),
+            status: .notConfigured(L("Faça login para adicionar esta conta"))
+        ) {
+            HStack {
+                draftLoginButton(draft)
+                Button(L("Cancelar")) { cancelDraft() }
+                    .buttonStyle(.bordered)
+                Spacer()
+            }
+            if draft.kind == .claude { claudeCodeEntry(id) }
+            if draft.kind == .supergrok, let info = deviceCodes[id] {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                    Text(LF("Abra %@ e digite:", info.verificationURL.absoluteString))
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text(info.userCode).font(.title3.monospaced()).textSelection(.enabled)
+                }
+            }
+        } details: {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                ForEach(draftNotes(draft.kind), id: \.self) { Text($0) }
+            }
+            .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Avisos do painel de adicionar, por tipo.
+    private func draftNotes(_ kind: AccountKind) -> [String] {
+        var notes: [String] = []
+        switch kind {
+        case .claude, .codex, .supergrok:
+            notes.append(L("Entre com a OUTRA conta. Se o navegador já estiver logado na conta atual, troque de conta (ou use uma janela anônima) antes de autorizar."))
+        default:
+            break
+        }
+        if kind == .codex {
+            notes.append(L("O login do Codex usa a porta 1455 — feche o Codex CLI se ele estiver fazendo login ao mesmo tempo."))
+        }
+        notes.append(L("A conta nova aparece ao lado da atual, rotulada pelo e-mail. Se for a mesma conta, nada é adicionado."))
+        return notes
+    }
+
+    @ViewBuilder private func draftLoginButton(_ draft: AccountDraft) -> some View {
+        let id = draft.id
+        switch draft.kind {
+        case .claude:
+            Button(L("Entrar…")) { beginClaudeLogin(id) }.buttonStyle(.borderedProminent)
+        case .codex:
+            Button(L("Entrar…")) { login(config: CodexOAuth.config.forInstance(id), id: id) }.buttonStyle(.borderedProminent)
+        case .supergrok:
+            Button(L("Entrar…")) { loginSuperGrok(id) }.buttonStyle(.borderedProminent)
+        default:
+            EmptyView()
+        }
+    }
+
     private func beginAddAccount(_ kind: AccountKind) {
-        // Ligado nas fases seguintes (Fase 3 em diante), junto de `addableKinds`.
+        if draft != nil { cancelDraft() }
+        let enrollment = AccountEnrollment(model: appModel)
+        let next = AccountDraft(id: enrollment.beginDraft(kind: kind), kind: kind)
+        draft = next
+        pane = .provider(next.id)
+        statusMessage = ""
+    }
+
+    private func cancelDraft() {
+        guard let current = draft else { return }
+        AccountEnrollment(model: appModel).abandon(draftId: current.id, kind: current.kind)
+        claudeSessions[current.id] = nil
+        pastedCodes[current.id] = nil
+        deviceCodes[current.id] = nil
+        apiKeyFields[current.id] = nil
+        loggedIn.remove(current.id)
+        draft = nil
+        pane = .general
+        statusMessage = ""
+    }
+
+    /// Login concluído. Numa conta existente só marca conectado; num rascunho, é a hora
+    /// de descobrir quem é a conta e decidir se entra.
+    private func afterLogin(_ id: String) {
+        loggedIn.insert(id)
+        guard let current = draft, current.id == id else {
+            statusMessage = L("Conectado.")
+            return
+        }
+        statusMessage = L("Identificando a conta…")
+        Task { @MainActor in
+            let result = await AccountEnrollment(model: appModel).finish(draftId: current.id, kind: current.kind)
+            switch result {
+            case .committed:
+                draft = nil
+                pane = .provider(current.id)
+                load()
+                statusMessage = appModel.accounts.first(where: { $0.id == current.id })?.email == nil
+                    ? L("Conta adicionada — dê um apelido para distinguir das outras.")
+                    : L("Conta adicionada.")
+            case .duplicate(let email):
+                // O rascunho continua aberto: o dono pode trocar de conta no navegador e
+                // tentar de novo, ou cancelar.
+                loggedIn.remove(current.id)
+                statusMessage = email.map { LF("%@ já está no OkTally — nada foi adicionado.", $0) }
+                    ?? L("Esta conta já está no OkTally — nada foi adicionado.")
+            case .failed:
+                loggedIn.remove(current.id)
+                statusMessage = L("Não foi possível adicionar a conta.")
+            }
+        }
     }
 
     // MARK: - Auto-save
