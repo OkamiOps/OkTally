@@ -57,6 +57,18 @@ enum ProviderErrorPresentation: Equatable {
             case .badResponse: return .error
             }
         }
+        if let error = error as? MiMoConsoleError {
+            switch error {
+            // A sessão web do MiMo morreu de verdade: o único remédio é o dono reabrir a
+            // janela de login, então isto merece o botão de reconectar.
+            case .notLoggedIn: return .needsReauth
+            // Tick perdido enquanto a cadeia do SSO da Xiaomi se refaz. Não há ação nenhuma
+            // para oferecer, e o último snapshot continua valendo — pintar de vermelho a cada
+            // ciclo é justamente o "desconecta toda hora" que queremos parar de encenar.
+            case .sessionRecovering: return .dependencyUnavailable
+            case .noData: return .error
+            }
+        }
         if let error = error as? AntigravityError {
             switch error {
             case .notDetected: return .notConfigured
