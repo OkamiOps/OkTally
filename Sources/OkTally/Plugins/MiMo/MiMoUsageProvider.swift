@@ -15,11 +15,17 @@ final class MiMoUsageProvider: UsageProvider {
     let authMethod: AuthMethod = .oauthSession
     let refreshInterval: TimeInterval = 600
 
+    /// Quantos ciclos seguidos de 401 aceitamos antes de chamar isso de "entre novamente".
+    /// Com `refreshInterval` de 600s são ~30 min tentando em silêncio — tempo de sobra para a
+    /// cadeia do SSO se refazer, e curto o bastante para não esconder um logout real.
+    static let reauthAfterConsecutiveFailures = 3
+
     private let sessionStore: MiMoSessionStoring
     private let usageFetcher: MiMoUsageFetching?
     private let allowanceProvider: () -> Double?
     private let usedCreditsProvider: () -> Double
     private let now: () -> Date
+    private var consecutiveLiveFailures = 0
 
     init(
         sessionStore: MiMoSessionStoring,
@@ -39,21 +45,46 @@ final class MiMoUsageProvider: UsageProvider {
         sessionStore.isLoggedIn || allowanceProvider() != nil
     }
 
+    /// Um 401 aqui NÃO apaga `mimo.loggedIn`.
+    ///
+    /// Era isso que fazia o MiMo "desconectar toda hora": os cookies de sessão do console são
+    /// session-only, então todo lançamento começa com um 401 e depende da recuperação por
+    /// reload. Quando essa recuperação falhava uma única vez — rede lenta, cadeia do SSO
+    /// ainda rodando — o flag ia a falso, e como a web session só é consultada com o flag
+    /// ligado, o caminho nunca mais era tentado: o provider ficava "não configurado" para
+    /// sempre, com o `passToken` da Xiaomi vivo em disco o tempo todo. Só um "Sair" explícito
+    /// nas Preferências apaga o flag agora; aqui apenas contamos os tropeços e seguimos
+    /// tentando no ciclo seguinte.
     func fetchSnapshot() async throws -> ProviderSnapshot {
-        if sessionStore.isLoggedIn, let usageFetcher {
-            do {
-                return try await liveSnapshot(usageFetcher: usageFetcher)
-            } catch MiMoConsoleError.notLoggedIn {
-                sessionStore.isLoggedIn = false // prompt re-login; fall back to manual
+        guard sessionStore.isLoggedIn, let usageFetcher else { return manualSnapshot() }
+        do {
+            let snapshot = try await liveSnapshot(usageFetcher: usageFetcher)
+            if consecutiveLiveFailures > 0 {
+                MiMoLog.session.notice("provider: sessão voltou depois de \(self.consecutiveLiveFailures, privacy: .public) falha(s)")
             }
+            consecutiveLiveFailures = 0
+            return snapshot
+        } catch let error as MiMoConsoleError {
+            consecutiveLiveFailures += 1
+            MiMoLog.session.error("provider: leitura ao vivo falhou (\(String(describing: error), privacy: .public)), falha nº \(self.consecutiveLiveFailures, privacy: .public)")
+            if error == .notLoggedIn, consecutiveLiveFailures >= Self.reauthAfterConsecutiveFailures {
+                // Insistiu ciclos seguidos: agora vale pedir login — mas sem apagar o flag,
+                // porque a próxima tentativa continua sendo a que tem chance de resolver.
+                throw MiMoConsoleError.notLoggedIn
+            }
+            if let manual = configuredManualSnapshot() { return manual }
+            throw MiMoConsoleError.sessionRecovering
         }
-        return manualSnapshot()
     }
 
     private func liveSnapshot(usageFetcher: MiMoUsageFetching) async throws -> ProviderSnapshot {
         let data = try await usageFetcher.fetchUsageJSON()
-        if let text = String(data: data, encoding: .utf8), text.contains("\"code\":401") {
-            throw MiMoConsoleError.notLoggedIn
+        // Classificação tolerante a espaçamento e a corpos que não são JSON — o match literal
+        // `"code":401` que existia aqui deixava `{ "code" : 401 }` chegar ao decoder.
+        switch MiMoResponseClassifier.classify(data) {
+        case .unauthorized: throw MiMoConsoleError.notLoggedIn
+        case .unusable: throw MiMoConsoleError.noData
+        case .usable: break
         }
         let resp = try JSONDecoder().decode(MiMoUsageResponse.self, from: data)
         // `percent` is a fraction (0.0622 == 6.22%), so ×100 for a 0–100 rolling window.
@@ -67,6 +98,12 @@ final class MiMoUsageProvider: UsageProvider {
                 used: plan * 100, limit: 100, windowStart: now(), resetAt: now())))
         }
         return ProviderSnapshot(providerId: id, fetchedAt: now(), quotas: quotas, usageDetail: nil)
+    }
+
+    /// A estimativa manual só é um consolo quando o dono realmente configurou a franquia —
+    /// senão ela é um card vazio fingindo que está tudo bem, e aí é melhor deixar o erro subir.
+    private func configuredManualSnapshot() -> ProviderSnapshot? {
+        allowanceProvider() == nil ? nil : manualSnapshot()
     }
 
     private func manualSnapshot() -> ProviderSnapshot {

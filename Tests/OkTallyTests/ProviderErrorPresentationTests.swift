@@ -33,6 +33,22 @@ final class ProviderErrorPresentationTests: XCTestCase {
         XCTAssertEqual(ProviderErrorPresentation.classify(CursorUsageError.badResponse(500)), .error)
     }
 
+    func test_mimoNotLoggedIn_isNeedsReauth_andOffersReconnect() {
+        let kind = ProviderErrorPresentation.classify(MiMoConsoleError.notLoggedIn)
+
+        XCTAssertEqual(kind, .needsReauth)
+        XCTAssertEqual(ProviderPresentationPolicy.recoveryAction(for: kind), .reconnect)
+    }
+
+    func test_mimoSessionRecovering_isQuiet_andKeepsTheLastSnapshot() {
+        // Enquanto a cadeia do SSO da Xiaomi se refaz não há nada para o dono fazer: pintar
+        // de vermelho a cada tick é exatamente o "desconecta toda hora" que ele reclamava.
+        let kind = ProviderErrorPresentation.classify(MiMoConsoleError.sessionRecovering)
+
+        XCTAssertEqual(kind, .dependencyUnavailable)
+        XCTAssertNil(ProviderPresentationPolicy.recoveryAction(for: kind))
+    }
+
     func test_grokBotCursorDependencyFailure_isQuietAndHasNoReconnectAction() {
         let kind = ProviderErrorPresentation.classify(GrokBotUsageError.cursorSessionUnavailable)
 
