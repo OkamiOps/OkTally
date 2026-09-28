@@ -2,6 +2,9 @@ import Foundation
 
 final class URLProtocolStub: URLProtocol {
     static var stubResponses: [URL: (Data, Int)] = [:]
+    /// Respostas em sequência para a mesma URL (polling). Consumidas em ordem; esgotada a
+    /// fila, cai em `stubResponses`.
+    static var stubQueues: [URL: [(Data, Int)]] = [:]
 
     private static let countLock = NSLock()
     private static var _requestCounts: [URL: Int] = [:]
@@ -65,7 +68,16 @@ final class URLProtocolStub: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        guard let url = request.url, let (data, status) = Self.stubResponses[url] else {
+        var queued: (Data, Int)?
+        if let url = request.url {
+            Self.countLock.lock()
+            if var queue = Self.stubQueues[url], !queue.isEmpty {
+                queued = queue.removeFirst()
+                Self.stubQueues[url] = queue
+            }
+            Self.countLock.unlock()
+        }
+        guard let url = request.url, let (data, status) = queued ?? Self.stubResponses[url] else {
             client?.urlProtocol(self, didFailWithError: URLError(.badURL))
             return
         }
