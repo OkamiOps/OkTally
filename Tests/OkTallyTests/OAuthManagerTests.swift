@@ -134,6 +134,27 @@ final class OAuthManagerTests: XCTestCase {
         XCTAssertEqual(URLProtocolStub.requestCount(for: config.tokenURL), 1)
     }
 
+    /// Contas múltiplas: o single-flight é POR CONTA. Duas chamadas da mesma conta
+    /// dividem um refresh; uma conta irmã do mesmo tipo faz o dela, com o próprio
+    /// refresh token — nunca espera nem consome o da outra.
+    func test_refresh_isSingleFlightPerInstance_notAcrossInstances() async throws {
+        URLProtocolStub.resetRequestCounts()
+        let data = try Data(contentsOf: Bundle.module.url(forResource: "oauth_token_response", withExtension: "json", subdirectory: "Fixtures")!)
+        URLProtocolStub.stubResponses[config.tokenURL] = (data, 200)
+        let store = InMemoryTokenStore()
+        for id in ["codex", "codex#abc123"] {
+            try store.save(OAuthToken(accessToken: "old", refreshToken: "rt-\(id)", expiresAt: .distantPast, extra: [:]), providerId: id)
+        }
+        let manager = OAuthManager(store: store, session: makeSession())
+        async let a1 = manager.validAccessToken(providerId: "codex", config: config.forInstance("codex"))
+        async let a2 = manager.validAccessToken(providerId: "codex", config: config.forInstance("codex"))
+        async let b1 = manager.validAccessToken(providerId: "codex#abc123", config: config.forInstance("codex#abc123"))
+        _ = try await (a1, a2, b1)
+        XCTAssertEqual(URLProtocolStub.requestCount(for: config.tokenURL), 2)
+        XCTAssertEqual(store.load(providerId: "codex#abc123")?.accessToken, "new-access")
+        XCTAssertEqual(store.load(providerId: "codex")?.accessToken, "new-access")
+    }
+
     private static func makeSyntheticJWT(payload: [String: Any]) -> String {
         let header = ["alg": "none", "typ": "JWT"]
         let headerData = try! JSONSerialization.data(withJSONObject: header)
