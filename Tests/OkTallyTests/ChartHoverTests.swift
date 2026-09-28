@@ -274,6 +274,44 @@ final class ChartHoverTests: XCTestCase {
         XCTAssertEqual(ChartHover.percentLabel(1), "100%")
     }
 
+    func test_timeLabel_isHourAndMinuteInTheGivenZone() {
+        let label = ChartHover.timeLabel(
+            now, locale: Locale(identifier: "pt_BR"), timeZone: TimeZone(identifier: "UTC")!)
+        XCTAssertEqual(label, "12:00")
+    }
+
+    // MARK: - Interpolação (as retas da previsão)
+
+    func test_interpolate_findsTheValueOnTheSegment() {
+        let start = (date: now, value: 100.0)
+        let end = (date: now.addingTimeInterval(1_000), value: 0.0)
+        XCTAssertEqual(
+            ChartHover.interpolate(now.addingTimeInterval(250), from: start, to: end) ?? .nan,
+            75, accuracy: 0.0001)
+    }
+
+    func test_interpolate_returnsTheEndpointsExactly() {
+        let start = (date: now, value: 80.0)
+        let end = (date: now.addingTimeInterval(600), value: 20.0)
+        XCTAssertEqual(ChartHover.interpolate(now, from: start, to: end), 80)
+        XCTAssertEqual(ChartHover.interpolate(now.addingTimeInterval(600), from: start, to: end), 20)
+    }
+
+    func test_interpolate_isNilOutsideTheSegment() {
+        // Fora do segmento a reta não existe: extrapolar inventaria "restante negativo"
+        // depois da exaustão.
+        let start = (date: now, value: 80.0)
+        let end = (date: now.addingTimeInterval(600), value: 20.0)
+        XCTAssertNil(ChartHover.interpolate(now.addingTimeInterval(-1), from: start, to: end))
+        XCTAssertNil(ChartHover.interpolate(now.addingTimeInterval(601), from: start, to: end))
+    }
+
+    func test_interpolate_isNilOnADegenerateSegment() {
+        // Dois pontos no mesmo instante dividiriam por zero.
+        let point = (date: now, value: 50.0)
+        XCTAssertNil(ChartHover.interpolate(now, from: point, to: point))
+    }
+
     func test_percentLabel_treatsNonFiniteFractionsAsZero() {
         XCTAssertEqual(ChartHover.percentLabel(.nan), "0%")
         XCTAssertEqual(ChartHover.percentLabel(2), "100%")
