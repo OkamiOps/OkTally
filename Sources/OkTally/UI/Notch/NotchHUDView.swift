@@ -243,8 +243,12 @@ struct NotchExpandedView: View {
 
     private var entries: [NotchQuotaEntry] { appModel.notchEntries }
 
+    /// Versão compacta do rótulo: o painel tem 330 pt e o e-mail inteiro não cabe ao lado
+    /// da barra. Fica o nome do tipo mais o apelido (ou o começo do e-mail) — e só quando
+    /// há contas irmãs; conta única mostra o nome de sempre.
     private func displayName(_ providerId: String) -> String {
-        appModel.orderedProviders.first { $0.id == providerId }?.displayName ?? providerId
+        guard let provider = appModel.orderedProviders.first(where: { $0.id == providerId }) else { return providerId }
+        return AccountDirectoryHolder.current.compactName(for: providerId, baseName: AccountLabel.baseName(of: provider))
     }
 
     private func window(_ entry: NotchQuotaEntry) -> QuotaWindow? {

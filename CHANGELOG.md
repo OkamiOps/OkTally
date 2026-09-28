@@ -26,6 +26,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   with the others, labelled by the e-mail discovered after login. Adding the same
   account twice is refused. Codex analytics are per account. Codex sign-in uses the
   fixed port 1455, so only one Codex sign-in can run at a time.
+- **Sibling accounts are told apart everywhere**: the second account of a provider gets
+  a numbered glyph in the menu bar and notch wings ("C2"), and its label (nickname,
+  e-mail or key name) follows it into the popover, notch panel, pins, pickers, forecast,
+  analytics and notifications. People with one account per provider see no change.
 - **Account nicknames and e-mail labels**: every account pane in Preferences has an
   Account section with the e-mail OkTally discovered after login and an editable
   nickname. A nickname shows everywhere the account does ("Claude Code · Work") —

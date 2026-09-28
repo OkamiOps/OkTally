@@ -1400,7 +1400,7 @@ private struct GeneralPane: View {
         case .automatic:
             return L("Automático — maior risco")
         case .window(let providerId, let windowLabel):
-            let name = "\(providerName(providerId)) · \(WindowLabelCatalog.displayLabel(windowLabel))"
+            let name = QuotaSlotLabel.text(providerName: providerName(providerId), windowLabel: windowLabel)
             let exists = appModel.availableForecastSlots.contains(slot)
             return exists ? name : LF("%@ (indisponível)", name)
         }
@@ -1423,7 +1423,7 @@ private struct GeneralPane: View {
         case .automatic:
             return L("Automático (mais crítico)")
         case .window(let providerId, let windowLabel):
-            let name = "\(providerName(providerId)) · \(WindowLabelCatalog.displayLabel(windowLabel))"
+            let name = QuotaSlotLabel.text(providerName: providerName(providerId), windowLabel: windowLabel)
             let exists = appModel.snapshotsByProvider[providerId]?.quotas.contains { $0.label == windowLabel } ?? false
             return exists ? name : LF("%@ (indisponível)", name)
         }
@@ -1440,7 +1440,7 @@ private struct GeneralPane: View {
             IconChip(glyph: ProviderPalette.glyph(forId: pin.providerId),
                      color: ProviderPalette.color(for: pin.providerId),
                      size: 18)
-            Text("\(providerName(pin.providerId)) · \(WindowLabelCatalog.displayLabel(pin.windowLabel))")
+            Text(QuotaSlotLabel.text(providerName: providerName(pin.providerId), windowLabel: pin.windowLabel))
                 .font(Theme.Font.body)
             Spacer()
             Button {

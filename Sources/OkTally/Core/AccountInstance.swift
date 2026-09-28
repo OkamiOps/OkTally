@@ -54,6 +54,11 @@ enum AccountsCatalog {
 }
 
 enum AccountLabel {
+    /// O nome do provedor sem o sufixo da conta (desembrulha o `LabeledProvider`).
+    static func baseName(of provider: UsageProvider) -> String {
+        (provider as? LabeledProvider)?.base.displayName ?? provider.displayName
+    }
+
     /// Nome exibido de uma conta. Quem tem uma conta só de um tipo e nunca deu apelido
     /// vê exatamente o nome de sempre; o sufixo só aparece quando ajuda a distinguir.
     static func display(for account: AccountInstance, baseName: String, siblings: [AccountInstance]) -> String {
@@ -131,6 +136,11 @@ struct AccountDirectory {
         }
         if let autoLabel = account.autoLabel, !autoLabel.isEmpty { return autoLabel }
         return ordinal(of: id).map { "#\($0)" }
+    }
+
+    /// Nome para lugares estreitos (linhas do notch): o nome do tipo mais o rótulo curto.
+    func compactName(for id: String, baseName: String) -> String {
+        shortLabel(for: id).map { "\(baseName) · \($0)" } ?? baseName
     }
 }
 
