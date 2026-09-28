@@ -83,7 +83,8 @@ final class GrokBotUsageProvider: UsageProvider {
         // One immediate second read avoids turning that brief race into ten minutes of
         // hidden data (this provider refreshes every 600 seconds).
         guard let token = tokenReader.readAccessToken() ?? tokenReader.readAccessToken() else {
-            throw GrokBotUsageError.cursorSessionUnavailable
+            // Sessão própria vencida pede "Reconectar"; a do IDE indisponível é passageira.
+            throw tokenReader.unavailableError() ?? GrokBotUsageError.cursorSessionUnavailable
         }
         let response = try await client.fetchUsage(accessToken: token)
         let fetchedAt = now()

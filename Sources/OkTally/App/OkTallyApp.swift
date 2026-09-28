@@ -84,7 +84,8 @@ struct OkTallyApp: App {
             antigravityEmail: { AntigravityTokenReader().readEmail() },
             apiKey: { preferencesStore.apiKey(instanceId: $0) },
             openRouterKeyLabel: { await OpenRouterAPIClient().fetchKeyLabel(apiKey: $0) },
-            googleUserInfoEmail: { await AntigravityOAuth.fetchUserInfoEmail(accessToken: $0) }
+            googleUserInfoEmail: { await AntigravityOAuth.fetchUserInfoEmail(accessToken: $0) },
+            cursorEmailForToken: { await CursorAccountAPI.fetchEmail(accessToken: $0) }
         )
         model.identityResolver = { account in await emailResolver.resolve(account) }
         model.updateFetcher = GitHubLatestReleaseFetcher()

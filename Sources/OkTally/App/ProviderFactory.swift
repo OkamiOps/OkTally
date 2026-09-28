@@ -51,9 +51,14 @@ struct ProviderFactory {
         case .opencode:
             raw = [OpenCodeUsageProvider(instanceId: id, apiKeyProvider: { preferences.apiKey(instanceId: id) })]
         case .cursor:
+            // A legada lê a sessão do IDE; as extras, a sessão própria do Keychain. O
+            // GrokBot gêmeo usa exatamente a mesma fonte da conta dele.
+            let source: CursorTokenReading = AccountID.isLegacy(id)
+                ? CursorTokenReader()
+                : KeychainCursorTokenSource(instanceId: id, tokenStore: deps.tokenStore)
             raw = [
-                CursorUsageProvider(instanceId: id),
-                GrokBotUsageProvider(instanceId: AccountID.grokBotId(forCursor: id))
+                CursorUsageProvider(instanceId: id, tokenReader: source),
+                GrokBotUsageProvider(instanceId: AccountID.grokBotId(forCursor: id), tokenReader: source)
             ]
         case .grokbot:
             // O GrokBot nunca é uma conta própria: nasce junto da conta do Cursor.

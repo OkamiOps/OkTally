@@ -21,6 +21,8 @@ struct AccountEmailResolver {
     /// E-mail do `userinfo` da Google, para conta Antigravity cujo token veio sem
     /// `id_token` (`AntigravityOAuth.fetchUserInfoEmail`).
     var googleUserInfoEmail: (String) async -> String? = { _ in nil }
+    /// E-mail de uma sessão própria do Cursor (`CursorAccountAPI.fetchEmail`).
+    var cursorEmailForToken: (String) async -> String? = { _ in nil }
 
     func resolve(_ account: AccountInstance) async -> AccountIdentity {
         switch account.kind {
@@ -53,9 +55,13 @@ struct AccountEmailResolver {
         case .supergrok:
             email = tokenStore.load(providerId: account.id)?.extra["email"]
         case .cursor:
-            email = AccountID.isLegacy(account.id)
-                ? cursorEmail()
-                : tokenStore.load(providerId: account.id)?.extra["email"]
+            if AccountID.isLegacy(account.id) {
+                email = cursorEmail()
+            } else if let token = tokenStore.load(providerId: account.id) {
+                email = await cursorEmailForToken(token.accessToken)
+            } else {
+                email = nil
+            }
         case .antigravity:
             if AccountID.isLegacy(account.id) {
                 email = antigravityEmail()

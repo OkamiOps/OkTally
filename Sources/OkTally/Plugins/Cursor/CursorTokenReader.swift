@@ -7,10 +7,52 @@ protocol CursorTokenReading {
     /// Plano da conta ("pro", "free", "pro_student"…) que o app Cursor cacheia no mesmo
     /// banco. `nil` quando ausente — o badge só não aparece.
     func readMembershipType() -> String?
+    // Requisitos (e não só extensão) para o despacho ser dinâmico: com a extensão
+    // sozinha, quem guarda um `CursorTokenReading` chamaria sempre o padrão.
+    func hasCredential() -> Bool
+    func unavailableError() -> Error?
 }
 
 extension CursorTokenReading {
     func readMembershipType() -> String? { nil }
+
+    /// Existe uma credencial configurada (mesmo que vencida)? Para o IDE, é ter token.
+    func hasCredential() -> Bool { readAccessToken() != nil }
+
+    /// Por que não há token utilizável, quando o motivo não é "nada configurado". `nil`
+    /// deixa o provedor usar o erro de sempre.
+    func unavailableError() -> Error? { nil }
+}
+
+/// Sessão do Cursor de uma conta EXTRA: gravada no Keychain pelo login próprio
+/// (`CursorDeepLoginFlow`) sob o id da conta, e dividida pelo Cursor e pelo GrokBot gêmeo.
+///
+/// Não há renovação: o refresh do Cursor não pôde ser verificado ao vivo sem arriscar a
+/// sessão do IDE do dono (ver docs/superpowers/research/multi-account-cursor.md). A
+/// sessão vale ~60 dias; vencida, o provedor pede "Reconectar" (`needsReauth`).
+final class KeychainCursorTokenSource: CursorTokenReading {
+    private let instanceId: String
+    private let tokenStore: TokenStoring
+
+    init(instanceId: String, tokenStore: TokenStoring) {
+        self.instanceId = instanceId
+        self.tokenStore = tokenStore
+    }
+
+    func readAccessToken() -> String? {
+        guard let token = tokenStore.load(providerId: instanceId), !token.isExpired else { return nil }
+        return token.accessToken
+    }
+
+    /// O plano não vem junto da sessão própria; o badge só não aparece.
+    func readMembershipType() -> String? { nil }
+
+    func hasCredential() -> Bool { tokenStore.load(providerId: instanceId) != nil }
+
+    func unavailableError() -> Error? {
+        guard let token = tokenStore.load(providerId: instanceId), token.isExpired else { return nil }
+        return OAuthError.noRefreshToken
+    }
 }
 
 /// Reads the Cursor desktop app's own session token from its local VS Code-style

@@ -21,11 +21,13 @@ final class CursorUsageProvider: UsageProvider {
     }
 
     func isAuthenticated() async -> Bool {
-        tokenReader.readAccessToken() != nil
+        tokenReader.hasCredential()
     }
 
     func fetchSnapshot() async throws -> ProviderSnapshot {
-        guard let token = tokenReader.readAccessToken() else { throw CursorUsageError.notDetected }
+        guard let token = tokenReader.readAccessToken() else {
+            throw tokenReader.unavailableError() ?? CursorUsageError.notDetected
+        }
         let response = try await client.fetchUsage(accessToken: token)
 
         // Included monthly credit pool (e.g. $20 on Pro, $400 on Ultra) minus spend.
