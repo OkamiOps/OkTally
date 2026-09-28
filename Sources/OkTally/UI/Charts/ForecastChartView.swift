@@ -11,6 +11,11 @@ struct ForecastChartView: View {
     let providerColor: Color
     let now: Date
 
+    @Environment(\.chartHoverPreview) private var hoverPreview
+
+    /// Instante sob o cursor, já encaixado num dos vértices das três séries.
+    @State private var hoveredDate: Date?
+
     private static let historyWindow: TimeInterval = 24 * 60 * 60
     private static let minimumDomain: TimeInterval = 60 * 60
 
@@ -150,8 +155,115 @@ struct ForecastChartView: View {
         .chartPlotStyle { plotArea in
             plotArea.background(Theme.track())
         }
+        .chartOverlay { proxy in overlay(proxy: proxy) }
         .accessibilityLabel(L("Previsão de consumo"))
         .frame(height: 188)
+    }
+
+    // MARK: - Hover
+
+    /// Vértices das três séries: é neles que o cursor encaixa. Encaixar num instante
+    /// contínuo pareceria mais fino, mas o valor mostrado seria uma interpolação de
+    /// interpolação — e o ponto do histórico, que é o único dado REAL do gráfico, deixaria
+    /// de ser alcançável exatamente.
+    private var snapDates: [Date] {
+        let all = history.map(\.date) + projection.map(\.date) + safePace.map(\.date)
+        return Array(Set(all)).sorted()
+    }
+
+    private var selectedDate: Date? {
+        if let hoveredDate { return hoveredDate }
+        // O harness de render não tem cursor: sem uma seleção forçada o PNG nunca
+        // mostraria o cartão. `nil` no app.
+        guard hoverPreview != nil else { return nil }
+        return history.last?.date
+    }
+
+    private func overlay(proxy: ChartProxy) -> some View {
+        GeometryReader { geo in
+            let plot = proxy.plotFrame.map { geo[$0] } ?? .zero
+            let domain = snapDates
+            ZStack(alignment: .topLeading) {
+                Rectangle()
+                    .fill(.clear)
+                    .contentShape(Rectangle())
+                    .onContinuousHover(coordinateSpace: .local) { phase in
+                        switch phase {
+                        case .active(let location):
+                            guard let date = proxy.value(atX: location.x - plot.minX, as: Date.self),
+                                  let index = ChartHover.nearestIndex(in: domain, to: date)
+                            else { return }
+                            if domain[index] != hoveredDate { hoveredDate = domain[index] }
+                        case .ended:
+                            hoveredDate = nil
+                        }
+                    }
+                if let date = selectedDate {
+                    let rows = seriesRows(at: date)
+                    let x = plot.minX + (proxy.position(forX: date) ?? 0)
+                    // O marcador acompanha o histórico quando ele existe naquele instante;
+                    // no futuro não há ponto real para marcar, só a régua.
+                    let markerY = history.first { $0.date == date }
+                        .flatMap { proxy.position(forY: $0.remainingPercent) }
+                        .map { plot.minY + $0 }
+                    ChartHoverRule(x: x, top: plot.minY, bottom: plot.maxY,
+                                   markerY: markerY, color: Theme.accent)
+                    ChartTooltipLayer(
+                        anchor: CGPoint(x: x, y: markerY ?? plot.midY),
+                        bounds: plot
+                    ) {
+                        ChartTooltip(
+                            title: ChartHover.timeLabel(date),
+                            value: rows.first?.value,
+                            caption: L("restante"),
+                            rows: rows
+                        )
+                    }
+                }
+            }
+            .animation(Theme.hoverTransition, value: selectedDate)
+        }
+    }
+
+    /// Uma linha por série que tem valor naquele instante — nas mesmas tintas da escala do
+    /// gráfico, senão a cor do cartão não corresponderia à cor da linha que ele descreve.
+    private func seriesRows(at date: Date) -> [ChartTooltipRow] {
+        var rows: [ChartTooltipRow] = []
+        if let point = history.first(where: { $0.date == date }) {
+            rows.append(ChartTooltipRow(
+                id: "history",
+                color: Theme.accent,
+                name: ForecastChartSeries.history.label,
+                value: ChartHover.percentLabel(point.remainingPercent / 100)
+            ))
+        }
+        if let value = value(of: projection, at: date) {
+            rows.append(ChartTooltipRow(
+                id: "projection",
+                color: projectionColor,
+                name: ForecastChartSeries.projection.label,
+                value: ChartHover.percentLabel(value / 100)
+            ))
+        }
+        if let value = value(of: safePace, at: date) {
+            rows.append(ChartTooltipRow(
+                id: "safe",
+                color: providerColor,
+                name: ForecastChartSeries.safePace.label,
+                value: ChartHover.percentLabel(value / 100)
+            ))
+        }
+        return rows
+    }
+
+    /// Valor de uma das retas de duas pontas naquele instante.
+    private func value(of series: [ForecastChartPoint], at date: Date) -> Double? {
+        guard let start = series.first, let end = series.last, series.count == 2 else { return nil }
+        return ChartHover.interpolate(
+            date,
+            from: (date: start.date, value: start.remainingPercent),
+            to: (date: end.date, value: end.remainingPercent)
+        )
     }
 
     private func remainingPercent(fromUsed usedPercent: Double) -> Double {

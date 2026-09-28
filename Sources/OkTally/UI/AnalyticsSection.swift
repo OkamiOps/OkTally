@@ -124,9 +124,26 @@ struct TokenHeatmapView: View {
         let label: String
     }
 
+    /// Espaço de coordenadas do bloco inteiro (rótulos + grade + legenda). O hover de cada
+    /// célula reporta a posição do cursor JÁ nesse espaço, que é o mesmo em que o cartão é
+    /// grampeado — sem isso seria preciso somar deslocamentos de linha à mão.
+    private static let space = "oktally.heatmap"
+
+    @Environment(\.chartHoverPreview) private var hoverPreview
+
+    @State private var hoveredDay: String?
+    @State private var hoverLocation: CGPoint?
+    /// Retângulo da célula em foco, no espaço do bloco. Serve de âncora quando não há
+    /// cursor nenhum (o render dos PNGs) e de alvo do contorno.
+    @State private var hoveredCellFrame: CGRect?
+    @State private var blockSize: CGSize = .zero
+
+    private var selectedDay: String? { hoveredDay ?? hoverPreview?.day }
+
     var body: some View {
         let days = makeAllDays()
         let totalColumns = (days.map(\.column).max() ?? -1) + 1
+        let selected = selectedDay
         VStack(alignment: .leading, spacing: 3) {
             HeatmapMonthLabelsLayout(gap: Self.gap, totalColumns: totalColumns) {
                 ForEach(monthLabelEntries(days: days, totalColumns: totalColumns)) { entry in
@@ -139,14 +156,77 @@ struct TokenHeatmapView: View {
             }
             HeatmapGridLayout(gap: Self.gap, totalColumns: totalColumns) {
                 ForEach(days) { day in
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(color(level: day.level))
-                        .help(tooltip(day))
-                        .layoutValue(key: HeatmapColumnRowKey.self, value: (day.column, day.row))
+                    cell(day, isSelected: day.id == selected)
                 }
             }
             legend
         }
+        .coordinateSpace(name: Self.space)
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { blockSize = $0 }
+        .overlay(alignment: .topLeading) {
+            if let selected, let day = days.first(where: { $0.id == selected }) {
+                ChartTooltipLayer(
+                    anchor: hoverLocation ?? hoveredCellFrame.map {
+                        CGPoint(x: $0.midX, y: $0.midY)
+                    },
+                    bounds: CGRect(origin: .zero, size: blockSize),
+                    gap: 10
+                ) {
+                    card(day)
+                }
+            }
+        }
+    }
+
+    /// Uma célula. O contorno é a resposta imediata ao cursor — o cartão vem depois, e sem
+    /// o contorno não fica claro QUAL quadradinho ele está descrevendo.
+    private func cell(_ day: Day, isSelected: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 2)
+            .fill(color(level: day.level))
+            .overlay {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 2)
+                        .strokeBorder(Color.primary.opacity(0.9), lineWidth: 1.5)
+                        // Cresce 1pt para fora: um contorno desenhado DENTRO de uma célula
+                        // de 8pt come quase metade da cor que ele deveria estar apontando.
+                        .padding(-1)
+                        // Só a célula em foco observa geometria — 371 observadores (53
+                        // semanas × 7 dias) custariam um ciclo de layout por quadro.
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) }
+                            action: { hoveredCellFrame = $0 }
+                }
+            }
+            .onContinuousHover(coordinateSpace: .named(Self.space)) { phase in
+                switch phase {
+                case .active(let location):
+                    if hoveredDay != day.id { hoveredDay = day.id }
+                    hoverLocation = location
+                case .ended:
+                    if hoveredDay == day.id {
+                        hoveredDay = nil
+                        hoverLocation = nil
+                    }
+                }
+            }
+            .accessibilityLabel(tooltip(day))
+            .animation(Theme.hoverTransition, value: isSelected)
+            .layoutValue(key: HeatmapColumnRowKey.self, value: (day.column, day.row))
+    }
+
+    /// Data, volume exato e — o que a célula sozinha não diz — onde aquele dia cai na
+    /// distribuição. "2.3M tokens" não informa se foi um dia forte; "top 25% dos dias",
+    /// sim.
+    private func card(_ day: Day) -> some View {
+        let tokens = day.tokens ?? 0
+        return ChartTooltip(
+            title: ChartHover.dayLabel(day.date),
+            value: tokens > 0 ? TokenAnalytics.compactTokens(tokens) : L("sem uso"),
+            caption: tokens > 0
+                ? [LF("%@ tokens", ChartHover.groupedTokens(tokens)),
+                   ChartHover.intensityLabel(level: day.level)]
+                    .compactMap { $0 }.joined(separator: " · ")
+                : nil
+        )
     }
 
     /// Legenda "menos → mais", ausente na versão antiga.

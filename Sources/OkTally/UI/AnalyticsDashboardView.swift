@@ -92,7 +92,9 @@ struct AnalyticsDashboardView: View {
                 // a folga agora é o gráfico, que não tem altura intrínseca nenhuma — o
                 // `minHeight` é só o piso para ele não colapsar quando a linha for baixa.
                 if hasVolume {
-                    DailyTokensAreaChart(points: totals, color: Theme.onHero)
+                    // `hover: .card` só aqui: este é o gráfico grande da tela, o único com
+                    // área sobrando para um cartão flutuante caber sem cobrir a curva.
+                    DailyTokensAreaChart(points: totals, color: Theme.onHero, hover: .card)
                         .frame(minHeight: 72, maxHeight: .infinity)
                 } else {
                     emptyPeriod.frame(minHeight: 72, maxHeight: .infinity)
@@ -230,7 +232,14 @@ struct AnalyticsDashboardView: View {
                         emptyPeriod
                     } else {
                         ForEach(share, id: \.providerId) { entry in
-                            providerLine(entry, total: total)
+                            ProviderTrendRow(
+                                providerId: entry.providerId,
+                                name: providerName(entry.providerId),
+                                tokens: entry.tokens,
+                                total: total,
+                                cost: appModel.estimatedCostByProvider[entry.providerId],
+                                analytics: byProvider[entry.providerId]
+                            )
                         }
                     }
                 }
@@ -241,7 +250,7 @@ struct AnalyticsDashboardView: View {
                     if share.isEmpty {
                         emptyPeriod.frame(height: 150)
                     } else {
-                        ProviderShareDonut(share: share)
+                        ProviderShareDonut(share: share, providerName: providerName)
                             .frame(height: 150)
                     }
                 }
@@ -249,44 +258,6 @@ struct AnalyticsDashboardView: View {
             .frame(width: 210)
         }
         .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func providerLine(_ entry: (providerId: String, tokens: Int), total: Int) -> some View {
-        let color = ProviderPalette.color(for: entry.providerId)
-        // `total` zerado sairia como NaN, e `max(0, min(1, .nan))` é 1.0 em Swift: a
-        // barra e o anel apareceriam cheios.
-        let fraction = total > 0 ? Double(entry.tokens) / Double(total) : 0
-        return VStack(alignment: .leading, spacing: Theme.Space.xs) {
-            HStack(spacing: Theme.Space.sm) {
-                IconChip(glyph: ProviderPalette.glyph(forId: entry.providerId), color: color, size: 20)
-                Text(providerName(entry.providerId)).font(Theme.Font.body)
-                Spacer(minLength: Theme.Space.sm)
-                if let cost = appModel.estimatedCostByProvider[entry.providerId] {
-                    Text("$" + String(format: "%.2f", (cost as NSDecimalNumber).doubleValue))
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .monospacedDigit()
-                }
-                Text(TokenAnalytics.compactTokens(entry.tokens))
-                    .font(Theme.Font.metricMedium)
-                    .monospacedDigit()
-                Text(String(format: "%.0f%%", fraction * 100))
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .frame(width: 34, alignment: .trailing)
-            }
-            HStack(spacing: Theme.Space.sm) {
-                ShareBar(fraction: fraction, color: color)
-                if let analytics = byProvider[entry.providerId] {
-                    DailyTokensAreaChart(
-                        points: TrendSeries.dailyTotals(analytics, lastDays: 14),
-                        color: color
-                    )
-                    .frame(width: 70, height: 18)
-                }
-            }
-        }
     }
 
     // MARK: - Linha 4: cotas
@@ -341,5 +312,87 @@ struct AnalyticsDashboardView: View {
         Text(L("Codex: estatísticas da conta (API). Claude Code e OpenCode: estimativa local dos transcritos/banco desta máquina, incluindo tokens de cache."))
             .font(.system(size: 9))
             .foregroundStyle(.tertiary)
+    }
+}
+
+/// Uma linha de "Por provedor". Deixou de ser um `@ViewBuilder` do dashboard porque cada
+/// linha precisa do PRÓPRIO estado de hover: com o estado no pai, passar o cursor por uma
+/// linha invalidaria o `body` das dez e as outras nove redesenhariam seus gráficos junto.
+private struct ProviderTrendRow: View {
+    let providerId: String
+    let name: String
+    let tokens: Int
+    let total: Int
+    let cost: Decimal?
+    let analytics: TokenAnalytics?
+
+    @State private var isHovered = false
+    /// O ponto sob o cursor na sparkline. O cartão completo não cabe num gráfico de
+    /// 70×18 — grampeado ali dentro ele cobriria a curva inteira —, então a leitura sobe
+    /// para a linha, que tem largura de sobra.
+    @State private var hoveredPoint: DailyTokens?
+
+    private var color: Color { ProviderPalette.color(for: providerId) }
+
+    /// `total` zerado sairia como NaN, e `max(0, min(1, .nan))` é 1.0 em Swift: a barra e
+    /// o anel apareceriam cheios.
+    private var fraction: Double { total > 0 ? Double(tokens) / Double(total) : 0 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            HStack(spacing: Theme.Space.sm) {
+                IconChip(glyph: ProviderPalette.glyph(forId: providerId), color: color, size: 20)
+                Text(name).font(Theme.Font.body)
+                if let hoveredPoint, let date = TokenAnalytics.date(fromDay: hoveredPoint.day) {
+                    Text("\(ChartHover.dayLabel(date)) · \(TokenAnalytics.compactTokens(hoveredPoint.tokens))")
+                        .font(.system(size: 10))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .transition(.opacity)
+                }
+                Spacer(minLength: Theme.Space.sm)
+                if let cost {
+                    Text("$" + String(format: "%.2f", (cost as NSDecimalNumber).doubleValue))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .monospacedDigit()
+                }
+                Text(TokenAnalytics.compactTokens(tokens))
+                    .font(Theme.Font.metricMedium)
+                    .monospacedDigit()
+                Text(ChartHover.percentLabel(fraction))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .frame(width: 34, alignment: .trailing)
+            }
+            HStack(spacing: Theme.Space.sm) {
+                ShareBar(fraction: fraction, color: color)
+                if let analytics {
+                    DailyTokensAreaChart(
+                        points: TrendSeries.dailyTotals(analytics, lastDays: 14),
+                        color: color,
+                        hover: .rule,
+                        onHoverDay: { hoveredPoint = $0 }
+                    )
+                    .frame(width: 70, height: 18)
+                }
+            }
+        }
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        // Realce em `background`, e não em padding: um `background` não participa do
+        // layout, então a folga de 8×4 sai por cima do padding do card em vez de empurrar
+        // as linhas para dentro e desalinhá-las do cabeçalho da seção.
+        .background {
+            RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
+                .fill(Theme.surfaceRaised())
+                .opacity(isHovered ? 1 : 0)
+                .padding(.horizontal, -Theme.Space.sm)
+                .padding(.vertical, -Theme.Space.xs)
+        }
+        .animation(Theme.hoverTransition, value: isHovered)
+        .animation(Theme.hoverTransition, value: hoveredPoint)
     }
 }

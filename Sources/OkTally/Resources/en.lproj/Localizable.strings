@@ -90,6 +90,13 @@
 "menos" = "less";
 "mais" = "more";
 
+/* Hover dos gráficos (ChartHover / ChartTooltip). */
+"sem uso" = "no usage";
+"top 25% dos dias" = "top 25% of days";
+"acima da mediana" = "above the median";
+"abaixo da mediana" = "below the median";
+"25% menos ativos" = "least active 25%";
+
 /* Charts */
 "Dia" = "Day";
 "Amostra" = "Sample";

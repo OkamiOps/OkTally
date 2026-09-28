@@ -413,7 +413,13 @@ struct ProviderDetailScreen: View {
             if history.count >= 2 {
                 HStack(spacing: Theme.Space.sm) {
                     SectionHeader(L("Uso — 7 dias"), onHero: true)
-                    SparklineView(points: history.map(\.usedPercent), color: Theme.onHero, height: 30)
+                    SparklineView(
+                        points: history.map(\.usedPercent),
+                        color: Theme.onHero,
+                        height: 30,
+                        dates: history.map(\.date),
+                        hover: true
+                    )
                 }
                 .padding(.top, Theme.Space.xs)
             }

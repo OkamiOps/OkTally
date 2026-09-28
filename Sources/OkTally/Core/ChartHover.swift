@@ -195,6 +195,34 @@ enum ChartHover {
         return first.uppercased() + text.dropFirst()
     }
 
+    /// "12:00" — hora e minuto da localidade. Usado pela previsão, cujo eixo é de horas e
+    /// não de dias.
+    static func timeLabel(_ date: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        formatter.setLocalizedDateFormatFromTemplate("j:mm")
+        return formatter.string(from: date)
+    }
+
+    /// Valor de uma reta entre dois pontos no instante `date`.
+    ///
+    /// Fora do segmento devolve `nil` em vez de extrapolar: as retas da previsão terminam
+    /// em zero na exaustão e na renovação, e continuar a conta depois disso produziria
+    /// "restante negativo" — um número que o gráfico nunca desenha e que o tooltip não
+    /// tem o direito de inventar.
+    static func interpolate(
+        _ date: Date,
+        from start: (date: Date, value: Double),
+        to end: (date: Date, value: Double)
+    ) -> Double? {
+        let span = end.date.timeIntervalSince(start.date)
+        guard span > 0 else { return nil }
+        let offset = date.timeIntervalSince(start.date)
+        guard offset >= 0, offset <= span else { return nil }
+        return start.value + (end.value - start.value) * (offset / span)
+    }
+
     /// Porcentagem inteira, com a fração já grampeada em 0…1 — `NaN` vira 0% em vez de
     /// 100%, pelo mesmo motivo de `Theme.clampFraction` (a guarda está repetida aqui para
     /// o `Core` não depender da camada de UI).
