@@ -301,6 +301,9 @@ struct PreferencesView: View {
     private func removeAccount(_ id: String) {
         do {
             try appModel.removeAccount(id: id)
+            // Limpa o estado da conta ANTES de trocar de painel: o campo de chave grava no
+            // `onDisappear`, e com o texto ainda lá regravaria a chave recém-apagada.
+            clearViewState(for: id)
             pane = .general
             statusMessage = ""
             load()
@@ -738,7 +741,21 @@ struct PreferencesView: View {
         preferencesStore.setMinimaxRegionRaw(raw, instanceId: id)
     }
 
+    /// Esquece tudo o que a tela guarda de uma conta (removida ou rascunho abandonado).
+    private func clearViewState(for id: String) {
+        apiKeyFields[id] = nil
+        minimaxChina[id] = nil
+        nicknameFields[id] = nil
+        loggedIn.remove(id)
+        pastedCodes[id] = nil
+        deviceCodes[id] = nil
+        claudeSessions[id] = nil
+    }
+
     private func saveAPIKey(_ id: String) {
+        // Defesa em profundidade: um commit tardio (onDisappear) de uma conta que já não
+        // existe não grava nada.
+        guard AccountEnrollment(model: appModel).acceptsCredential(for: id) else { return }
         saveSecret(providerName(id), previous: savedAPIKey(id) ?? "", raw: apiKeyBinding(id)) {
             try storeAPIKey($0, id: id)
         }
@@ -951,11 +968,7 @@ struct PreferencesView: View {
         cursorPolls[current.id]?.cancel()
         cursorPolls[current.id] = nil
         AccountEnrollment(model: appModel).abandon(draftId: current.id, kind: current.kind)
-        claudeSessions[current.id] = nil
-        pastedCodes[current.id] = nil
-        deviceCodes[current.id] = nil
-        apiKeyFields[current.id] = nil
-        loggedIn.remove(current.id)
+        clearViewState(for: current.id)
         draft = nil
         pane = .general
         statusMessage = ""

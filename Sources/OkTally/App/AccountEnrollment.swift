@@ -25,7 +25,16 @@ final class AccountEnrollment {
 
     /// Id do rascunho. Reaproveita o id legado quando ele está livre.
     func beginDraft(kind: AccountKind) -> String {
-        AccountID.nextId(kind: kind, existing: model.accounts.map(\.id))
+        let id = AccountID.nextId(kind: kind, existing: model.accounts.map(\.id))
+        model.activeDraftId = id
+        return id
+    }
+
+    /// Pode gravar credencial sob `id`? Só para conta existente ou o rascunho ativo. É o
+    /// que impede o auto-save de um painel que está sumindo (conta recém-removida) de
+    /// regravar a chave morta no Keychain.
+    func acceptsCredential(for id: String) -> Bool {
+        model.accounts.contains { $0.id == id } || model.activeDraftId == id
     }
 
     /// Chamado depois que o login gravou a credencial sob `draftId`.
@@ -44,12 +53,14 @@ final class AccountEnrollment {
         account.identityKey = identity.identityKey
         account.autoLabel = identity.autoLabel
         model.commitAccount(account)
+        if model.activeDraftId == draftId { model.activeDraftId = nil }
         return .committed
     }
 
     /// O dono desistiu do rascunho: apaga o que o login possa ter gravado. Nunca toca
     /// numa conta já adicionada (o id do rascunho só coincide com uma se algo deu errado).
     func abandon(draftId: String, kind: AccountKind) {
+        if model.activeDraftId == draftId { model.activeDraftId = nil }
         guard !model.accounts.contains(where: { $0.id == draftId }) else { return }
         try? model.credentialEraser?(AccountInstance(id: draftId, kind: kind))
     }

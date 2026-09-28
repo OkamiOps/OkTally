@@ -119,4 +119,21 @@ final class AccountEnrollmentTests: XCTestCase {
         XCTAssertEqual(committed, .committed)
         XCTAssertEqual(env.model.accounts.last?.autoLabel, "Trabalho key")
     }
+
+    // MARK: - Revisão: credencial só grava para conta viva ou rascunho ativo
+
+    func test_acceptsCredential_onlyForCommittedAccountOrActiveDraft() throws {
+        let env = EnrollmentEnv(existing: [])
+        XCTAssertTrue(env.enrollment.acceptsCredential(for: "openrouter"))
+        try env.model.removeAccount(id: "openrouter")
+        // O painel da conta removida some e o auto-save dispara no onDisappear: não pode
+        // regravar a chave morta.
+        XCTAssertFalse(env.enrollment.acceptsCredential(for: "openrouter"))
+
+        let draft = env.enrollment.beginDraft(kind: .openrouter)
+        XCTAssertEqual(draft, "openrouter")
+        XCTAssertTrue(env.enrollment.acceptsCredential(for: draft))
+        env.enrollment.abandon(draftId: draft, kind: .openrouter)
+        XCTAssertFalse(env.enrollment.acceptsCredential(for: draft))
+    }
 }

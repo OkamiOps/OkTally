@@ -152,6 +152,11 @@ final class AppModel: ObservableObject {
     /// somar chamadas ao perfil a cada poll quando a fonte não tem e-mail.
     private var identityAttempted: Set<String> = []
 
+    /// Id do rascunho de conta em andamento (menu "+"), ou `nil`. Vive no modelo — e não
+    /// na view — para as guardas de credencial serem testáveis: só uma conta existente
+    /// ou o rascunho ATIVO podem ter credencial gravada.
+    var activeDraftId: String?
+
     /// O que está gravado — usado em testes para provar a persistência.
     var persistedAccounts: [AccountInstance] { preferences.accounts }
 
