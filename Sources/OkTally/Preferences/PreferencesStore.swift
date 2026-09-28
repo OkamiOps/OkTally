@@ -388,17 +388,35 @@ final class PreferencesStore {
     /// como uma conta legada por tipo — exatamente o app de antes das contas múltiplas.
     /// O e-mail mora aqui porque não é segredo (é rótulo); credencial NUNCA entra neste
     /// JSON, ela continua no Keychain sob o id da conta.
+    ///
+    /// Lido a CADA `displayName` (rótulo da conta), inclusive de dentro do scheduler fora
+    /// da main thread — por isso o decode fica em cache, sob trava. A chave do cache é o
+    /// texto gravado: ler a string do `UserDefaults` é barato, e assim uma escrita feita
+    /// por outra instância do store (o app tem mais de uma) também invalida.
     var accounts: [AccountInstance] {
         get {
-            guard let raw = store.string(forKey: Keys.accounts),
-                  let decoded = try? JSONDecoder().decode([AccountInstance].self, from: Data(raw.utf8)),
-                  !decoded.isEmpty
-            else { return AccountsCatalog.defaultAccounts }
-            return decoded
+            let raw = store.string(forKey: Keys.accounts)
+            accountsCacheLock.lock()
+            defer { accountsCacheLock.unlock() }
+            if let cached = accountsCache, cached.raw == raw { return cached.accounts }
+            accountsDecodeCount += 1
+            let decoded = raw.flatMap { try? JSONDecoder().decode([AccountInstance].self, from: Data($0.utf8)) }
+            let accounts = (decoded?.isEmpty == false) ? decoded! : AccountsCatalog.defaultAccounts
+            accountsCache = (raw, accounts)
+            return accounts
         }
         set {
             guard let data = try? JSONEncoder().encode(newValue) else { return }
-            store.set(String(decoding: data, as: UTF8.self), forKey: Keys.accounts)
+            let raw = String(decoding: data, as: UTF8.self)
+            store.set(raw, forKey: Keys.accounts)
+            accountsCacheLock.lock()
+            accountsCache = (raw, newValue.isEmpty ? AccountsCatalog.defaultAccounts : newValue)
+            accountsCacheLock.unlock()
         }
     }
+
+    private let accountsCacheLock = NSLock()
+    private var accountsCache: (raw: String?, accounts: [AccountInstance])?
+    /// Quantas vezes o JSON foi decodificado — só para o teste do cache.
+    private(set) var accountsDecodeCount = 0
 }

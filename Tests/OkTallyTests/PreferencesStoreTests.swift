@@ -387,4 +387,34 @@ final class PreferencesStoreTests: XCTestCase {
         XCTAssertEqual(store.refreshInterval(for: "minimax#abc123", default: 300), 300)
         XCTAssertEqual(store.minimaxRegionRaw(instanceId: "minimax"), "china")
     }
+
+    // MARK: - Revisão: cache das contas (lidas a cada `displayName`)
+
+    func test_accounts_repeatedReadsDecodeOnce() {
+        let store = makeStore()
+        store.accounts = AccountsCatalog.defaultAccounts
+        let before = store.accountsDecodeCount
+        for _ in 0..<50 { _ = store.accounts }
+        XCTAssertLessThanOrEqual(store.accountsDecodeCount - before, 1)
+    }
+
+    func test_accounts_cacheInvalidatedBySetter() {
+        let store = makeStore()
+        store.accounts = AccountsCatalog.defaultAccounts
+        _ = store.accounts
+        var extra = AccountInstance(id: "codex#abc123", kind: .codex); extra.nickname = "B"
+        store.accounts = AccountsCatalog.defaultAccounts + [extra]
+        XCTAssertEqual(store.accounts.last, extra)
+    }
+
+    /// Outro `PreferencesStore` sobre o mesmo armazenamento (o app tem mais de um) também
+    /// invalida: a chave do cache é o texto gravado, não só o setter local.
+    func test_accounts_cacheSeesWritesFromAnotherStoreInstance() {
+        let kv = FakeKeyValueStore()
+        let a = makeStore(kv: kv), b = makeStore(kv: kv)
+        XCTAssertEqual(a.accounts, AccountsCatalog.defaultAccounts)
+        var extra = AccountInstance(id: "claude#abc123", kind: .claude); extra.nickname = "Trabalho"
+        b.accounts = AccountsCatalog.defaultAccounts + [extra]
+        XCTAssertEqual(a.accounts.last, extra)
+    }
 }
