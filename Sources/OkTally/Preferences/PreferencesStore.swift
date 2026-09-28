@@ -212,6 +212,17 @@ final class PreferencesStore {
         }
     }
 
+    /// Esquece as preferências próprias de uma conta removida. O id legado é reaproveitado
+    /// quando o dono adiciona o tipo de novo, então nada da conta antiga pode sobrar.
+    /// Credencial fica de fora — quem apaga é o `credentialEraser`.
+    func resetAccountPreferences(instanceId: String) {
+        // Intervalo: 0 é lido como "não configurado" (`refreshInterval(for:default:)`).
+        store.set(0, forKey: Keys.refreshInterval(instanceId))
+        if AccountID.kind(of: instanceId) == .minimax {
+            store.set(nil, forKey: AccountID.isLegacy(instanceId) ? Keys.minimaxRegionRaw : Keys.minimaxRegionRaw(instanceId))
+        }
+    }
+
     // MARK: - Notch
 
     /// Painel do notch ligado. Ligado por padrão (mesma convenção de `alertsEnabled`:

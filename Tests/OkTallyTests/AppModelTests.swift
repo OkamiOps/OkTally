@@ -661,6 +661,23 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.isLooping(providerId: "claude#abc123"))
     }
 
+    /// Revisão: o id legado é reaproveitado ao re-adicionar — não pode herdar a região
+    /// nem a identidade da conta removida.
+    func test_removeAccount_resetsPerAccountPreferencesAndIdentityAttempt() async throws {
+        let model = makeAccountsModel()
+        model.preferencesForTesting.setMinimaxRegionRaw("china", instanceId: "minimax")
+        model.preferencesForTesting.setRefreshInterval(120, for: "minimax")
+        var resolved = 0
+        model.identityResolver = { _ in resolved += 1; return AccountIdentity() }
+        model.markIdentityAttemptedForTesting("minimax")
+
+        try model.removeAccount(id: "minimax")
+
+        XCTAssertEqual(model.preferencesForTesting.minimaxRegionRaw(instanceId: "minimax"), "global")
+        XCTAssertEqual(model.preferencesForTesting.refreshInterval(for: "minimax", default: 300), 300)
+        XCTAssertFalse(model.identityWasAttemptedForTesting("minimax"))
+    }
+
     func test_removeCursorAccount_cascadesToGrokBotTwin() throws {
         let model = makeAccountsModel(extra: [AccountInstance(id: "cursor#abc123", kind: .cursor)])
         try model.removeAccount(id: "cursor#abc123")

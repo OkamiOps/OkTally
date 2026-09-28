@@ -365,4 +365,26 @@ final class PreferencesStoreTests: XCTestCase {
         store.setMinimaxRegionRaw("global", instanceId: "minimax")
         XCTAssertEqual(store.minimaxRegionRaw, "global")
     }
+
+    // MARK: - Revisão: preferências de uma conta removida
+
+    func test_resetAccountPreferences_legacyMiniMaxClearsGlobalRegionAndInterval() {
+        let store = makeStore()
+        store.setMinimaxRegionRaw("china", instanceId: "minimax")
+        store.setRefreshInterval(120, for: "minimax")
+        store.resetAccountPreferences(instanceId: "minimax")
+        XCTAssertEqual(store.minimaxRegionRaw(instanceId: "minimax"), "global")
+        XCTAssertEqual(store.refreshInterval(for: "minimax", default: 300), 300)
+    }
+
+    func test_resetAccountPreferences_extraOnlyTouchesItsOwnKeys() {
+        let store = makeStore()
+        store.setMinimaxRegionRaw("china", instanceId: "minimax")
+        store.setMinimaxRegionRaw("china", instanceId: "minimax#abc123")
+        store.setRefreshInterval(120, for: "minimax#abc123")
+        store.resetAccountPreferences(instanceId: "minimax#abc123")
+        XCTAssertEqual(store.minimaxRegionRaw(instanceId: "minimax#abc123"), "global")
+        XCTAssertEqual(store.refreshInterval(for: "minimax#abc123", default: 300), 300)
+        XCTAssertEqual(store.minimaxRegionRaw(instanceId: "minimax"), "china")
+    }
 }

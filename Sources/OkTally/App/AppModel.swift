@@ -157,6 +157,11 @@ final class AppModel: ObservableObject {
     /// ou o rascunho ATIVO podem ter credencial gravada.
     var activeDraftId: String?
 
+    // Ganchos de teste (internos; o app não usa).
+    var preferencesForTesting: PreferencesStore { preferences }
+    func markIdentityAttemptedForTesting(_ id: String) { identityAttempted.insert(id) }
+    func identityWasAttemptedForTesting(_ id: String) -> Bool { identityAttempted.contains(id) }
+
     /// O que está gravado — usado em testes para provar a persistência.
     var persistedAccounts: [AccountInstance] { preferences.accounts }
 
@@ -346,6 +351,10 @@ final class AppModel: ObservableObject {
             analyticsLoaders[providerId] = nil
         }
         forecastsByWindow = forecastsByWindow.filter { !removed.contains($0.key.providerId) }
+        for providerId in ids {
+            preferences.resetAccountPreferences(instanceId: providerId)
+            identityAttempted.remove(providerId)
+        }
 
         accounts.removeAll { $0.id == id }
         preferences.accounts = accounts
