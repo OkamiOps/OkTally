@@ -1,0 +1,59 @@
+// Sources/OkTally/Core/AccountInstance.swift
+import Foundation
+
+/// Uma conta que o dono acompanha. `id` é a chave em todo o app (ver `AccountID`);
+/// `kind` diz que provedor ela é. Nada aqui é segredo: e-mail e apelido moram nas
+/// preferências, as credenciais continuam no Keychain sob o próprio `id`.
+struct AccountInstance: Codable, Equatable, Identifiable {
+    let id: String
+    let kind: AccountKind
+    /// Apelido escolhido pelo dono ("Trabalho"). `nil` = nunca deu nome.
+    var nickname: String?
+    /// E-mail descoberto depois do login — rótulo automático, não identidade.
+    var email: String?
+    /// Chave de dedup (e-mail normalizado, ou impressão digital da chave de API).
+    var identityKey: String?
+
+    init(id: String, kind: AccountKind, nickname: String? = nil, email: String? = nil, identityKey: String? = nil) {
+        self.id = id
+        self.kind = kind
+        self.nickname = nickname
+        self.email = email
+        self.identityKey = identityKey
+    }
+}
+
+enum AccountsCatalog {
+    /// Uma conta legada por tipo, na MESMA ordem em que o app registrava os provedores
+    /// antes das contas múltiplas. Sem GrokBot: ele nasce do Cursor (ver `ProviderFactory`).
+    static let defaultAccounts: [AccountInstance] = [
+        .claude, .codex, .openrouter, .minimax, .cursor, .copilot,
+        .antigravity, .opencode, .mimo, .supergrok
+    ].map { AccountInstance(id: $0.rawValue, kind: $0) }
+}
+
+enum AccountLabel {
+    /// Nome exibido de uma conta. Quem tem uma conta só de um tipo e nunca deu apelido
+    /// vê exatamente o nome de sempre; o sufixo só aparece quando ajuda a distinguir.
+    static func display(for account: AccountInstance, baseName: String, siblings: [AccountInstance]) -> String {
+        if let nickname = account.nickname?.trimmingCharacters(in: .whitespacesAndNewlines), !nickname.isEmpty {
+            return "\(baseName) · \(nickname)"
+        }
+        let sameKind = siblings.filter { $0.kind == account.kind }
+        guard sameKind.count > 1 else { return baseName }
+        if let email = account.email, !email.isEmpty {
+            return "\(baseName) · \(email)"
+        }
+        let position = (sameKind.firstIndex { $0.id == account.id } ?? sameKind.count) + 1
+        return "\(baseName) · \(position)"
+    }
+}
+
+enum AccountDedup {
+    /// A mesma identidade no mesmo tipo é a mesma conta — acompanhá-la duas vezes só
+    /// duplicaria chamadas (e os 429 do Claude). Identidade desconhecida nunca bloqueia.
+    static func isDuplicate(identityKey: String?, kind: AccountKind, among accounts: [AccountInstance], excluding id: String) -> Bool {
+        guard let key = identityKey?.lowercased(), !key.isEmpty else { return false }
+        return accounts.contains { $0.kind == kind && $0.id != id && $0.identityKey?.lowercased() == key }
+    }
+}
