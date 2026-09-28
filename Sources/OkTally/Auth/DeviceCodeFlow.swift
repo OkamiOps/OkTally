@@ -153,11 +153,18 @@ final class DeviceCodeFlow {
                     throw DeviceCodeError.invalidResponse
                 }
                 let expiresAt = payload.expiresIn.map { now().addingTimeInterval(TimeInterval($0)) }
+                // O `email` do `id_token` identifica a conta (rótulo e dedup); ausente, a
+                // conta segue funcionando sem rótulo automático.
+                var extra: [String: String] = [:]
+                if let idToken = payload.idToken,
+                   let email = JWT.decodePayload(idToken)?["email"] as? String, !email.isEmpty {
+                    extra["email"] = email
+                }
                 let token = OAuthToken(
                     accessToken: payload.accessToken,
                     refreshToken: payload.refreshToken,
                     expiresAt: expiresAt,
-                    extra: [:]
+                    extra: extra
                 )
                 try tokenStore.save(token, providerId: config.providerId)
                 return token

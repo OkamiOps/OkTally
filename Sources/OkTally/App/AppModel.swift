@@ -140,6 +140,13 @@ final class AppModel: ObservableObject {
     /// Apaga a credencial de uma conta removida (Keychain OAuth ou chave de API).
     var credentialEraser: ((AccountInstance) throws -> Void)?
 
+    /// Descobre e-mail/identidade de uma conta (injetado pelo app com o
+    /// `AccountEmailResolver`).
+    var identityResolver: ((AccountInstance) async -> (email: String?, identityKey: String?))?
+    /// Contas cuja identidade já foi procurada neste launch — uma tentativa só, para não
+    /// somar chamadas ao perfil a cada poll quando a fonte não tem e-mail.
+    private var identityAttempted: Set<String> = []
+
     /// O que está gravado — usado em testes para provar a persistência.
     var persistedAccounts: [AccountInstance] { preferences.accounts }
 
@@ -340,6 +347,25 @@ final class AppModel: ObservableObject {
         updateAccount(id: id) {
             $0.email = email
             $0.identityKey = identityKey
+        }
+    }
+
+    /// Backfill: contas sem e-mail (legadas de antes desta versão, ou cuja fonte falhou
+    /// no login) ganham o e-mail na primeira leitura bem-sucedida do launch.
+    private func resolveIdentityIfMissing(_ id: String) {
+        guard let resolver = identityResolver,
+              let account = accounts.first(where: { $0.id == id }),
+              account.email == nil,
+              identityAttempted.insert(id).inserted
+        else { return }
+        Task { [weak self] in
+            let identity = await resolver(account)
+            guard identity.email != nil || identity.identityKey != nil else { return }
+            await MainActor.run {
+                guard let self, let current = self.accounts.first(where: { $0.id == id }) else { return }
+                self.setIdentity(id: id, email: identity.email ?? current.email,
+                                 identityKey: identity.identityKey ?? current.identityKey)
+            }
         }
     }
 
@@ -560,6 +586,7 @@ final class AppModel: ObservableObject {
                 await self?.recomputeForecasts(providerId: result.providerId)
             }
             refreshEstimatedCost(for: snapshot)
+            resolveIdentityIfMissing(result.providerId)
         case .failure(let error):
             errorsByProvider[result.providerId] = error.localizedDescription
             errorKindByProvider[result.providerId] = ProviderErrorPresentation.classify(error)

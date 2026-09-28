@@ -47,6 +47,27 @@ final class AntigravityTokenReader: AntigravityTokenReading {
         return Self.decodeTokens(fromBase64: blob)
     }
 
+    /// E-mail do login do IDE: campo `email` do JSON em `antigravityAuthStatus`. Só o
+    /// e-mail é lido — o resto do registro (inclusive a chave que o IDE guarda ali) nunca
+    /// sai desta função.
+    func readEmail() -> String? {
+        guard FileManager.default.fileExists(atPath: dbPath) else { return nil }
+        var config = Configuration()
+        config.readonly = true
+        guard let dbQueue = try? DatabaseQueue(path: dbPath, configuration: config) else { return nil }
+        let raw: String? = try? dbQueue.read { db in
+            guard let row = try Row.fetchOne(db, sql: "SELECT value FROM ItemTable WHERE key = 'antigravityAuthStatus'") else { return nil }
+            if let string: String = row["value"] { return string }
+            if let data: Data = row["value"] { return String(data: data, encoding: .utf8) }
+            return nil
+        }
+        guard let raw,
+              let json = (try? JSONSerialization.jsonObject(with: Data(raw.utf8))) as? [String: Any],
+              let email = json["email"] as? String, !email.isEmpty
+        else { return nil }
+        return email
+    }
+
     // MARK: - Protobuf decode (mínimo necessário, sem dependência)
 
     static func decodeTokens(fromBase64 blob: String) -> AntigravityTokens? {

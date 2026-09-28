@@ -149,6 +149,10 @@ actor OAuthManager: OAuthManaging {
            let accountId = authClaim["chatgpt_account_id"] as? String {
             extra["account_id"] = accountId
         }
+        // A claim OIDC padrão `email` — rótulo automático e chave de dedup da conta.
+        if let email = payload["email"] as? String, !email.isEmpty {
+            extra["email"] = email
+        }
         return extra
     }
 

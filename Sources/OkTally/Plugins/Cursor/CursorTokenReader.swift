@@ -34,6 +34,11 @@ final class CursorTokenReader: CursorTokenReading {
         readItem(key: "cursorAuth/stripeMembershipType")
     }
 
+    /// E-mail que o Cursor cacheia junto da sessão — rótulo da conta legada.
+    func readEmail() -> String? {
+        readItem(key: "cursorAuth/cachedEmail").flatMap { $0.isEmpty ? nil : $0 }
+    }
+
     private func readItem(key: String) -> String? {
         guard FileManager.default.fileExists(atPath: dbPath) else { return nil }
 

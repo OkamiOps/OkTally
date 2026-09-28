@@ -76,6 +76,14 @@ struct OkTallyApp: App {
                              preferences: preferencesStore)
         model.providerFactory = { account in factory.providers(for: account, all: preferencesStore.accounts) }
         model.credentialEraser = { account in try Self.eraseCredential(of: account, tokenStore: tokenStore, preferences: preferencesStore) }
+        let emailResolver = AccountEmailResolver(
+            tokenStore: tokenStore,
+            oauthManager: oauthManager,
+            claudeProfile: ClaudeProfileClient(),
+            cursorEmail: { CursorTokenReader().readEmail() },
+            antigravityEmail: { AntigravityTokenReader().readEmail() }
+        )
+        model.identityResolver = { account in await emailResolver.resolve(account) }
         model.updateFetcher = GitHubLatestReleaseFetcher()
         let codexAnalyticsFetcher = CodexAnalyticsFetcher()
         model.analyticsLoaders["codex"] = {

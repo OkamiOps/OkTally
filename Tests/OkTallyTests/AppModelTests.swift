@@ -695,6 +695,30 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.persistedAccounts.first { $0.id == "codex" }?.identityKey, "c@x.com")
     }
 
+    func test_successfulFetch_backfillsMissingEmailOncePerLaunch() async {
+        let codex = FakeUsageProvider(id: "codex", displayName: "Codex")
+        codex.snapshotToReturn = ProviderSnapshot(providerId: "codex", fetchedAt: Date(), quotas: [], usageDetail: nil)
+        let registry = PluginRegistry(); registry.register(codex)
+        let defaults = isolatedProviderOrderDefaults()
+        let preferences = PreferencesStore(store: defaults, secretStore: FakeSecretStore())
+        let model = AppModel(registry: registry, scheduler: providerOrderScheduler(registry: registry),
+                             defaults: defaults, preferences: preferences)
+        var calls = 0
+        model.identityResolver = { _ in
+            calls += 1
+            return (email: "c@x.com", identityKey: "c@x.com")
+        }
+
+        await model.refreshNow()
+        for _ in 0..<200 where model.accounts.first(where: { $0.id == "codex" })?.email == nil { await Task.yield() }
+        await model.refreshNow()
+        for _ in 0..<50 { await Task.yield() }
+
+        XCTAssertEqual(model.accounts.first { $0.id == "codex" }?.email, "c@x.com")
+        XCTAssertEqual(preferences.accounts.first { $0.id == "codex" }?.identityKey, "c@x.com")
+        XCTAssertEqual(calls, 1)
+    }
+
     /// Sem contas extras, nada muda: mesmos ids, mesma ordem, mesmos nomes.
     func test_legacyOnlyModel_keepsTodaysIdsAndNames() {
         let model = makeAccountsModel()
