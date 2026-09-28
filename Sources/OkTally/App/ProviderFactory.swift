@@ -70,16 +70,21 @@ struct ProviderFactory {
                 usedCreditsProvider: { preferences.mimoUsedCredits }
             )]
         }
-        return raw.map { base in
-            let baseName = base.displayName
-            return LabeledProvider(base: base) {
-                // Lido a cada acesso: renomear nas Preferências vale na hora. Se a conta
-                // já não está na lista (acabou de ser removida), cai no retrato da criação.
-                let current = preferences.accounts
-                let latest = current.first { $0.id == id } ?? account
-                let siblings = current.contains { $0.id == id } ? current : all
-                return AccountLabel.display(for: latest, baseName: baseName, siblings: siblings)
+        return raw.map { Self.labeled($0, account: account, all: all, preferences: preferences) }
+    }
+
+    /// Embrulha um provedor com o rótulo da conta. O rótulo é lido a cada acesso das
+    /// preferências: renomear vale na hora. Se a conta já não está na lista (acabou de
+    /// ser removida), cai no retrato da criação.
+    static func labeled(_ base: UsageProvider, account: AccountInstance, all: [AccountInstance], preferences: PreferencesStore) -> UsageProvider {
+        let baseName = base.displayName
+        let id = account.id
+        return LabeledProvider(base: base) {
+            let current = preferences.accounts
+            guard let latest = current.first(where: { $0.id == id }) else {
+                return AccountLabel.display(for: account, baseName: baseName, siblings: all)
             }
+            return AccountLabel.display(for: latest, baseName: baseName, siblings: current)
         }
     }
 }

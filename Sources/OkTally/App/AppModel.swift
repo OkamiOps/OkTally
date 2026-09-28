@@ -129,6 +129,20 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Contas
+
+    /// As contas acompanhadas. Espelho publicado de `PreferencesStore.accounts` — a
+    /// escrita passa sempre por aqui para disco e tela ficarem juntos.
+    @Published private(set) var accounts: [AccountInstance]
+
+    /// Monta os provedores de uma conta nova (injetado pelo app com o `ProviderFactory`).
+    var providerFactory: ((AccountInstance) -> [UsageProvider])?
+    /// Apaga a credencial de uma conta removida (Keychain OAuth ou chave de API).
+    var credentialEraser: ((AccountInstance) throws -> Void)?
+
+    /// O que está gravado — usado em testes para provar a persistência.
+    var persistedAccounts: [AccountInstance] { preferences.accounts }
+
     private static let menuBarPinsKey = "menuBarPins"
     private static let legacyMenuBarPinKey = "menuBarPin"
     private let defaults: UserDefaults
@@ -180,6 +194,7 @@ final class AppModel: ObservableObject {
         self.forecastSlot = preferences.forecastSlot
         self.providerOrder = preferences.providerOrder
         self.popoverHiddenProviders = preferences.popoverHiddenProviders
+        self.accounts = preferences.accounts
         self.usageColorScale = preferences.usageColorScale
         if let joined = defaults.string(forKey: Self.menuBarPinsKey) {
             self.menuBarPins = joined.split(separator: "\u{2}").compactMap { MenuBarPin(stored: String($0)) }
@@ -236,6 +251,107 @@ final class AppModel: ObservableObject {
                 try? await Task.sleep(nanoseconds: 24 * 3600 * 1_000_000_000)
             }
         }
+    }
+
+    func isLooping(providerId: String) -> Bool {
+        scheduler.isLooping(id: providerId)
+    }
+
+    // MARK: - Ciclo de vida das contas
+
+    /// Adiciona uma conta já logada: persiste, registra os provedores, liga o loop (com
+    /// o atraso de irmãos) e a encaixa logo depois da última conta do mesmo tipo.
+    func commitAccount(_ account: AccountInstance) {
+        guard !accounts.contains(where: { $0.id == account.id }) else { return }
+        var currentOrder = orderedProviders.map(\.id)
+        accounts.append(account)
+        preferences.accounts = accounts
+
+        let providers = providerFactory?(account) ?? []
+        registry.add(providers)
+        let entries = registry.providers.map { ($0.id, $0.refreshInterval) }
+        for provider in providers {
+            scheduler.startLoop(for: provider, initialDelay: RefreshStagger.offset(of: provider.id, among: entries))
+            let kind = AccountID.kind(of: provider.id)
+            if let lastSibling = currentOrder.lastIndex(where: { AccountID.kind(of: $0) == kind }) {
+                currentOrder.insert(provider.id, at: lastSibling + 1)
+            } else {
+                currentOrder.append(provider.id)
+            }
+        }
+        providerOrder = currentOrder
+    }
+
+    /// Remove uma conta e tudo o que é dela: loop, provedores, credencial, histórico,
+    /// pinos, slots, ordem e estado publicado. Contas presas a um app instalado recusam.
+    func removeAccount(id: String) throws {
+        guard AccountRemoval.canRemove(id) else { throw AccountError.cannotRemove(id) }
+        guard let account = accounts.first(where: { $0.id == id }) else { throw AccountError.unknownAccount(id) }
+        // A credencial primeiro: se o Keychain recusar, nada mudou e o dono pode tentar de novo.
+        try credentialEraser?(account)
+
+        let ids = AccountRemoval.cascadeIds(for: id)
+        let removed = Set(ids)
+        for providerId in ids {
+            scheduler.stopLoop(id: providerId)
+            try? storage?.deleteSnapshots(providerId: providerId)
+        }
+        registry.remove(ids: removed)
+
+        let cleaned = AccountRemoval.cleanup(
+            removedIds: removed,
+            pins: menuBarPins,
+            slots: [notchLeadingSlot, notchTrailingSlot, notchBottomSlot, menuBarSlot, popoverHeroSlot],
+            order: providerOrder
+        )
+        if cleaned.pins != menuBarPins { menuBarPins = cleaned.pins }
+        if cleaned.slots[0] != notchLeadingSlot { notchLeadingSlot = cleaned.slots[0] }
+        if cleaned.slots[1] != notchTrailingSlot { notchTrailingSlot = cleaned.slots[1] }
+        if cleaned.slots[2] != notchBottomSlot { notchBottomSlot = cleaned.slots[2] }
+        if cleaned.slots[3] != menuBarSlot { menuBarSlot = cleaned.slots[3] }
+        if cleaned.slots[4] != popoverHeroSlot { popoverHeroSlot = cleaned.slots[4] }
+        if cleaned.order != providerOrder { providerOrder = cleaned.order }
+        if case .window(let providerId, _) = forecastSlot, removed.contains(providerId) { forecastSlot = .automatic }
+        if !popoverHiddenProviders.isDisjoint(with: removed) { popoverHiddenProviders.subtract(removed) }
+
+        for providerId in ids {
+            snapshotsByProvider[providerId] = nil
+            errorsByProvider[providerId] = nil
+            errorKindByProvider[providerId] = nil
+            historyByProvider[providerId] = nil
+            estimatedCostByProvider[providerId] = nil
+            analyticsByProvider[providerId] = nil
+            analyticsLoadedAt[providerId] = nil
+        }
+        forecastsByWindow = forecastsByWindow.filter { !removed.contains($0.key.providerId) }
+
+        accounts.removeAll { $0.id == id }
+        preferences.accounts = accounts
+    }
+
+    /// Apelido da conta. Vazio (ou só espaços) apaga o apelido.
+    func renameAccount(id: String, nickname: String?) {
+        let trimmed = nickname?.trimmingCharacters(in: .whitespacesAndNewlines)
+        updateAccount(id: id) { $0.nickname = (trimmed?.isEmpty ?? true) ? nil : trimmed }
+    }
+
+    /// E-mail e chave de dedup descobertos depois do login.
+    func setIdentity(id: String, email: String?, identityKey: String?) {
+        updateAccount(id: id) {
+            $0.email = email
+            $0.identityKey = identityKey
+        }
+    }
+
+    private func updateAccount(id: String, _ change: (inout AccountInstance) -> Void) {
+        guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
+        var updated = accounts[index]
+        change(&updated)
+        guard updated != accounts[index] else { return }
+        accounts[index] = updated
+        preferences.accounts = accounts
+        // Os rótulos são lidos das preferências pelos provedores; o `@Published` acima já
+        // avisa as views, que releem `displayName`.
     }
 
     func refreshNow() async {
@@ -432,6 +548,8 @@ final class AppModel: ObservableObject {
     }
 
     private func apply(_ result: SchedulerFetchResult) {
+        // Um fetch que já estava em voo quando a conta foi removida não pode ressuscitá-la.
+        guard registry.providers.contains(where: { $0.id == result.providerId }) else { return }
         switch result.outcome {
         case .success(let snapshot):
             snapshotsByProvider[result.providerId] = snapshot

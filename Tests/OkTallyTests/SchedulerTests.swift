@@ -41,6 +41,10 @@ final class FakeStorage: StorageManaging {
         (byProvider[providerId] ?? []).filter { $0.fetchedAt >= since }
     }
 
+    func deleteSnapshots(providerId: String) throws {
+        byProvider[providerId] = nil
+    }
+
     func prune(olderThan cutoff: Date) throws {
         for (key, value) in byProvider {
             byProvider[key] = value.filter { $0.fetchedAt >= cutoff }

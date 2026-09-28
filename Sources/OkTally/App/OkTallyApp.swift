@@ -72,7 +72,10 @@ struct OkTallyApp: App {
         self.claudeProvider = claudeProvider
 
         let pricingEngine = PricingEngine(source: OpenRouterPricingSource())
-        let model = AppModel(registry: registry, scheduler: scheduler, storage: storage, pricingEngine: pricingEngine)
+        let model = AppModel(registry: registry, scheduler: scheduler, storage: storage, pricingEngine: pricingEngine,
+                             preferences: preferencesStore)
+        model.providerFactory = { account in factory.providers(for: account, all: preferencesStore.accounts) }
+        model.credentialEraser = { account in try Self.eraseCredential(of: account, tokenStore: tokenStore, preferences: preferencesStore) }
         model.updateFetcher = GitHubLatestReleaseFetcher()
         let codexAnalyticsFetcher = CodexAnalyticsFetcher()
         model.analyticsLoaders["codex"] = {
@@ -159,6 +162,21 @@ struct OkTallyApp: App {
         var body: some View {
             Image(nsImage: MenuBarLabelRenderer.image(for: appModel.menuBarSegment,
                                                       onDarkBar: colorScheme == .dark))
+        }
+    }
+
+    /// Apaga a credencial de uma conta removida. Contas OAuth guardam o token no
+    /// Keychain sob o próprio id; as de chave de API, no Keychain de segredos.
+    private static func eraseCredential(of account: AccountInstance, tokenStore: TokenStoring, preferences: PreferencesStore) throws {
+        switch account.kind {
+        case .openrouter where AccountID.isLegacy(account.id):
+            try preferences.setOpenRouterAPIKey(nil)
+        case .minimax where AccountID.isLegacy(account.id):
+            try preferences.setMinimaxAPIKey(nil)
+        case .opencode where AccountID.isLegacy(account.id):
+            try preferences.setOpenCodeAPIKey(nil)
+        default:
+            try tokenStore.delete(providerId: account.id)
         }
     }
 
