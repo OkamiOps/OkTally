@@ -93,6 +93,12 @@ final class SQLiteStorage: StorageManaging {
         }
     }
 
+    func deleteSnapshots(providerId: String) throws {
+        _ = try dbQueue.write { db in
+            try SnapshotRecord.filter(Column("providerId") == providerId).deleteAll(db)
+        }
+    }
+
     private static func decode(_ record: SnapshotRecord) throws -> ProviderSnapshot {
         let quotas = try JSONDecoder().decode([QuotaWindow].self, from: record.quotasJSON)
         let usageDetail = try record.usageDetailJSON.map { try JSONDecoder().decode([UsageDetail].self, from: $0) }

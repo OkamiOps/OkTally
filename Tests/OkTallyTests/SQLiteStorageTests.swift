@@ -102,6 +102,19 @@ final class SQLiteStorageTests: XCTestCase {
         XCTAssertEqual(try storage.snapshots(providerId: "codex", since: .distantPast), [])
     }
 
+    func test_deleteSnapshots_removesOnlyThatProvider() throws {
+        let storage = try SQLiteStorage(path: ":memory:")
+        let extra = ProviderSnapshot(providerId: "claude#abc123", fetchedAt: Date(timeIntervalSince1970: 100), quotas: [], usageDetail: nil)
+        let legacy = ProviderSnapshot(providerId: "claude", fetchedAt: Date(timeIntervalSince1970: 100), quotas: [], usageDetail: nil)
+        try storage.save(extra)
+        try storage.save(legacy)
+
+        try storage.deleteSnapshots(providerId: "claude#abc123")
+
+        XCTAssertEqual(try storage.snapshots(providerId: "claude#abc123", since: .distantPast), [])
+        XCTAssertEqual(try storage.snapshots(providerId: "claude", since: .distantPast), [legacy])
+    }
+
     func test_prune_atExactCutoff_keepsSnapshotAtCutoff() throws {
         let storage = try SQLiteStorage(path: ":memory:")
         let cutoff = Date(timeIntervalSince1970: 1000)

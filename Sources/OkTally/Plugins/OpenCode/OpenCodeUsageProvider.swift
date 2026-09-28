@@ -25,7 +25,7 @@ extension OpenCodeError: LocalizedError {
 /// to reflect the authoritative "at limit until `resetAt`" state instead of the estimate,
 /// for as long as that reset time remains in the future.
 final class OpenCodeUsageProvider: UsageProvider {
-    let id = "opencode"
+    let id: String
     let displayName = "OpenCode"
     let authMethod: AuthMethod = .apiKey
     let refreshInterval: TimeInterval = 600
@@ -36,6 +36,7 @@ final class OpenCodeUsageProvider: UsageProvider {
     private var recordedRateLimit: (limitName: String, resetAt: Date?)?
 
     init(
+        instanceId: String = AccountKind.opencode.rawValue,
         apiKeyProvider: @escaping () -> String?,
         estimator: OpenCodeLocalEstimating = OpenCodeLocalEstimator(),
         goWindowBudgets: [(label: String, hours: Int, budget: Decimal)] = [
@@ -44,6 +45,7 @@ final class OpenCodeUsageProvider: UsageProvider {
             ("monthly", 720, 60)
         ]
     ) {
+        self.id = instanceId
         self.apiKeyProvider = apiKeyProvider
         self.estimator = estimator
         self.goWindowBudgets = goWindowBudgets

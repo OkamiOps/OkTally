@@ -2,7 +2,7 @@
 import Foundation
 
 final class CursorUsageProvider: UsageProvider {
-    let id = "cursor"
+    let id: String
     let displayName = "Cursor"
     let authMethod: AuthMethod = .localFile(path: NSHomeDirectory() + "/Library/Application Support/Cursor/User/globalStorage/state.vscdb")
     let refreshInterval: TimeInterval = 600
@@ -10,17 +10,24 @@ final class CursorUsageProvider: UsageProvider {
     private let tokenReader: CursorTokenReading
     private let client: CursorUsageFetching
 
-    init(tokenReader: CursorTokenReading = CursorTokenReader(), client: CursorUsageFetching = CursorUsageAPIClient()) {
+    init(
+        instanceId: String = AccountKind.cursor.rawValue,
+        tokenReader: CursorTokenReading = CursorTokenReader(),
+        client: CursorUsageFetching = CursorUsageAPIClient()
+    ) {
+        self.id = instanceId
         self.tokenReader = tokenReader
         self.client = client
     }
 
     func isAuthenticated() async -> Bool {
-        tokenReader.readAccessToken() != nil
+        tokenReader.hasCredential()
     }
 
     func fetchSnapshot() async throws -> ProviderSnapshot {
-        guard let token = tokenReader.readAccessToken() else { throw CursorUsageError.notDetected }
+        guard let token = tokenReader.readAccessToken() else {
+            throw tokenReader.unavailableError() ?? CursorUsageError.notDetected
+        }
         let response = try await client.fetchUsage(accessToken: token)
 
         // Included monthly credit pool (e.g. $20 on Pro, $400 on Ultra) minus spend.

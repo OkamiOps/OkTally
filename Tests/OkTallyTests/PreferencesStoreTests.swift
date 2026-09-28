@@ -294,4 +294,127 @@ final class PreferencesStoreTests: XCTestCase {
         store.popoverHiddenProviders = []
         XCTAssertNil(kv.string(forKey: "popoverHiddenProviders"))
     }
+    // MARK: - Contas
+
+    func test_accounts_unsetReturnsLegacyDefaults() {
+        XCTAssertEqual(makeStore().accounts, AccountsCatalog.defaultAccounts)
+    }
+
+    func test_accounts_roundTrip() {
+        let store = makeStore()
+        var extra = AccountInstance(id: "claude#abc123", kind: .claude); extra.nickname = "Trabalho"
+        store.accounts = AccountsCatalog.defaultAccounts + [extra]
+        XCTAssertEqual(store.accounts.last, extra)
+    }
+
+    func test_accounts_corruptJSONFallsBackToDefaults() {
+        let kv = FakeKeyValueStore(); kv.set("{not json", forKey: "accounts.v1")
+        XCTAssertEqual(makeStore(kv: kv).accounts, AccountsCatalog.defaultAccounts)
+    }
+
+    func test_accounts_emptyListFallsBackToDefaults() {
+        let kv = FakeKeyValueStore(); kv.set("[]", forKey: "accounts.v1")
+        XCTAssertEqual(makeStore(kv: kv).accounts, AccountsCatalog.defaultAccounts)
+    }
+
+    // MARK: - Chaves de API por conta
+
+    func test_apiKey_legacyInstanceUsesLegacyMigrationPath() throws {
+        let kv = FakeKeyValueStore(); kv.set("sk-legacy", forKey: "openRouterAPIKey")
+        let secrets = FakeSecretStore()
+        let store = makeStore(kv: kv, secrets: secrets)
+        XCTAssertEqual(store.apiKey(instanceId: "openrouter"), "sk-legacy")
+        // Mesma migração de sempre: saiu do UserDefaults e foi para o Keychain legado.
+        XCTAssertNil(kv.string(forKey: "openRouterAPIKey"))
+        XCTAssertEqual(secrets.load(providerId: "openrouter"), "sk-legacy")
+    }
+
+    func test_apiKey_extraInstanceIsIsolated() throws {
+        let store = makeStore()
+        try store.setAPIKey("sk-1", instanceId: "openrouter")
+        try store.setAPIKey("sk-2", instanceId: "openrouter#abc123")
+        XCTAssertEqual(store.apiKey(instanceId: "openrouter"), "sk-1")
+        XCTAssertEqual(store.apiKey(instanceId: "openrouter#abc123"), "sk-2")
+        XCTAssertEqual(store.openRouterAPIKey, "sk-1")
+    }
+
+    func test_apiKey_namedAccessorsStillHitTheLegacyInstance() throws {
+        let store = makeStore()
+        try store.setMinimaxAPIKey("mm-1")
+        try store.setOpenCodeAPIKey("oc-1")
+        XCTAssertEqual(store.apiKey(instanceId: "minimax"), "mm-1")
+        XCTAssertEqual(store.apiKey(instanceId: "opencode"), "oc-1")
+    }
+
+    func test_setAPIKey_nilDeletesOnlyThatInstance() throws {
+        let store = makeStore()
+        try store.setAPIKey("sk-1", instanceId: "minimax")
+        try store.setAPIKey("sk-2", instanceId: "minimax#abc123")
+        try store.setAPIKey(nil, instanceId: "minimax#abc123")
+        XCTAssertNil(store.apiKey(instanceId: "minimax#abc123"))
+        XCTAssertEqual(store.apiKey(instanceId: "minimax"), "sk-1")
+    }
+
+    func test_minimaxRegion_perInstance_legacyFallsBackToOldKey() {
+        let kv = FakeKeyValueStore(); kv.set("china", forKey: "minimaxRegionRaw")
+        let store = makeStore(kv: kv)
+        XCTAssertEqual(store.minimaxRegionRaw(instanceId: "minimax"), "china")
+        XCTAssertEqual(store.minimaxRegionRaw(instanceId: "minimax#abc123"), "global")
+        store.setMinimaxRegionRaw("china", instanceId: "minimax#abc123")
+        XCTAssertEqual(store.minimaxRegionRaw(instanceId: "minimax#abc123"), "china")
+        store.setMinimaxRegionRaw("global", instanceId: "minimax")
+        XCTAssertEqual(store.minimaxRegionRaw, "global")
+    }
+
+    // MARK: - Revisão: preferências de uma conta removida
+
+    func test_resetAccountPreferences_legacyMiniMaxClearsGlobalRegionAndInterval() {
+        let store = makeStore()
+        store.setMinimaxRegionRaw("china", instanceId: "minimax")
+        store.setRefreshInterval(120, for: "minimax")
+        store.resetAccountPreferences(instanceId: "minimax")
+        XCTAssertEqual(store.minimaxRegionRaw(instanceId: "minimax"), "global")
+        XCTAssertEqual(store.refreshInterval(for: "minimax", default: 300), 300)
+    }
+
+    func test_resetAccountPreferences_extraOnlyTouchesItsOwnKeys() {
+        let store = makeStore()
+        store.setMinimaxRegionRaw("china", instanceId: "minimax")
+        store.setMinimaxRegionRaw("china", instanceId: "minimax#abc123")
+        store.setRefreshInterval(120, for: "minimax#abc123")
+        store.resetAccountPreferences(instanceId: "minimax#abc123")
+        XCTAssertEqual(store.minimaxRegionRaw(instanceId: "minimax#abc123"), "global")
+        XCTAssertEqual(store.refreshInterval(for: "minimax#abc123", default: 300), 300)
+        XCTAssertEqual(store.minimaxRegionRaw(instanceId: "minimax"), "china")
+    }
+
+    // MARK: - Revisão: cache das contas (lidas a cada `displayName`)
+
+    func test_accounts_repeatedReadsDecodeOnce() {
+        let store = makeStore()
+        store.accounts = AccountsCatalog.defaultAccounts
+        let before = store.accountsDecodeCount
+        for _ in 0..<50 { _ = store.accounts }
+        XCTAssertLessThanOrEqual(store.accountsDecodeCount - before, 1)
+    }
+
+    func test_accounts_cacheInvalidatedBySetter() {
+        let store = makeStore()
+        store.accounts = AccountsCatalog.defaultAccounts
+        _ = store.accounts
+        var extra = AccountInstance(id: "codex#abc123", kind: .codex); extra.nickname = "B"
+        store.accounts = AccountsCatalog.defaultAccounts + [extra]
+        XCTAssertEqual(store.accounts.last, extra)
+    }
+
+    /// Outro `PreferencesStore` sobre o mesmo armazenamento (o app tem mais de um) também
+    /// invalida: a chave do cache é o texto gravado, não só o setter local.
+    func test_accounts_cacheSeesWritesFromAnotherStoreInstance() {
+        let kv = FakeKeyValueStore()
+        let a = makeStore(kv: kv), b = makeStore(kv: kv)
+        XCTAssertEqual(a.accounts, AccountsCatalog.defaultAccounts)
+        var extra = AccountInstance(id: "claude#abc123", kind: .claude); extra.nickname = "Trabalho"
+        b.accounts = AccountsCatalog.defaultAccounts + [extra]
+        XCTAssertEqual(a.accounts.last, extra)
+    }
 }

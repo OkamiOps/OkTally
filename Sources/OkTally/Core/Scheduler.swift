@@ -68,15 +68,53 @@ final class Scheduler {
         return results
     }
 
+    private let loopsLock = NSLock()
+    private var loops: [String: Task<Void, Never>] = [:]
+
+    /// Um loop por conta, cada um com o próprio intervalo. Irmãos do mesmo tipo entram
+    /// defasados (`RefreshStagger`); sem contas extras todos os atrasos são zero e o
+    /// comportamento é o de sempre.
     func startPeriodicLoop() {
-        for provider in registry.providers {
-            Task {
-                while !Task.isCancelled {
-                    _ = await fetchOne(provider)
-                    try? await Task.sleep(nanoseconds: UInt64(provider.refreshInterval * 1_000_000_000))
-                }
+        let providers = registry.providers
+        let offsets = RefreshStagger.offsets(for: providers.map { ($0.id, $0.refreshInterval) })
+        for provider in providers {
+            startLoop(for: provider, initialDelay: offsets[provider.id] ?? 0)
+        }
+    }
+
+    /// Liga (ou religa) o loop de UMA conta — usado também quando o dono adiciona uma
+    /// conta com o app aberto.
+    func startLoop(for provider: UsageProvider, initialDelay: TimeInterval) {
+        let task = Task { [weak self] in
+            if initialDelay > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(initialDelay * 1_000_000_000))
+            }
+            while !Task.isCancelled {
+                guard let self else { return }
+                _ = await self.fetchOne(provider)
+                try? await Task.sleep(nanoseconds: UInt64(provider.refreshInterval * 1_000_000_000))
             }
         }
+        loopsLock.lock()
+        let previous = loops.updateValue(task, forKey: provider.id)
+        loopsLock.unlock()
+        previous?.cancel()
+    }
+
+    /// Para o loop de uma conta removida e esquece o último erro dela, para que o card
+    /// de uma conta que não existe mais não fique acusando falha.
+    func stopLoop(id: String) {
+        loopsLock.lock()
+        let task = loops.removeValue(forKey: id)
+        loopsLock.unlock()
+        task?.cancel()
+        setLastError(nil, for: id)
+    }
+
+    func isLooping(id: String) -> Bool {
+        loopsLock.lock()
+        defer { loopsLock.unlock() }
+        return loops[id] != nil
     }
 
     private func fetchOne(_ provider: UsageProvider) async -> SchedulerFetchResult {
@@ -93,6 +131,10 @@ final class Scheduler {
             setLastError(nil, for: provider.id)
             let result = SchedulerFetchResult(providerId: provider.id, outcome: .success(snapshot))
             onResult?(result)
+            // A conta pode ter sido removida enquanto o fetch estava em voo: gravar agora
+            // ressuscitaria o histórico que o `removeAccount` acabou de apagar (e um alerta
+            // de conta que não existe mais).
+            guard registry.providers.contains(where: { $0.id == provider.id }) else { return result }
             do {
                 try storage.save(snapshot)
                 let thresholds = thresholdsProvider(provider.id)

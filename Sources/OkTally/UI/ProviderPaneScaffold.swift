@@ -34,7 +34,7 @@ enum ProviderPaneStatus {
 /// terracota, o do Codex de verde-azulado. O `Form` agrupado continua abaixo com as
 /// seções de conexão e detalhe — o idioma nativo de Ajustes não muda, ele passa a ter um
 /// topo.
-struct ProviderPaneScaffold<Connection: View, Details: View>: View {
+struct ProviderPaneScaffold<Connection: View, Details: View, Account: View>: View {
     let providerId: String
     /// Cota atual, quando existe. É o que transforma o cabeçalho num bloco com CONTEÚDO
     /// em vez de um retângulo colorido com um nome: a tela de Preferências passa a
@@ -48,6 +48,8 @@ struct ProviderPaneScaffold<Connection: View, Details: View>: View {
     let status: ProviderPaneStatus
     @ViewBuilder var connection: Connection
     @ViewBuilder var details: Details
+    /// Seção "Conta" (e-mail, apelido, remover). Vazia nos painéis que não a têm.
+    @ViewBuilder var account: Account
 
     private var identity: Color { ProviderPalette.color(for: providerId) }
 
@@ -112,6 +114,11 @@ struct ProviderPaneScaffold<Connection: View, Details: View>: View {
                 //
                 // Cursor, Copilot e Antigravity não têm detalhe algum
                 // (`details: EmptyView()`); o `if` evita o rodapé vazio.
+                if Account.self != EmptyView.self {
+                    Section(L("Conta")) {
+                        account
+                    }
+                }
                 Section {
                     connection
                 } header: {
@@ -126,6 +133,15 @@ struct ProviderPaneScaffold<Connection: View, Details: View>: View {
             }
             .formStyle(.grouped)
         }
+    }
+}
+
+extension ProviderPaneScaffold where Account == EmptyView {
+    init(providerId: String, snapshot: ProviderSnapshot? = nil, problem: String? = nil, name: String,
+         status: ProviderPaneStatus,
+         @ViewBuilder connection: () -> Connection, @ViewBuilder details: () -> Details) {
+        self.init(providerId: providerId, snapshot: snapshot, problem: problem, name: name, status: status,
+                  connection: connection, details: details, account: { EmptyView() })
     }
 }
 

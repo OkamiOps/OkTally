@@ -48,7 +48,7 @@ final class GrokBotUsageAPIClient: GrokBotUsageFetching {
 }
 
 final class GrokBotUsageProvider: UsageProvider {
-    let id = "cursor-grokbot"
+    let id: String
     let displayName = "GrokBot"
     let authMethod: AuthMethod = .localFile(
         path: NSHomeDirectory() + "/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
@@ -60,10 +60,12 @@ final class GrokBotUsageProvider: UsageProvider {
     private let now: () -> Date
 
     init(
+        instanceId: String = AccountKind.grokbot.rawValue,
         tokenReader: CursorTokenReading = CursorTokenReader(),
         client: GrokBotUsageFetching = GrokBotUsageAPIClient(),
         now: @escaping () -> Date = Date.init
     ) {
+        self.id = instanceId
         self.tokenReader = tokenReader
         self.client = client
         self.now = now
@@ -81,7 +83,8 @@ final class GrokBotUsageProvider: UsageProvider {
         // One immediate second read avoids turning that brief race into ten minutes of
         // hidden data (this provider refreshes every 600 seconds).
         guard let token = tokenReader.readAccessToken() ?? tokenReader.readAccessToken() else {
-            throw GrokBotUsageError.cursorSessionUnavailable
+            // Sessão própria vencida pede "Reconectar"; a do IDE indisponível é passageira.
+            throw tokenReader.unavailableError() ?? GrokBotUsageError.cursorSessionUnavailable
         }
         let response = try await client.fetchUsage(accessToken: token)
         let fetchedAt = now()

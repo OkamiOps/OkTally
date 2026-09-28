@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Extra Cursor accounts (with their GrokBot)**: an extra Cursor account signs in
+  through Cursor's browser login and gets OkTally's own session, so switching accounts
+  in the Cursor app doesn't affect it. Each extra Cursor account brings its own GrokBot
+  card. The session lasts about 60 days; after that the account asks to reconnect.
+- **Extra Antigravity accounts**: an extra Antigravity account signs in to Google
+  with OkTally's own login (the IDE's account keeps being read from the IDE). The add
+  screen warns that signing in outside the IDE may violate Antigravity's terms.
+- **Multiple API-key accounts — OpenRouter, MiniMax**: add another key as its own
+  account (MiniMax keeps a region per account). The same key is recognised by a
+  one-way fingerprint and never added twice; OpenRouter accounts are labelled with the
+  key's name from OpenRouter. OpenCode stays single-account: its numbers are a local
+  estimate shared by the whole Mac.
+- **Multiple accounts per provider — Claude, Codex, SuperGrok**: the "+" next to
+  Accounts in Preferences adds a second (third…) account of the same provider. Each one
+  signs in on its own, keeps its own credential in the Keychain, and appears side by side
+  with the others, labelled by the e-mail discovered after login. Adding the same
+  account twice is refused. Codex analytics are per account. Codex sign-in uses the
+  fixed port 1455, so only one Codex sign-in can run at a time.
+- **Sibling accounts are told apart everywhere**: the second account of a provider gets
+  a numbered glyph in the menu bar and notch wings ("C2"), and its label (nickname,
+  e-mail or key name) follows it into the popover, notch panel, pins, pickers, forecast,
+  analytics and notifications. People with one account per provider see no change.
+- **Account nicknames and e-mail labels**: every account pane in Preferences has an
+  Account section with the e-mail OkTally discovered after login and an editable
+  nickname. A nickname shows everywhere the account does ("Claude Code · Work") —
+  sidebar, popover, notch, pins and notifications. Accounts that aren't tied to an
+  app installed on this Mac can be removed, together with their history and pins.
+
 ## [0.9.6-beta] — 2026-08-29
 
 ### Added

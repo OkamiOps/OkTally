@@ -46,4 +46,19 @@ final class OpenRouterAPIClient: OpenRouterCreditsFetching {
         }
         return try JSONDecoder().decode(OpenRouterCreditsResponse.self, from: data)
     }
+
+    /// `data.label` de `GET /api/v1/key` — o nome que o dono deu à chave, ou a chave
+    /// mascarada (`sk-or-v1-0e6...1c96`) quando não deu nenhum. Forma conferida na
+    /// documentação oficial em 2026-09-28. Rótulo é enfeite: qualquer falha vira `nil`.
+    func fetchKeyLabel(apiKey: String) async -> String? {
+        var request = URLRequest(url: URL(string: "https://openrouter.ai/api/v1/key")!)
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        guard let (data, response) = try? await session.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let label = (json["data"] as? [String: Any])?["label"] as? String,
+              !label.isEmpty
+        else { return nil }
+        return label
+    }
 }

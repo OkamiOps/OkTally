@@ -9,7 +9,7 @@ struct OkTallyApp: App {
     private let browserFlow: BrowserOAuthFlow
     private let manualFlow: ManualCodeOAuthFlow
     private let deviceCodeFlow: DeviceCodeFlow
-    private let claudeProvider: ClaudeUsageProvider
+    private let claudeProvider: ClaudeUsageProvider?
     private let mimoSessionStore = MiMoSessionStore()
     /// O painel do notch. Criado aqui e mantido vivo pelo `App`: ele não pertence a cena
     /// nenhuma (é uma janela flutuante própria), então precisa de um dono com o mesmo
@@ -51,55 +51,81 @@ struct OkTallyApp: App {
         self.manualFlow = manualFlow
         self.deviceCodeFlow = deviceCodeFlow
 
-        let claudeProvider = ClaudeUsageProvider(oauthManager: oauthManager, tokenStore: tokenStore)
-        claudeProvider.importLegacyCredentialsIfAvailable()
+        // O registry nasce das contas persistidas. Sem nenhuma conta extra, isto rende
+        // exatamente os mesmos ids, na mesma ordem e com os mesmos nomes de antes.
+        let factory = ProviderFactory(dependencies: .init(
+            oauthManager: oauthManager,
+            tokenStore: tokenStore,
+            preferences: preferencesStore,
+            mimoSessionStore: mimoSessionStore
+        ))
+        let accounts = preferencesStore.accounts
+        for account in accounts {
+            factory.providers(for: account, all: accounts).forEach(registry.register)
+        }
+        // O import do login do Claude Code CLI só semeia a conta legada — e só se ela
+        // ainda existe na lista (o dono pode tê-la removido).
+        let claudeProvider = registry.providers
+            .first { $0.id == AccountKind.claude.rawValue }
+            .flatMap { ($0 as? LabeledProvider)?.base as? ClaudeUsageProvider }
+        claudeProvider?.importLegacyCredentialsIfAvailable()
         self.claudeProvider = claudeProvider
 
-        registry.register(claudeProvider)
-        registry.register(CodexUsageProvider(oauthManager: oauthManager, tokenStore: tokenStore))
-        registry.register(OpenRouterUsageProvider(apiKeyProvider: { preferencesStore.openRouterAPIKey }))
-        registry.register(MiniMaxUsageProvider(
-            apiKeyProvider: { preferencesStore.minimaxAPIKey },
-            region: { preferencesStore.minimaxRegionRaw == "china" ? .china : .global }
-        ))
-        registry.register(CursorUsageProvider())
-        registry.register(GrokBotUsageProvider())
-        registry.register(CopilotUsageProvider())
-        registry.register(AntigravityUsageProvider())
-        registry.register(OpenCodeUsageProvider(apiKeyProvider: { preferencesStore.openCodeAPIKey }))
-        registry.register(MiMoUsageProvider(
-            sessionStore: mimoSessionStore,
-            usageFetcher: MiMoWebSession.shared,
-            allowanceProvider: { preferencesStore.mimoMonthlyAllowanceCredits },
-            usedCreditsProvider: { preferencesStore.mimoUsedCredits }
-        ))
-        registry.register(SuperGrokUsageProvider(oauthManager: oauthManager, tokenStore: tokenStore))
-
         let pricingEngine = PricingEngine(source: OpenRouterPricingSource())
-        let model = AppModel(registry: registry, scheduler: scheduler, storage: storage, pricingEngine: pricingEngine)
+        let model = AppModel(registry: registry, scheduler: scheduler, storage: storage, pricingEngine: pricingEngine,
+                             preferences: preferencesStore)
+        model.providerFactory = { account in factory.providers(for: account, all: preferencesStore.accounts) }
+        model.credentialEraser = { account in try Self.eraseCredential(of: account, tokenStore: tokenStore, preferences: preferencesStore) }
+        let emailResolver = AccountEmailResolver(
+            tokenStore: tokenStore,
+            oauthManager: oauthManager,
+            claudeProfile: ClaudeProfileClient(),
+            cursorEmail: { CursorTokenReader().readEmail() },
+            antigravityEmail: { AntigravityTokenReader().readEmail() },
+            apiKey: { preferencesStore.apiKey(instanceId: $0) },
+            openRouterKeyLabel: { await OpenRouterAPIClient().fetchKeyLabel(apiKey: $0) },
+            googleUserInfoEmail: { await AntigravityOAuth.fetchUserInfoEmail(accessToken: $0) },
+            cursorEmailForToken: { await CursorAccountAPI.fetchEmail(accessToken: $0) }
+        )
+        model.identityResolver = { account in await emailResolver.resolve(account) }
         model.updateFetcher = GitHubLatestReleaseFetcher()
         let codexAnalyticsFetcher = CodexAnalyticsFetcher()
-        model.analyticsLoaders["codex"] = {
-            guard let accessToken = try? await oauthManager.validAccessToken(providerId: "codex", config: CodexOAuth.config) else {
-                return nil
-            }
-            let accountId = tokenStore.load(providerId: "codex")?.extra["account_id"]
-            return try? await codexAnalyticsFetcher.fetch(accessToken: accessToken, accountId: accountId)
-        }
         // Fontes locais: leitura de disco potencialmente pesada (o corpus do Claude Code
         // passa de centenas de MB no primeiro parse) — sempre fora da main thread.
         let claudeScanner = ClaudeLocalUsageScanner()
-        model.analyticsLoaders["claude"] = {
-            await Task.detached(priority: .utility) { claudeScanner.analytics() }.value
-        }
         let openCodeAnalyticsEstimator = OpenCodeLocalEstimator()
-        model.analyticsLoaders["opencode"] = {
-            await Task.detached(priority: .utility) {
-                openCodeAnalyticsEstimator.dailyTokens(windowDays: 365, now: Date()).flatMap { buckets in
-                    buckets.isEmpty ? nil : TokenAnalytics(dailyBuckets: buckets)
+        // Codex tem analytics pela API da CONTA, então cada conta Codex ganha o seu. Claude
+        // e OpenCode leem disco local, que é da máquina inteira: só a conta legada fica
+        // com eles — numa segunda conta seriam os mesmos números repetidos.
+        let analyticsLoader: (AccountInstance) -> (() async -> TokenAnalytics?)? = { account in
+            let id = account.id
+            switch account.kind {
+            case .codex:
+                return {
+                    guard let accessToken = try? await oauthManager.validAccessToken(
+                        providerId: id, config: CodexOAuth.config.forInstance(id)
+                    ) else { return nil }
+                    let accountId = tokenStore.load(providerId: id)?.extra["account_id"]
+                    return try? await codexAnalyticsFetcher.fetch(accessToken: accessToken, accountId: accountId)
                 }
-            }.value
+            case .claude where AccountID.isLegacy(id):
+                return { await Task.detached(priority: .utility) { claudeScanner.analytics() }.value }
+            case .opencode where AccountID.isLegacy(id):
+                return {
+                    await Task.detached(priority: .utility) {
+                        openCodeAnalyticsEstimator.dailyTokens(windowDays: 365, now: Date()).flatMap { buckets in
+                            buckets.isEmpty ? nil : TokenAnalytics(dailyBuckets: buckets)
+                        }
+                    }.value
+                }
+            default:
+                return nil
+            }
         }
+        for account in accounts {
+            if let loader = analyticsLoader(account) { model.analyticsLoaders[account.id] = loader }
+        }
+        model.analyticsLoaderFactory = analyticsLoader
         _appModel = StateObject(wrappedValue: model)
 
         let notchController = NotchHUDController(appModel: model, preferences: preferencesStore, isEnabled: { preferencesStore.notchHUDEnabled })
@@ -144,7 +170,7 @@ struct OkTallyApp: App {
                 deviceCodeFlow: deviceCodeFlow,
                 mimoSessionStore: mimoSessionStore,
                 appModel: appModel,
-                onImportClaudeLegacy: { claudeProvider.importLegacyCredentialsIfAvailable() },
+                onImportClaudeLegacy: { claudeProvider?.importLegacyCredentialsIfAvailable() ?? false },
                 onNotchPreferenceChanged: { notchController.refresh() }
             )
         }
@@ -163,6 +189,17 @@ struct OkTallyApp: App {
         var body: some View {
             Image(nsImage: MenuBarLabelRenderer.image(for: appModel.menuBarSegment,
                                                       onDarkBar: colorScheme == .dark))
+        }
+    }
+
+    /// Apaga a credencial de uma conta removida. Contas OAuth guardam o token no
+    /// Keychain sob o próprio id; as de chave de API, no Keychain de segredos.
+    private static func eraseCredential(of account: AccountInstance, tokenStore: TokenStoring, preferences: PreferencesStore) throws {
+        switch account.kind {
+        case .openrouter, .minimax, .opencode:
+            try preferences.setAPIKey(nil, instanceId: account.id)
+        default:
+            try tokenStore.delete(providerId: account.id)
         }
     }
 

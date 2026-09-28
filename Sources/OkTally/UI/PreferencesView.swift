@@ -7,6 +7,13 @@ enum PreferencesPane: Hashable {
     case provider(String)
 }
 
+/// Conta sendo adicionada: ainda não está na lista, só tem o id reservado. Vira conta de
+/// verdade quando o login grava a credencial e `AccountEnrollment.finish` aprova.
+struct AccountDraft: Equatable {
+    let id: String
+    let kind: AccountKind
+}
+
 struct PreferencesView: View {
     let preferencesStore: PreferencesStore
     let tokenStore: TokenStoring
@@ -22,18 +29,26 @@ struct PreferencesView: View {
 
     @State private var pane: PreferencesPane = .general
 
-    @State private var openRouterAPIKey: String = ""
-    @State private var minimaxAPIKey: String = ""
-    @State private var minimaxRegionIsChina = false
-    @State private var openCodeAPIKey: String = ""
+    // Estado por CONTA (chave = id da instância). Antes eram booleanos soltos por
+    // provedor, o que não sobrevive a duas contas do mesmo tipo.
+    /// Contas OAuth com token no Keychain.
+    @State private var loggedIn: Set<String> = []
+    @State private var claudeSessions: [String: ManualCodeSession] = [:]
+    @State private var pastedCodes: [String: String] = [:]
+    @State private var deviceCodes: [String: DeviceCodeInfo] = [:]
+    /// Texto dos campos de chave de API, por conta.
+    @State private var apiKeyFields: [String: String] = [:]
+    @State private var minimaxChina: [String: Bool] = [:]
+    @State private var nicknameFields: [String: String] = [:]
+    /// Conta aguardando a confirmação de remoção.
+    @State private var pendingRemoval: String?
+    /// Conta sendo adicionada (menu "+").
+    @State private var draft: AccountDraft?
+    /// Logins do Cursor esperando o navegador (poll em andamento), por conta.
+    @State private var cursorPolls: [String: Task<Void, Never>] = [:]
+
     @State private var mimoAllowance: String = ""
     @State private var mimoUsed: String = ""
-    @State private var claudeLoggedIn = false
-    @State private var claudeSession: ManualCodeSession?
-    @State private var claudePastedCode: String = ""
-    @State private var codexLoggedIn = false
-    @State private var superGrokLoggedIn = false
-    @State private var superGrokDeviceCode: DeviceCodeInfo?
     @State private var mimoLoggedIn = false
     @State private var statusMessage: String = ""
 
@@ -57,6 +72,15 @@ struct PreferencesView: View {
                                 return appModel.moveProvider(dragging: dragged.id, onto: id)
                             }
                     }
+                    if let draft {
+                        ProviderSidebarRow(
+                            providerId: draft.id,
+                            name: LF("Nova conta · %@", Self.kindName(draft.kind)),
+                            statusColor: Color.secondary.opacity(0.35),
+                            statusHelp: L("Não configurado")
+                        )
+                        .tag(PreferencesPane.provider(draft.id))
+                    }
                 } header: {
                     HStack {
                         Text(L("Contas"))
@@ -71,10 +95,11 @@ struct PreferencesView: View {
                                 .foregroundStyle(Theme.Brand.heatOrange)
                                 .help(L("Contas com credencial expirada"))
                         }
+                        addAccountMenu
                     }
                 }
             }
-            .navigationSplitViewColumnWidth(min: 170, ideal: 180, max: 200)
+            .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 220)
         } detail: {
             // Geral e os panes de provider são `Form` agrupados, que já rolam sozinhos —
             // o `ScrollView` que os panes de provider tinham daria rolagem aninhada.
@@ -103,6 +128,21 @@ struct PreferencesView: View {
         .onChange(of: appModel.requestedPreferencesPane) { _, _ in
             consumeRequestedPane()
         }
+        .onChange(of: appModel.accounts) { _, _ in
+            load()
+        }
+        .confirmationDialog(L("Remover esta conta?"),
+                            isPresented: Binding(get: { pendingRemoval != nil },
+                                                 set: { if !$0 { pendingRemoval = nil } }),
+                            titleVisibility: .visible) {
+            Button(L("Remover conta"), role: .destructive) {
+                if let id = pendingRemoval { removeAccount(id) }
+                pendingRemoval = nil
+            }
+            Button(L("Cancelar"), role: .cancel) { pendingRemoval = nil }
+        } message: {
+            Text(L("Remove a conta, o histórico e os pins. Não dá para desfazer."))
+        }
     }
 
     /// Salta para o pane pedido pelo botão "Reconectar"/"Configurar" do popover.
@@ -116,12 +156,30 @@ struct PreferencesView: View {
 
     // MARK: - Sidebar
 
+    /// "+" no cabeçalho das contas. Some enquanto nenhum tipo aceita segunda conta.
+    @ViewBuilder private var addAccountMenu: some View {
+        if !AccountKind.addableKinds.isEmpty {
+            Menu {
+                ForEach(AccountKind.addableKinds, id: \.self) { kind in
+                    Button(Self.kindName(kind)) { beginAddAccount(kind) }
+                }
+            } label: {
+                Image(systemName: "plus")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help(L("Adicionar conta"))
+        }
+    }
+
     private func sidebarRow(_ id: String) -> some View {
         ProviderSidebarRow(
             providerId: id,
             name: providerName(id),
             statusColor: statusDotColor(id),
-            statusHelp: statusDotHelp(id)
+            statusHelp: statusDotHelp(id),
+            subtitle: account(id)?.email
         )
     }
 
@@ -144,19 +202,47 @@ struct PreferencesView: View {
         appModel.orderedProviders.first(where: { $0.id == id })?.displayName ?? id
     }
 
+    private func account(_ id: String) -> AccountInstance? {
+        appModel.accounts.first { $0.id == id }
+    }
+
+    /// Nome do TIPO, para o menu "+" e mensagens — o mesmo dos provedores legados.
+    static func kindName(_ kind: AccountKind) -> String {
+        switch kind {
+        case .claude: return "Claude Code"
+        case .codex: return "Codex"
+        case .supergrok: return "SuperGrok"
+        case .cursor: return "Cursor"
+        case .grokbot: return "GrokBot"
+        case .copilot: return "GitHub Copilot"
+        case .antigravity: return "Antigravity"
+        case .openrouter: return "OpenRouter"
+        case .minimax: return "MiniMax"
+        case .opencode: return "OpenCode"
+        case .mimo: return "MiMo"
+        }
+    }
+
     private func isConfigured(_ id: String) -> Bool {
-        switch id {
-        case "claude": return claudeLoggedIn
-        case "codex": return codexLoggedIn
-        case "supergrok": return superGrokLoggedIn
-        case "cursor", "cursor-grokbot": return true // reads the Cursor app session automatically
-        case "copilot": return CopilotTokenReader().firstToken() != nil
-        case "antigravity": return AntigravityTokenReader().readTokens() != nil
-        case "openrouter": return !openRouterAPIKey.isEmpty
-        case "minimax": return !minimaxAPIKey.isEmpty
-        case "opencode": return !openCodeAPIKey.isEmpty
-        case "mimo": return mimoLoggedIn || !mimoAllowance.isEmpty
-        default: return false
+        switch AccountPaneRouting.route(for: id) {
+        case .claude(let id), .codex(let id), .supergrok(let id):
+            return loggedIn.contains(id)
+        case .cursor(let id):
+            // A conta legada lê a sessão do app Cursor sozinha.
+            return AccountID.isLegacy(id) || loggedIn.contains(id)
+        case .grokbot(let id):
+            let cursorId = AccountPaneRouting.accountId(forProviderId: id)
+            return AccountID.isLegacy(cursorId) || loggedIn.contains(cursorId)
+        case .copilot:
+            return CopilotTokenReader().firstToken() != nil
+        case .antigravity(let id):
+            return AccountID.isLegacy(id) ? AntigravityTokenReader().readTokens() != nil : loggedIn.contains(id)
+        case .minimax(let id), .apiKey(let id, _):
+            return !(apiKeyFields[id] ?? "").isEmpty
+        case .mimo:
+            return mimoLoggedIn || !mimoAllowance.isEmpty
+        case .unknown:
+            return false
         }
     }
 
@@ -166,132 +252,167 @@ struct PreferencesView: View {
         switch pane {
         case .general:
             EmptyView() // tratado no branch anterior do detalhe, por rolar sozinho
-        case .provider("claude"): claudePane
-        case .provider("codex"): codexPane
-        case .provider("supergrok"): superGrokPane
-        case .provider("cursor"): cursorPane
-        case .provider("cursor-grokbot"): grokBotPane
-        case .provider("copilot"): copilotPane
-        case .provider("antigravity"): antigravityPane
-        case .provider("openrouter"):
-            keyPane("openrouter",
-                    text: $openRouterAPIKey,
-                    hasSavedKey: !(preferencesStore.openRouterAPIKey ?? "").isEmpty,
-                    save: {
-                        saveSecret("OpenRouter", previous: preferencesStore.openRouterAPIKey ?? "", raw: $openRouterAPIKey) {
-                            try preferencesStore.setOpenRouterAPIKey($0)
-                        }
-                    },
-                    remove: {
-                        removeSecret("OpenRouter", raw: $openRouterAPIKey) {
-                            try preferencesStore.setOpenRouterAPIKey(nil)
-                        }
-                    })
-        case .provider("minimax"): minimaxPane
-        case .provider("opencode"):
-            keyPane("opencode",
-                    text: $openCodeAPIKey,
-                    hasSavedKey: !(preferencesStore.openCodeAPIKey ?? "").isEmpty,
-                    save: {
-                        saveSecret("OpenCode", previous: preferencesStore.openCodeAPIKey ?? "", raw: $openCodeAPIKey) {
-                            try preferencesStore.setOpenCodeAPIKey($0)
-                        }
-                    },
-                    remove: {
-                        removeSecret("OpenCode", raw: $openCodeAPIKey) {
-                            try preferencesStore.setOpenCodeAPIKey(nil)
-                        }
-                    })
-        case .provider("mimo"): mimoPane
-        case .provider: EmptyView()
+        case .provider(let id) where draft?.id == id:
+            if let draft { draftPane(draft) }
+        case .provider(let id):
+            switch AccountPaneRouting.route(for: id) {
+            case .claude(let id): claudePane(id)
+            case .codex(let id): codexPane(id)
+            case .supergrok(let id): superGrokPane(id)
+            case .cursor(let id): cursorPane(id)
+            case .grokbot(let id): grokBotPane(id)
+            case .copilot: copilotPane
+            case .antigravity(let id): antigravityPane(id)
+            case .minimax(let id): minimaxPane(id)
+            case .apiKey(let id, _): keyPane(id)
+            case .mimo: mimoPane
+            case .unknown: EmptyView()
+            }
+        }
+    }
+
+    // MARK: - Seção "Conta"
+
+    /// E-mail (quando conhecido), apelido e remoção. O apelido grava no Enter e ao perder
+    /// o foco, como o resto da tela; vazio apaga o apelido — diferente das chaves, aqui
+    /// "nada" é um valor legítimo.
+    @ViewBuilder private func accountSection(_ id: String) -> some View {
+        if AccountPaneRouting.showsAccountSection(id), let account = account(id) {
+            if let email = account.email {
+                LabeledContent(L("E-mail")) {
+                    Text(email).foregroundStyle(.secondary).textSelection(.enabled)
+                }
+            }
+            AutoSaveField(placeholder: L("Apelido (opcional)"),
+                          text: Binding(get: { nicknameFields[id] ?? account.nickname ?? "" },
+                                        set: { nicknameFields[id] = $0 }),
+                          onCommit: { appModel.renameAccount(id: id, nickname: nicknameFields[id] ?? account.nickname) })
+                .frame(maxWidth: 380)
+            if AccountPaneRouting.canRemove(id) {
+                HStack {
+                    Button(L("Remover conta…"), role: .destructive) { pendingRemoval = id }
+                        .buttonStyle(.bordered)
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    private func removeAccount(_ id: String) {
+        do {
+            try appModel.removeAccount(id: id)
+            // Limpa o estado da conta ANTES de trocar de painel: o campo de chave grava no
+            // `onDisappear`, e com o texto ainda lá regravaria a chave recém-apagada.
+            clearViewState(for: id)
+            pane = .general
+            statusMessage = ""
+            load()
+        } catch {
+            statusMessage = error.localizedDescription
         }
     }
 
     // MARK: - Provider panes
 
-    private var claudePane: some View {
+    private func oauthStatus(_ id: String) -> ProviderPaneStatus {
+        loggedIn.contains(id) ? .connected(L("Conectado")) : .notConfigured(L("Não conectado"))
+    }
+
+    private func claudePane(_ id: String) -> some View {
         ProviderPaneScaffold(
-            providerId: "claude",
-            snapshot: appModel.snapshotsByProvider["claude"],
-            problem: appModel.errorsByProvider["claude"],
-            name: providerName("claude"),
-            status: claudeLoggedIn ? .connected(L("Conectado")) : .notConfigured(L("Não conectado"))
+            providerId: id,
+            snapshot: appModel.snapshotsByProvider[id],
+            problem: appModel.errorsByProvider[id],
+            name: providerName(id),
+            status: oauthStatus(id)
         ) {
             HStack {
-                if claudeLoggedIn {
-                    Button(L("Sair")) { logout(providerId: "claude", flag: $claudeLoggedIn); claudeSession = nil }
+                if loggedIn.contains(id) {
+                    Button(L("Sair")) { logout(providerId: id); claudeSessions[id] = nil }
                         .buttonStyle(.bordered)
                 } else {
-                    Button(L("Entrar…")) { beginClaudeLogin() }
+                    Button(L("Entrar…")) { beginClaudeLogin(id) }
                         .buttonStyle(.borderedProminent)
-                    Button(L("Importar do Claude Code")) {
-                        statusMessage = onImportClaudeLegacy() ? L("Login importado.") : L("Nenhum login do Claude Code encontrado.")
-                        claudeLoggedIn = tokenStore.load(providerId: "claude") != nil
+                    // O login do Claude Code CLI é um só na máquina: importar só faz
+                    // sentido para a conta legada (é a única que ele semeia).
+                    if AccountID.isLegacy(id) {
+                        Button(L("Importar do Claude Code")) {
+                            statusMessage = onImportClaudeLegacy() ? L("Login importado.") : L("Nenhum login do Claude Code encontrado.")
+                            refreshLoggedIn(id)
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.bordered)
                 }
                 Spacer()
             }
             // O código colado continua sendo um passo da conexão — fica na mesma seção
             // dos botões para não virar um detalhe descolado do fluxo.
-            if claudeSession != nil {
-                VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                    Text(L("Autorize no navegador, copie o código e cole abaixo:"))
-                        .font(.caption).foregroundStyle(.secondary)
-                    TextField("CÓDIGO#STATE", text: $claudePastedCode)
-                        .textFieldStyle(.roundedBorder)
-                        .labelsHidden()
-                    HStack {
-                        Button(L("Concluir")) { completeClaudeLogin() }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(claudePastedCode.trimmingCharacters(in: .whitespaces).isEmpty)
-                        Button(L("Cancelar")) { claudeSession = nil; claudePastedCode = ""; statusMessage = "" }
-                            .buttonStyle(.bordered)
-                    }
-                }
-            }
+            claudeCodeEntry(id)
         } details: {
             Text(L("O uso de cota vem da conta; o volume em tokens é estimado dos transcritos locais."))
                 .font(.caption).foregroundStyle(.secondary)
+        } account: {
+            accountSection(id)
         }
     }
 
-    private var codexPane: some View {
+    @ViewBuilder private func claudeCodeEntry(_ id: String) -> some View {
+        if claudeSessions[id] != nil {
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                Text(L("Autorize no navegador, copie o código e cole abaixo:"))
+                    .font(.caption).foregroundStyle(.secondary)
+                TextField("CÓDIGO#STATE", text: Binding(get: { pastedCodes[id] ?? "" }, set: { pastedCodes[id] = $0 }))
+                    .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
+                HStack {
+                    Button(L("Concluir")) { completeClaudeLogin(id) }
+                        .buttonStyle(.borderedProminent)
+                        .disabled((pastedCodes[id] ?? "").trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button(L("Cancelar")) { claudeSessions[id] = nil; pastedCodes[id] = nil; statusMessage = "" }
+                        .buttonStyle(.bordered)
+                }
+            }
+        }
+    }
+
+    private func codexPane(_ id: String) -> some View {
         ProviderPaneScaffold(
-            providerId: "codex",
-            snapshot: appModel.snapshotsByProvider["codex"],
-            problem: appModel.errorsByProvider["codex"],
-            name: providerName("codex"),
-            status: codexLoggedIn ? .connected(L("Conectado")) : .notConfigured(L("Não conectado"))
+            providerId: id,
+            snapshot: appModel.snapshotsByProvider[id],
+            problem: appModel.errorsByProvider[id],
+            name: providerName(id),
+            status: oauthStatus(id)
         ) {
-            if codexLoggedIn {
-                Button(L("Sair")) { logout(providerId: "codex", flag: $codexLoggedIn) }.buttonStyle(.bordered)
+            if loggedIn.contains(id) {
+                Button(L("Sair")) { logout(providerId: id) }.buttonStyle(.bordered)
             } else {
-                Button(L("Entrar…")) { login(config: CodexOAuth.config, flag: $codexLoggedIn) }
+                Button(L("Entrar…")) { login(config: CodexOAuth.config.forInstance(id), id: id) }
                     .buttonStyle(.borderedProminent)
             }
         } details: {
             Text(L("Estatísticas de uso vêm da API da conta."))
                 .font(.caption).foregroundStyle(.secondary)
+        } account: {
+            accountSection(id)
         }
     }
 
-    private var superGrokPane: some View {
+    private func superGrokPane(_ id: String) -> some View {
         ProviderPaneScaffold(
-            providerId: "supergrok",
-            snapshot: appModel.snapshotsByProvider["supergrok"],
-            problem: appModel.errorsByProvider["supergrok"],
-            name: providerName("supergrok"),
-            status: superGrokLoggedIn ? .connected(L("Conectado")) : .notConfigured(L("Não conectado"))
+            providerId: id,
+            snapshot: appModel.snapshotsByProvider[id],
+            problem: appModel.errorsByProvider[id],
+            name: providerName(id),
+            status: oauthStatus(id)
         ) {
-            if superGrokLoggedIn {
-                Button(L("Sair")) { logout(providerId: SuperGrokOAuth.providerId, flag: $superGrokLoggedIn) }
+            if loggedIn.contains(id) {
+                Button(L("Sair")) { logout(providerId: id) }
                     .buttonStyle(.bordered)
             } else {
-                Button(L("Entrar…")) { loginSuperGrok() }.buttonStyle(.borderedProminent)
+                Button(L("Entrar…")) { loginSuperGrok(id) }.buttonStyle(.borderedProminent)
             }
         } details: {
-            if let info = superGrokDeviceCode {
+            if let info = deviceCodes[id] {
                 VStack(alignment: .leading, spacing: Theme.Space.xs) {
                     Text(LF("Abra %@ e digite:", info.verificationURL.absoluteString))
                         .font(.caption).foregroundStyle(.secondary)
@@ -301,36 +422,82 @@ struct PreferencesView: View {
                 Text(L("O login usa código de dispositivo: o navegador abre e você digita o código mostrado aqui."))
                     .font(.caption).foregroundStyle(.secondary)
             }
+        } account: {
+            accountSection(id)
         }
     }
 
-    private var cursorPane: some View {
-        ProviderPaneScaffold(
-            providerId: "cursor",
-            snapshot: appModel.snapshotsByProvider["cursor"],
-            problem: appModel.errorsByProvider["cursor"],
-            name: providerName("cursor"),
-            status: .connected(L("Lê a sessão do app Cursor automaticamente"))
+    @ViewBuilder private func cursorPane(_ id: String) -> some View {
+        if AccountID.isLegacy(id) {
+            ProviderPaneScaffold(
+                providerId: id,
+                snapshot: appModel.snapshotsByProvider[id],
+                problem: appModel.errorsByProvider[id],
+                name: providerName(id),
+                status: .connected(L("Lê a sessão do app Cursor automaticamente"))
+            ) {
+                Text(L("Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho."))
+                    .font(.caption).foregroundStyle(.secondary)
+            } details: {
+                EmptyView()
+            } account: {
+                accountSection(id)
+            }
+        } else {
+            ProviderPaneScaffold(
+                providerId: id,
+                snapshot: appModel.snapshotsByProvider[id],
+                problem: appModel.errorsByProvider[id],
+                name: providerName(id),
+                status: oauthStatus(id)
+            ) {
+                HStack {
+                    if loggedIn.contains(id) {
+                        Button(L("Sair")) { logout(providerId: id) }.buttonStyle(.bordered)
+                    } else {
+                        cursorLoginButton(id)
+                    }
+                    Spacer()
+                }
+            } details: {
+                Text(L("Sessão própria do OkTally — trocar de conta no Cursor não afeta esta conta. A sessão dura cerca de 60 dias; depois, é só entrar de novo."))
+                    .font(.caption).foregroundStyle(.secondary)
+            } account: {
+                accountSection(id)
+            }
+        }
+    }
+
+    private func grokBotPane(_ id: String) -> some View {
+        let cursorId = AccountPaneRouting.accountId(forProviderId: id)
+        let isLegacy = AccountID.isLegacy(cursorId)
+        return ProviderPaneScaffold(
+            providerId: id,
+            snapshot: appModel.snapshotsByProvider[id],
+            problem: appModel.errorsByProvider[id],
+            name: providerName(id),
+            status: isLegacy
+                ? .connected(L("Lê a sessão do app Cursor automaticamente"))
+                : oauthStatus(cursorId)
         ) {
-            Text(L("Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho."))
+            Text(isLegacy
+                 ? L("Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho.")
+                 : LF("Segue a conta %@ — login, apelido e remoção ficam lá.", providerName(cursorId)))
                 .font(.caption).foregroundStyle(.secondary)
         } details: {
             EmptyView()
         }
     }
 
-    private var grokBotPane: some View {
-        ProviderPaneScaffold(
-            providerId: "cursor-grokbot",
-            snapshot: appModel.snapshotsByProvider["cursor-grokbot"],
-            problem: appModel.errorsByProvider["cursor-grokbot"],
-            name: providerName("cursor-grokbot"),
-            status: .connected(L("Lê a sessão do app Cursor automaticamente"))
-        ) {
-            Text(L("Nada a configurar — se o app Cursor estiver logado nesta máquina, o uso aparece sozinho."))
-                .font(.caption).foregroundStyle(.secondary)
-        } details: {
-            EmptyView()
+    /// Botão do login próprio do Cursor. Enquanto o navegador não conclui, vira um
+    /// indicador com "Cancelar".
+    @ViewBuilder private func cursorLoginButton(_ id: String) -> some View {
+        if cursorPolls[id] != nil {
+            ProgressView().controlSize(.small)
+            Text(L("Aguardando o login no navegador…")).font(.caption).foregroundStyle(.secondary)
+            Button(L("Cancelar")) { cancelCursorLogin(id) }.buttonStyle(.bordered)
+        } else {
+            Button(L("Entrar no navegador…")) { loginCursor(id) }.buttonStyle(.borderedProminent)
         }
     }
 
@@ -349,43 +516,67 @@ struct PreferencesView: View {
                 .font(.caption).foregroundStyle(.secondary)
         } details: {
             EmptyView()
+        } account: {
+            accountSection("copilot")
         }
     }
 
-    private var antigravityPane: some View {
-        let detected = AntigravityTokenReader().readTokens() != nil
-        return ProviderPaneScaffold(
-            providerId: "antigravity",
-            snapshot: appModel.snapshotsByProvider["antigravity"],
-            problem: appModel.errorsByProvider["antigravity"],
-            name: providerName("antigravity"),
-            status: detected
-                ? .connected(L("Login do IDE Antigravity detectado"))
-                : .notConfigured(L("Nenhum login do Antigravity encontrado"))
-        ) {
-            Text(L("Nada a configurar — detectado automaticamente a partir do login do IDE Antigravity neste Mac."))
-                .font(.caption).foregroundStyle(.secondary)
-        } details: {
-            EmptyView()
+    @ViewBuilder private func antigravityPane(_ id: String) -> some View {
+        if AccountID.isLegacy(id) {
+            let detected = AntigravityTokenReader().readTokens() != nil
+            ProviderPaneScaffold(
+                providerId: id,
+                snapshot: appModel.snapshotsByProvider[id],
+                problem: appModel.errorsByProvider[id],
+                name: providerName(id),
+                status: detected
+                    ? .connected(L("Login do IDE Antigravity detectado"))
+                    : .notConfigured(L("Nenhum login do Antigravity encontrado"))
+            ) {
+                Text(L("Nada a configurar — detectado automaticamente a partir do login do IDE Antigravity neste Mac."))
+                    .font(.caption).foregroundStyle(.secondary)
+            } details: {
+                EmptyView()
+            } account: {
+                accountSection(id)
+            }
+        } else {
+            // Conta extra: login Google próprio do OkTally, independente do IDE.
+            ProviderPaneScaffold(
+                providerId: id,
+                snapshot: appModel.snapshotsByProvider[id],
+                problem: appModel.errorsByProvider[id],
+                name: providerName(id),
+                status: oauthStatus(id)
+            ) {
+                if loggedIn.contains(id) {
+                    Button(L("Sair")) { logout(providerId: id) }.buttonStyle(.bordered)
+                } else {
+                    Button(L("Entrar…")) { login(config: AntigravityOAuth.config.forInstance(id), id: id) }
+                        .buttonStyle(.borderedProminent)
+                }
+            } details: {
+                Text(L("Login Google próprio do OkTally, separado do IDE Antigravity."))
+                    .font(.caption).foregroundStyle(.secondary)
+            } account: {
+                accountSection(id)
+            }
         }
     }
 
     /// Painel de chave de API. O botão "Salvar" saiu: o campo grava no Enter e ao perder
     /// o foco, e `saveSecret` recusa campo vazio ou inalterado para que um blur acidental
     /// não apague a chave que está no Keychain.
-    private func keyPane(_ id: String,
-                         text: Binding<String>,
-                         hasSavedKey: Bool,
-                         save: @escaping () -> Void,
-                         remove: @escaping () -> Void) -> some View {
-        ProviderPaneScaffold(
+    private func keyPane(_ id: String) -> some View {
+        let hasSavedKey = !(savedAPIKey(id) ?? "").isEmpty
+        return ProviderPaneScaffold(
             providerId: id,
             snapshot: appModel.snapshotsByProvider[id],
             problem: appModel.errorsByProvider[id],
             name: providerName(id),
             status: hasSavedKey ? .connected(L("Chave salva")) : .notConfigured(L("Sem chave"))
         ) {
-            AutoSaveField(placeholder: "API Key", text: text, isSecure: true, onCommit: save)
+            AutoSaveField(placeholder: "API Key", text: apiKeyBinding(id), isSecure: true, onCommit: { saveAPIKey(id) })
                 .frame(maxWidth: 380)
             // Esvaziar o campo não apaga nada (é a regra do auto-save), então revogar a
             // credencial precisa de um gesto deliberado — sem este botão não haveria
@@ -396,7 +587,7 @@ struct PreferencesView: View {
             // importa — digitar num provedor sem chave não pode anunciar "Chave salva".
             if hasSavedKey {
                 HStack {
-                    Button(L("Remover chave"), role: .destructive, action: remove)
+                    Button(L("Remover chave"), role: .destructive) { removeAPIKey(id) }
                         .buttonStyle(.bordered)
                     Spacer()
                 }
@@ -404,43 +595,46 @@ struct PreferencesView: View {
         } details: {
             Text(L("A chave fica no Keychain desta máquina, nunca em texto puro."))
                 .font(.caption).foregroundStyle(.secondary)
+        } account: {
+            accountSection(id)
         }
     }
 
-    private var minimaxPane: some View {
+    private func minimaxPane(_ id: String) -> some View {
         // Mesma regra do `keyPane`: pill e botão seguem o Keychain, não o texto do campo.
-        let hasSavedKey = !(preferencesStore.minimaxAPIKey ?? "").isEmpty
+        let hasSavedKey = !(savedAPIKey(id) ?? "").isEmpty
         return ProviderPaneScaffold(
-            providerId: "minimax",
-            snapshot: appModel.snapshotsByProvider["minimax"],
-            problem: appModel.errorsByProvider["minimax"],
-            name: providerName("minimax"),
+            providerId: id,
+            snapshot: appModel.snapshotsByProvider[id],
+            problem: appModel.errorsByProvider[id],
+            name: providerName(id),
             status: hasSavedKey ? .connected(L("Chave salva")) : .notConfigured(L("Sem chave"))
         ) {
-            AutoSaveField(placeholder: "API Key", text: $minimaxAPIKey, isSecure: true, onCommit: saveMinimaxKey)
+            AutoSaveField(placeholder: "API Key", text: apiKeyBinding(id), isSecure: true, onCommit: { saveAPIKey(id) })
                 .frame(maxWidth: 380)
             if hasSavedKey {
                 HStack {
-                    Button(L("Remover chave"), role: .destructive) {
-                        removeSecret("MiniMax", raw: $minimaxAPIKey) {
-                            try preferencesStore.setMinimaxAPIKey(nil)
-                        }
-                    }
-                    .buttonStyle(.bordered)
+                    Button(L("Remover chave"), role: .destructive) { removeAPIKey(id) }
+                        .buttonStyle(.bordered)
                     Spacer()
                 }
             }
-            Toggle(L("Região China (minimaxi.com)"), isOn: $minimaxRegionIsChina)
-                .toggleStyle(.switch)
-                .controlSize(.small)
+            Toggle(L("Região China (minimaxi.com)"), isOn: Binding(
+                get: { minimaxChina[id] ?? false },
                 // A região é uma escolha binária: não há "valor vazio" que possa apagar
                 // nada, então grava direto na troca.
-                .onChange(of: minimaxRegionIsChina) { _, isChina in
-                    preferencesStore.minimaxRegionRaw = isChina ? "china" : "global"
+                set: { isChina in
+                    minimaxChina[id] = isChina
+                    setMinimaxRegion(isChina ? "china" : "global", id: id)
                 }
+            ))
+            .toggleStyle(.switch)
+            .controlSize(.small)
         } details: {
             Text(L("A chave fica no Keychain desta máquina, nunca em texto puro."))
                 .font(.caption).foregroundStyle(.secondary)
+        } account: {
+            accountSection(id)
         }
     }
 
@@ -488,54 +682,121 @@ struct PreferencesView: View {
                     .frame(maxWidth: 420)
                 }
             }
+        } account: {
+            accountSection("mimo")
         }
     }
 
     // MARK: - State loading
 
     private func load() {
-        openRouterAPIKey = preferencesStore.openRouterAPIKey ?? ""
-        minimaxAPIKey = preferencesStore.minimaxAPIKey ?? ""
-        minimaxRegionIsChina = preferencesStore.minimaxRegionRaw == "china"
-        openCodeAPIKey = preferencesStore.openCodeAPIKey ?? ""
+        for account in appModel.accounts {
+            let id = account.id
+            switch account.kind {
+            case .claude, .codex, .supergrok, .cursor, .antigravity:
+                refreshLoggedIn(id)
+            case .openrouter, .opencode:
+                apiKeyFields[id] = savedAPIKey(id) ?? ""
+            case .minimax:
+                apiKeyFields[id] = savedAPIKey(id) ?? ""
+                minimaxChina[id] = minimaxRegion(id) == "china"
+            case .grokbot, .copilot, .mimo:
+                break
+            }
+            nicknameFields[id] = account.nickname ?? ""
+        }
         mimoAllowance = preferencesStore.mimoMonthlyAllowanceCredits
             .map { PreferencesFieldCommit.credits($0) } ?? ""
         mimoUsed = PreferencesFieldCommit.credits(preferencesStore.mimoUsedCredits)
-        claudeLoggedIn = tokenStore.load(providerId: "claude") != nil
-        codexLoggedIn = tokenStore.load(providerId: "codex") != nil
-        superGrokLoggedIn = tokenStore.load(providerId: SuperGrokOAuth.providerId) != nil
         mimoLoggedIn = mimoSessionStore.isLoggedIn
     }
 
-    // MARK: - Login flows (unchanged)
+    private func refreshLoggedIn(_ id: String) {
+        if tokenStore.load(providerId: id) != nil {
+            loggedIn.insert(id)
+        } else {
+            loggedIn.remove(id)
+        }
+    }
 
-    private func login(config: OAuthConfig, flag: Binding<Bool>) {
+    // MARK: - Chaves de API por conta
+
+    private func apiKeyBinding(_ id: String) -> Binding<String> {
+        Binding(get: { apiKeyFields[id] ?? "" }, set: { apiKeyFields[id] = $0 })
+    }
+
+    private func savedAPIKey(_ id: String) -> String? {
+        preferencesStore.apiKey(instanceId: id)
+    }
+
+    private func storeAPIKey(_ value: String?, id: String) throws {
+        try preferencesStore.setAPIKey(value, instanceId: id)
+    }
+
+    private func minimaxRegion(_ id: String) -> String? {
+        preferencesStore.minimaxRegionRaw(instanceId: id)
+    }
+
+    private func setMinimaxRegion(_ raw: String, id: String) {
+        preferencesStore.setMinimaxRegionRaw(raw, instanceId: id)
+    }
+
+    /// Esquece tudo o que a tela guarda de uma conta (removida ou rascunho abandonado).
+    private func clearViewState(for id: String) {
+        apiKeyFields[id] = nil
+        minimaxChina[id] = nil
+        nicknameFields[id] = nil
+        loggedIn.remove(id)
+        pastedCodes[id] = nil
+        deviceCodes[id] = nil
+        claudeSessions[id] = nil
+    }
+
+    private func saveAPIKey(_ id: String) {
+        // Defesa em profundidade: um commit tardio (onDisappear) de uma conta que já não
+        // existe não grava nada.
+        guard AccountEnrollment(model: appModel).acceptsCredential(for: id) else { return }
+        saveSecret(providerName(id), previous: savedAPIKey(id) ?? "", raw: apiKeyBinding(id)) {
+            try storeAPIKey($0, id: id)
+        }
+    }
+
+    private func removeAPIKey(_ id: String) {
+        removeSecret(providerName(id), raw: apiKeyBinding(id)) {
+            try storeAPIKey(nil, id: id)
+        }
+    }
+
+    // MARK: - Login flows
+
+    private func login(config: OAuthConfig, id: String) {
         statusMessage = L("Abrindo o navegador…")
         Task {
             do {
                 _ = try await browserFlow.login(config: config)
-                await MainActor.run { flag.wrappedValue = true; statusMessage = L("Conectado.") }
+                await MainActor.run { afterLogin(id) }
             } catch {
                 await MainActor.run { statusMessage = error.localizedDescription }
             }
         }
     }
 
-    private func beginClaudeLogin() {
-        claudePastedCode = ""
-        claudeSession = manualFlow.begin(config: ClaudeOAuth.config)
+    private func beginClaudeLogin(_ id: String) {
+        pastedCodes[id] = ""
+        claudeSessions[id] = manualFlow.begin(config: ClaudeOAuth.config.forInstance(id))
         statusMessage = L("Abrindo o navegador — copie o código e cole aqui.")
     }
 
-    private func completeClaudeLogin() {
-        guard let session = claudeSession else { return }
-        let pasted = claudePastedCode
+    private func completeClaudeLogin(_ id: String) {
+        guard let session = claudeSessions[id] else { return }
+        let pasted = pastedCodes[id] ?? ""
         statusMessage = L("Validando código…")
         Task {
             do {
                 _ = try await manualFlow.complete(pasted: pasted, session: session)
                 await MainActor.run {
-                    claudeLoggedIn = true; claudeSession = nil; claudePastedCode = ""; statusMessage = L("Conectado.")
+                    claudeSessions[id] = nil; pastedCodes[id] = nil
+                    afterLogin(id)
                 }
             } catch {
                 await MainActor.run { statusMessage = error.localizedDescription }
@@ -543,20 +804,209 @@ struct PreferencesView: View {
         }
     }
 
-    private func loginSuperGrok() {
+    private func loginCursor(_ id: String) {
+        let flow = CursorDeepLoginFlow(tokenStore: tokenStore)
+        let start = flow.begin()
+        flow.open(start)
+        statusMessage = L("Conclua o login no navegador — o OkTally espera por até 20 minutos.")
+        cursorPolls[id] = Task { @MainActor in
+            do {
+                _ = try await flow.poll(start, instanceId: id)
+                cursorPolls[id] = nil
+                afterLogin(id)
+            } catch is CancellationError {
+                cursorPolls[id] = nil
+            } catch {
+                cursorPolls[id] = nil
+                statusMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func cancelCursorLogin(_ id: String) {
+        cursorPolls[id]?.cancel()
+        cursorPolls[id] = nil
+        statusMessage = ""
+    }
+
+    private func loginSuperGrok(_ id: String) {
         statusMessage = L("Solicitando código de dispositivo…")
+        let config = SuperGrokOAuth.config.forInstance(id)
         Task {
             do {
-                let request = try await deviceCodeFlow.requestDeviceCode(config: SuperGrokOAuth.config)
+                let request = try await deviceCodeFlow.requestDeviceCode(config: config)
                 await MainActor.run {
-                    superGrokDeviceCode = request.info
+                    deviceCodes[id] = request.info
                     statusMessage = L("Digite o código no navegador para continuar.")
                     NSWorkspace.shared.open(request.info.verificationURL)
                 }
-                _ = try await deviceCodeFlow.poll(request, config: SuperGrokOAuth.config)
-                await MainActor.run { superGrokLoggedIn = true; superGrokDeviceCode = nil; statusMessage = L("Conectado.") }
+                _ = try await deviceCodeFlow.poll(request, config: config)
+                await MainActor.run { deviceCodes[id] = nil; afterLogin(id) }
             } catch {
-                await MainActor.run { superGrokDeviceCode = nil; statusMessage = error.localizedDescription }
+                await MainActor.run { deviceCodes[id] = nil; statusMessage = error.localizedDescription }
+            }
+        }
+    }
+
+    // MARK: - Adicionar conta
+
+    /// Painel do rascunho: os mesmos botões de login do tipo, gravando sob o id reservado.
+    private func draftPane(_ draft: AccountDraft) -> some View {
+        let id = draft.id
+        return ProviderPaneScaffold(
+            providerId: id,
+            name: LF("Nova conta · %@", Self.kindName(draft.kind)),
+            status: .notConfigured(L("Faça login para adicionar esta conta"))
+        ) {
+            HStack {
+                draftLoginButton(draft)
+                Button(L("Cancelar")) { cancelDraft() }
+                    .buttonStyle(.bordered)
+                Spacer()
+            }
+            if draft.kind == .openrouter || draft.kind == .minimax {
+                AutoSaveField(placeholder: "API Key", text: apiKeyBinding(id), isSecure: true,
+                              onCommit: { saveDraftKey(id) })
+                    .frame(maxWidth: 380)
+            }
+            if draft.kind == .minimax {
+                Toggle(L("Região China (minimaxi.com)"), isOn: Binding(
+                    get: { minimaxChina[id] ?? false },
+                    set: { isChina in
+                        minimaxChina[id] = isChina
+                        setMinimaxRegion(isChina ? "china" : "global", id: id)
+                    }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+            }
+            if draft.kind == .antigravity {
+                // Aviso pedido pelo dono antes de liberar o login Google fora do IDE.
+                Label(L("Login direto na Google fora do IDE pode violar os termos do Antigravity; use por sua conta."),
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(Theme.Brand.heatOrange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if draft.kind == .claude { claudeCodeEntry(id) }
+            if draft.kind == .supergrok, let info = deviceCodes[id] {
+                VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                    Text(LF("Abra %@ e digite:", info.verificationURL.absoluteString))
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text(info.userCode).font(.title3.monospaced()).textSelection(.enabled)
+                }
+            }
+        } details: {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                ForEach(draftNotes(draft.kind), id: \.self) { Text($0) }
+            }
+            .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Avisos do painel de adicionar, por tipo.
+    private func draftNotes(_ kind: AccountKind) -> [String] {
+        var notes: [String] = []
+        if kind == .cursor {
+            notes.append(L("Sessão própria do OkTally — trocar de conta no Cursor não afeta esta conta."))
+        }
+        switch kind {
+        case .claude, .codex, .supergrok, .antigravity, .cursor:
+            notes.append(L("Entre com a OUTRA conta. Se o navegador já estiver logado na conta atual, troque de conta (ou use uma janela anônima) antes de autorizar."))
+        default:
+            break
+        }
+        if kind == .codex {
+            notes.append(L("O login do Codex usa a porta 1455 — feche o Codex CLI se ele estiver fazendo login ao mesmo tempo."))
+        }
+        if kind == .openrouter || kind == .minimax {
+            notes.append(L("Cole a chave da outra conta e tecle Enter. A chave fica no Keychain desta máquina; a mesma chave duas vezes não é adicionada."))
+        }
+        notes.append(L("A conta nova aparece ao lado da atual, rotulada pelo e-mail. Se for a mesma conta, nada é adicionado."))
+        return notes
+    }
+
+    @ViewBuilder private func draftLoginButton(_ draft: AccountDraft) -> some View {
+        let id = draft.id
+        switch draft.kind {
+        case .claude:
+            Button(L("Entrar…")) { beginClaudeLogin(id) }.buttonStyle(.borderedProminent)
+        case .codex:
+            Button(L("Entrar…")) { login(config: CodexOAuth.config.forInstance(id), id: id) }.buttonStyle(.borderedProminent)
+        case .supergrok:
+            Button(L("Entrar…")) { loginSuperGrok(id) }.buttonStyle(.borderedProminent)
+        case .antigravity:
+            Button(L("Entrar com Google…")) { login(config: AntigravityOAuth.config.forInstance(id), id: id) }
+                .buttonStyle(.borderedProminent)
+        case .cursor:
+            cursorLoginButton(id)
+        default:
+            EmptyView()
+        }
+    }
+
+    /// Chave colada num rascunho: grava sob o id reservado e, se gravou de fato, segue o
+    /// mesmo caminho de um login concluído.
+    private func saveDraftKey(_ id: String) {
+        let before = savedAPIKey(id) ?? ""
+        saveAPIKey(id)
+        let after = savedAPIKey(id) ?? ""
+        if !after.isEmpty, after != before { afterLogin(id) }
+    }
+
+    private func beginAddAccount(_ kind: AccountKind) {
+        if draft != nil { cancelDraft() }
+        let enrollment = AccountEnrollment(model: appModel)
+        let next = AccountDraft(id: enrollment.beginDraft(kind: kind), kind: kind)
+        draft = next
+        pane = .provider(next.id)
+        statusMessage = ""
+    }
+
+    private func cancelDraft() {
+        guard let current = draft else { return }
+        cursorPolls[current.id]?.cancel()
+        cursorPolls[current.id] = nil
+        AccountEnrollment(model: appModel).abandon(draftId: current.id, kind: current.kind)
+        clearViewState(for: current.id)
+        draft = nil
+        pane = .general
+        statusMessage = ""
+    }
+
+    /// Login concluído. Numa conta existente só marca conectado; num rascunho, é a hora
+    /// de descobrir quem é a conta e decidir se entra.
+    private func afterLogin(_ id: String) {
+        guard AccountEnrollment(model: appModel).loginCompleted(id: id) != .orphaned else { return }
+        loggedIn.insert(id)
+        guard let current = draft, current.id == id else {
+            statusMessage = L("Conectado.")
+            return
+        }
+        statusMessage = L("Identificando a conta…")
+        Task { @MainActor in
+            let result = await AccountEnrollment(model: appModel).finish(draftId: current.id, kind: current.kind)
+            switch result {
+            case .committed:
+                draft = nil
+                pane = .provider(current.id)
+                load()
+                statusMessage = appModel.accounts.first(where: { $0.id == current.id })?.email == nil
+                    ? L("Conta adicionada — dê um apelido para distinguir das outras.")
+                    : L("Conta adicionada.")
+            case .duplicate(let email):
+                // O rascunho continua aberto: o dono pode trocar de conta no navegador e
+                // tentar de novo, ou cancelar.
+                loggedIn.remove(current.id)
+                apiKeyFields[current.id] = ""
+                statusMessage = email.map { LF("%@ já está no OkTally — nada foi adicionado.", $0) }
+                    ?? L("Esta conta já está no OkTally — nada foi adicionado.")
+            case .cancelled:
+                // Cancelado durante a identificação: a tela já foi limpa por `cancelDraft`.
+                loggedIn.remove(current.id)
+            case .failed:
+                loggedIn.remove(current.id)
+                statusMessage = L("Não foi possível adicionar a conta.")
             }
         }
     }
@@ -594,12 +1044,6 @@ struct PreferencesView: View {
         }
     }
 
-    private func saveMinimaxKey() {
-        saveSecret("MiniMax", previous: preferencesStore.minimaxAPIKey ?? "", raw: $minimaxAPIKey) {
-            try preferencesStore.setMinimaxAPIKey($0)
-        }
-    }
-
     /// Franquia do MiMo. Antes isto era `= Double(mimoAllowance)` atrás de um botão: com o
     /// campo vazio virava `nil` e apagava a franquia salva.
     private func saveMiMoAllowance() {
@@ -624,9 +1068,9 @@ struct PreferencesView: View {
         }
     }
 
-    private func logout(providerId: String, flag: Binding<Bool>) {
+    private func logout(providerId: String) {
         try? tokenStore.delete(providerId: providerId)
-        flag.wrappedValue = false
+        loggedIn.remove(providerId)
         statusMessage = L("Desconectado.")
     }
 }
@@ -973,7 +1417,7 @@ private struct GeneralPane: View {
         case .automatic:
             return L("Automático — maior risco")
         case .window(let providerId, let windowLabel):
-            let name = "\(providerName(providerId)) · \(WindowLabelCatalog.displayLabel(windowLabel))"
+            let name = QuotaSlotLabel.text(providerName: providerName(providerId), windowLabel: windowLabel)
             let exists = appModel.availableForecastSlots.contains(slot)
             return exists ? name : LF("%@ (indisponível)", name)
         }
@@ -996,7 +1440,7 @@ private struct GeneralPane: View {
         case .automatic:
             return L("Automático (mais crítico)")
         case .window(let providerId, let windowLabel):
-            let name = "\(providerName(providerId)) · \(WindowLabelCatalog.displayLabel(windowLabel))"
+            let name = QuotaSlotLabel.text(providerName: providerName(providerId), windowLabel: windowLabel)
             let exists = appModel.snapshotsByProvider[providerId]?.quotas.contains { $0.label == windowLabel } ?? false
             return exists ? name : LF("%@ (indisponível)", name)
         }
@@ -1013,7 +1457,7 @@ private struct GeneralPane: View {
             IconChip(glyph: ProviderPalette.glyph(forId: pin.providerId),
                      color: ProviderPalette.color(for: pin.providerId),
                      size: 18)
-            Text("\(providerName(pin.providerId)) · \(WindowLabelCatalog.displayLabel(pin.windowLabel))")
+            Text(QuotaSlotLabel.text(providerName: providerName(pin.providerId), windowLabel: pin.windowLabel))
                 .font(Theme.Font.body)
             Spacer()
             Button {

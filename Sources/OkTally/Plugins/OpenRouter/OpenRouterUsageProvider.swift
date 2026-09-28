@@ -2,7 +2,7 @@
 import Foundation
 
 final class OpenRouterUsageProvider: UsageProvider {
-    let id = "openrouter"
+    let id: String
     let displayName = "OpenRouter"
     let authMethod: AuthMethod = .apiKey
     let refreshInterval: TimeInterval = 600
@@ -10,7 +10,12 @@ final class OpenRouterUsageProvider: UsageProvider {
     private let apiKeyProvider: () -> String?
     private let creditsClient: OpenRouterCreditsFetching
 
-    init(apiKeyProvider: @escaping () -> String?, creditsClient: OpenRouterCreditsFetching = OpenRouterAPIClient()) {
+    init(
+        instanceId: String = AccountKind.openrouter.rawValue,
+        apiKeyProvider: @escaping () -> String?,
+        creditsClient: OpenRouterCreditsFetching = OpenRouterAPIClient()
+    ) {
+        self.id = instanceId
         self.apiKeyProvider = apiKeyProvider
         self.creditsClient = creditsClient
     }

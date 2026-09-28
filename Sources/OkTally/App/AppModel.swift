@@ -1,5 +1,6 @@
 // Sources/OkTally/App/AppModel.swift
 import Foundation
+import os
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -45,6 +46,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var analyticsByProvider: [String: TokenAnalytics] = [:]
     private var analyticsLoadedAt: [String: Date] = [:]
     var analyticsLoaders: [String: () async -> TokenAnalytics?] = [:]
+    /// Fonte de analytics de uma conta nova (ou `nil` quando o tipo não tem, ou quando a
+    /// fonte é local e já pertence à conta legada). Injetado pelo app.
+    var analyticsLoaderFactory: ((AccountInstance) -> (() async -> TokenAnalytics?)?)?
 
     /// Providers com fonte de analytics, na ordem visível das contas (para a aba "Análise").
     var analyticsProviderIds: [String] {
@@ -129,6 +133,40 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Contas
+
+    /// As contas acompanhadas. Espelho publicado de `PreferencesStore.accounts` — a
+    /// escrita passa sempre por aqui para disco e tela ficarem juntos.
+    @Published private(set) var accounts: [AccountInstance] {
+        didSet { AccountDirectoryHolder.current = AccountDirectory(accounts: accounts) }
+    }
+
+    /// Monta os provedores de uma conta nova (injetado pelo app com o `ProviderFactory`).
+    var providerFactory: ((AccountInstance) -> [UsageProvider])?
+    /// Apaga a credencial de uma conta removida (Keychain OAuth ou chave de API).
+    var credentialEraser: ((AccountInstance) throws -> Void)?
+
+    /// Descobre e-mail/identidade de uma conta (injetado pelo app com o
+    /// `AccountEmailResolver`).
+    var identityResolver: ((AccountInstance) async -> AccountIdentity)?
+    /// Contas cuja identidade já foi procurada neste launch — uma tentativa só, para não
+    /// somar chamadas ao perfil a cada poll quando a fonte não tem e-mail.
+    private var identityAttempted: Set<String> = []
+
+    /// Id do rascunho de conta em andamento (menu "+"), ou `nil`. Vive no modelo — e não
+    /// na view — para as guardas de credencial serem testáveis: só uma conta existente
+    /// ou o rascunho ATIVO podem ter credencial gravada.
+    var activeDraftId: String?
+
+    // Ganchos de teste (internos; o app não usa).
+    var preferencesForTesting: PreferencesStore { preferences }
+    func markIdentityAttemptedForTesting(_ id: String) { identityAttempted.insert(id) }
+    func identityWasAttemptedForTesting(_ id: String) -> Bool { identityAttempted.contains(id) }
+
+    /// O que está gravado — usado em testes para provar a persistência.
+    var persistedAccounts: [AccountInstance] { preferences.accounts }
+
+    private static let log = Logger(subsystem: "com.oktally.app", category: "accounts")
     private static let menuBarPinsKey = "menuBarPins"
     private static let legacyMenuBarPinKey = "menuBarPin"
     private let defaults: UserDefaults
@@ -180,6 +218,7 @@ final class AppModel: ObservableObject {
         self.forecastSlot = preferences.forecastSlot
         self.providerOrder = preferences.providerOrder
         self.popoverHiddenProviders = preferences.popoverHiddenProviders
+        self.accounts = preferences.accounts
         self.usageColorScale = preferences.usageColorScale
         if let joined = defaults.string(forKey: Self.menuBarPinsKey) {
             self.menuBarPins = joined.split(separator: "\u{2}").compactMap { MenuBarPin(stored: String($0)) }
@@ -205,6 +244,7 @@ final class AppModel: ObservableObject {
         // O holder só é povoado depois de `self` estar inteiro (o `didSet` não roda para
         // atribuições feitas dentro do `init`).
         UsageColorScaleHolder.current = usageColorScale
+        AccountDirectoryHolder.current = AccountDirectory(accounts: accounts)
         for providerId in seededForecastProviderIds {
             Task { [weak self] in
                 await self?.recomputeForecasts(providerId: providerId)
@@ -236,6 +276,153 @@ final class AppModel: ObservableObject {
                 try? await Task.sleep(nanoseconds: 24 * 3600 * 1_000_000_000)
             }
         }
+    }
+
+    func isLooping(providerId: String) -> Bool {
+        scheduler.isLooping(id: providerId)
+    }
+
+    // MARK: - Ciclo de vida das contas
+
+    /// Adiciona uma conta já logada: persiste, registra os provedores, liga o loop (com
+    /// o atraso de irmãos) e a encaixa logo depois da última conta do mesmo tipo.
+    func commitAccount(_ account: AccountInstance) {
+        guard !accounts.contains(where: { $0.id == account.id }) else { return }
+        var currentOrder = orderedProviders.map(\.id)
+        accounts.append(account)
+        preferences.accounts = accounts
+
+        let providers = providerFactory?(account) ?? []
+        registry.add(providers)
+        if let loader = analyticsLoaderFactory?(account) {
+            analyticsLoaders[account.id] = loader
+        }
+        let entries = registry.providers.map { ($0.id, $0.refreshInterval) }
+        for provider in providers {
+            scheduler.startLoop(for: provider, initialDelay: RefreshStagger.offset(of: provider.id, among: entries))
+            let kind = AccountID.kind(of: provider.id)
+            if let lastSibling = currentOrder.lastIndex(where: { AccountID.kind(of: $0) == kind }) {
+                currentOrder.insert(provider.id, at: lastSibling + 1)
+            } else {
+                currentOrder.append(provider.id)
+            }
+        }
+        providerOrder = currentOrder
+    }
+
+    /// Remove uma conta e tudo o que é dela: loop, provedores, credencial, histórico,
+    /// pinos, slots, ordem e estado publicado. Contas presas a um app instalado recusam.
+    func removeAccount(id: String) throws {
+        guard AccountRemoval.canRemove(id) else { throw AccountError.cannotRemove(id) }
+        guard let account = accounts.first(where: { $0.id == id }) else { throw AccountError.unknownAccount(id) }
+        // A credencial primeiro: se o Keychain recusar, nada mudou e o dono pode tentar de novo.
+        try credentialEraser?(account)
+
+        let ids = AccountRemoval.cascadeIds(for: id)
+        let removed = Set(ids)
+        for providerId in ids {
+            scheduler.stopLoop(id: providerId)
+        }
+        // Sai do registry ANTES de apagar o histórico: um fetch em voo confere o registry
+        // antes de gravar, e assim não regrava o que vem a seguir.
+        registry.remove(ids: removed)
+        for providerId in ids {
+            do {
+                try storage?.deleteSnapshots(providerId: providerId)
+            } catch {
+                // A conta sai mesmo assim (credencial já foi apagada); o histórico órfão
+                // não aparece em lugar nenhum e cai na retenção de 30 dias. Fica registrado.
+                Self.log.error("Falha ao apagar o histórico de \(providerId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        let cleaned = AccountRemoval.cleanup(
+            removedIds: removed,
+            pins: menuBarPins,
+            slots: [notchLeadingSlot, notchTrailingSlot, notchBottomSlot, menuBarSlot, popoverHeroSlot],
+            order: providerOrder
+        )
+        if cleaned.pins != menuBarPins { menuBarPins = cleaned.pins }
+        if cleaned.slots[0] != notchLeadingSlot { notchLeadingSlot = cleaned.slots[0] }
+        if cleaned.slots[1] != notchTrailingSlot { notchTrailingSlot = cleaned.slots[1] }
+        if cleaned.slots[2] != notchBottomSlot { notchBottomSlot = cleaned.slots[2] }
+        if cleaned.slots[3] != menuBarSlot { menuBarSlot = cleaned.slots[3] }
+        if cleaned.slots[4] != popoverHeroSlot { popoverHeroSlot = cleaned.slots[4] }
+        if cleaned.order != providerOrder { providerOrder = cleaned.order }
+        if case .window(let providerId, _) = forecastSlot, removed.contains(providerId) { forecastSlot = .automatic }
+        if !popoverHiddenProviders.isDisjoint(with: removed) { popoverHiddenProviders.subtract(removed) }
+
+        for providerId in ids {
+            snapshotsByProvider[providerId] = nil
+            errorsByProvider[providerId] = nil
+            errorKindByProvider[providerId] = nil
+            historyByProvider[providerId] = nil
+            estimatedCostByProvider[providerId] = nil
+            analyticsByProvider[providerId] = nil
+            analyticsLoadedAt[providerId] = nil
+            analyticsLoaders[providerId] = nil
+        }
+        forecastsByWindow = forecastsByWindow.filter { !removed.contains($0.key.providerId) }
+        for providerId in ids {
+            preferences.resetAccountPreferences(instanceId: providerId)
+            identityAttempted.remove(providerId)
+        }
+
+        accounts.removeAll { $0.id == id }
+        preferences.accounts = accounts
+    }
+
+    /// Apelido da conta. Vazio (ou só espaços) apaga o apelido.
+    func renameAccount(id: String, nickname: String?) {
+        let trimmed = nickname?.trimmingCharacters(in: .whitespacesAndNewlines)
+        updateAccount(id: id) { $0.nickname = (trimmed?.isEmpty ?? true) ? nil : trimmed }
+    }
+
+    /// E-mail e chave de dedup descobertos depois do login.
+    func setIdentity(id: String, email: String?, identityKey: String?, autoLabel: String? = nil) {
+        updateAccount(id: id) {
+            $0.email = email
+            $0.identityKey = identityKey
+            if let autoLabel { $0.autoLabel = autoLabel }
+        }
+    }
+
+    /// Backfill: contas sem e-mail (legadas de antes desta versão, ou cuja fonte falhou
+    /// no login) ganham o e-mail na primeira leitura bem-sucedida do launch.
+    private func resolveIdentityIfMissing(_ id: String) {
+        guard let resolver = identityResolver,
+              let account = accounts.first(where: { $0.id == id }),
+              account.email == nil,
+              account.identityKey == nil || AccountID.kind(of: id).map(Self.isAPIKeyKind) != true,
+              identityAttempted.insert(id).inserted
+        else { return }
+        Task { [weak self] in
+            let identity = await resolver(account)
+            guard !identity.isEmpty else { return }
+            await MainActor.run {
+                guard let self, let current = self.accounts.first(where: { $0.id == id }) else { return }
+                self.setIdentity(id: id, email: identity.email ?? current.email,
+                                 identityKey: identity.identityKey ?? current.identityKey,
+                                 autoLabel: identity.autoLabel)
+            }
+        }
+    }
+
+    /// Contas de chave nunca terão e-mail; uma vez com a impressão digital, não há mais
+    /// o que procurar.
+    private static func isAPIKeyKind(_ kind: AccountKind) -> Bool {
+        kind == .openrouter || kind == .minimax || kind == .opencode
+    }
+
+    private func updateAccount(id: String, _ change: (inout AccountInstance) -> Void) {
+        guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
+        var updated = accounts[index]
+        change(&updated)
+        guard updated != accounts[index] else { return }
+        accounts[index] = updated
+        preferences.accounts = accounts
+        // Os rótulos são lidos das preferências pelos provedores; o `@Published` acima já
+        // avisa as views, que releem `displayName`.
     }
 
     func refreshNow() async {
@@ -432,6 +619,8 @@ final class AppModel: ObservableObject {
     }
 
     private func apply(_ result: SchedulerFetchResult) {
+        // Um fetch que já estava em voo quando a conta foi removida não pode ressuscitá-la.
+        guard registry.providers.contains(where: { $0.id == result.providerId }) else { return }
         switch result.outcome {
         case .success(let snapshot):
             snapshotsByProvider[result.providerId] = snapshot
@@ -442,6 +631,7 @@ final class AppModel: ObservableObject {
                 await self?.recomputeForecasts(providerId: result.providerId)
             }
             refreshEstimatedCost(for: snapshot)
+            resolveIdentityIfMissing(result.providerId)
         case .failure(let error):
             errorsByProvider[result.providerId] = error.localizedDescription
             errorKindByProvider[result.providerId] = ProviderErrorPresentation.classify(error)

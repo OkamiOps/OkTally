@@ -20,53 +20,75 @@ extension AntigravityError: LocalizedError {
     }
 }
 
-/// Antigravity (IDE da Google) zero-config: lê o login que o IDE guarda no
-/// `state.vscdb`, renova o access token no OAuth da Google e consulta o
+/// Antigravity (IDE da Google). A conta legada é zero-config: lê o login que o IDE guarda
+/// no `state.vscdb`, renova o access token no OAuth da Google e consulta o
 /// `retrieveUserQuotaSummary` do Cloud Code — grupos "Gemini" e "Claude/GPT", cada um
 /// com janelas de 5h e semanal. Cadeia inteira confirmada ao vivo em 2026-08-12.
+///
+/// Contas extras não têm IDE para ler: usam o login Google próprio do OkTally
+/// (`AntigravityOAuth.config`), com o token no Keychain sob o id da conta.
 final class AntigravityUsageProvider: UsageProvider {
-    let id = "antigravity"
+    let id: String
     let displayName = "Antigravity"
     let authMethod: AuthMethod = .localFile(path: "~/Library/Application Support/Antigravity")
     let refreshInterval: TimeInterval = 600
 
-    private static let tokenURL = URL(string: "https://oauth2.googleapis.com/token")!
-    private static let summaryURL = URL(string: "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary")!
-    // Credenciais OAuth do app instalado — as MESMAS que a Google publica em texto puro
-    // no repositório open-source do gemini-cli e que o IDE Antigravity embute. Em apps
-    // instalados o "secret" é público por definição (RFC 8252 §8.5): ele não autentica
-    // nada sozinho, só identifica o client; o que autentica é o refresh token do dono,
-    // lido do IDE. O secret scanning do GitHub marca isso como falso positivo — o push
-    // exige o unblock de uma vez pelo dono do repositório.
-    private static let clientId = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
-    private static let clientSecret = "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"
-    private static let userAgent = "antigravity/1.11.3 Darwin/arm64"
+    /// De onde vem a credencial: o login do IDE (conta legada) ou o login próprio do
+    /// OkTally (contas extras, via `OAuthManager`).
+    enum CredentialSource {
+        case ide(AntigravityTokenReading)
+        case appOwned(OAuthManaging, TokenStoring)
+    }
 
-    private let tokenReader: AntigravityTokenReading
+    private let source: CredentialSource
     private let session: URLSession
     /// Access token renovado, cacheado até perto do vencimento para não bater no
     /// endpoint de token a cada poll.
     private var cachedAccess: (token: String, expiresAt: Date)?
 
-    init(tokenReader: AntigravityTokenReading = AntigravityTokenReader(), session: URLSession = .shared) {
-        self.tokenReader = tokenReader
+    init(
+        instanceId: String = AccountKind.antigravity.rawValue,
+        tokenReader: AntigravityTokenReading = AntigravityTokenReader(),
+        session: URLSession = .shared
+    ) {
+        self.id = instanceId
+        self.source = .ide(tokenReader)
+        self.session = session
+    }
+
+    /// Conta extra: login Google próprio, token no Keychain sob `instanceId`.
+    init(instanceId: String, oauthManager: OAuthManaging, tokenStore: TokenStoring, session: URLSession = .shared) {
+        self.id = instanceId
+        self.source = .appOwned(oauthManager, tokenStore)
         self.session = session
     }
 
     func isAuthenticated() async -> Bool {
-        tokenReader.readTokens() != nil
+        switch source {
+        case .ide(let reader): return reader.readTokens() != nil
+        case .appOwned(_, let store): return store.load(providerId: id) != nil
+        }
     }
 
     func fetchSnapshot() async throws -> ProviderSnapshot {
-        guard let tokens = tokenReader.readTokens() else { throw AntigravityError.notDetected }
-        let accessToken = try await validAccessToken(refreshToken: tokens.refreshToken, fallback: tokens.accessToken)
+        let accessToken: String
+        switch source {
+        case .ide(let reader):
+            guard let tokens = reader.readTokens() else { throw AntigravityError.notDetected }
+            accessToken = try await validAccessToken(refreshToken: tokens.refreshToken, fallback: tokens.accessToken)
+        case .appOwned(let manager, let store):
+            guard store.load(providerId: id) != nil else { throw AntigravityError.notDetected }
+            // A Google não gira o refresh token; o `OAuthManager` mantém o anterior quando
+            // a resposta do refresh não traz um novo.
+            accessToken = try await manager.validAccessToken(providerId: id, config: AntigravityOAuth.config.forInstance(id))
+        }
 
-        var request = URLRequest(url: Self.summaryURL)
+        var request = URLRequest(url: AntigravityOAuth.summaryURL)
         request.httpMethod = "POST"
         request.httpBody = Data("{}".utf8)
         request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.addValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
+        request.addValue(AntigravityOAuth.userAgent, forHTTPHeaderField: "User-Agent")
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw AntigravityError.badResponse(0) }
@@ -88,12 +110,12 @@ final class AntigravityUsageProvider: UsageProvider {
         if let cachedAccess, cachedAccess.expiresAt > Date().addingTimeInterval(60) {
             return cachedAccess.token
         }
-        var request = URLRequest(url: Self.tokenURL)
+        var request = URLRequest(url: AntigravityOAuth.config.tokenURL)
         request.httpMethod = "POST"
         request.addValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         let body = [
-            "client_id": Self.clientId,
-            "client_secret": Self.clientSecret,
+            "client_id": AntigravityOAuth.clientId,
+            "client_secret": AntigravityOAuth.clientSecret,
             "refresh_token": refreshToken,
             "grant_type": "refresh_token",
         ].map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? $0.value)" }

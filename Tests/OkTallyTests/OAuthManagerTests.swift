@@ -134,6 +134,27 @@ final class OAuthManagerTests: XCTestCase {
         XCTAssertEqual(URLProtocolStub.requestCount(for: config.tokenURL), 1)
     }
 
+    /// Contas múltiplas: o single-flight é POR CONTA. Duas chamadas da mesma conta
+    /// dividem um refresh; uma conta irmã do mesmo tipo faz o dela, com o próprio
+    /// refresh token — nunca espera nem consome o da outra.
+    func test_refresh_isSingleFlightPerInstance_notAcrossInstances() async throws {
+        URLProtocolStub.resetRequestCounts()
+        let data = try Data(contentsOf: Bundle.module.url(forResource: "oauth_token_response", withExtension: "json", subdirectory: "Fixtures")!)
+        URLProtocolStub.stubResponses[config.tokenURL] = (data, 200)
+        let store = InMemoryTokenStore()
+        for id in ["codex", "codex#abc123"] {
+            try store.save(OAuthToken(accessToken: "old", refreshToken: "rt-\(id)", expiresAt: .distantPast, extra: [:]), providerId: id)
+        }
+        let manager = OAuthManager(store: store, session: makeSession())
+        async let a1 = manager.validAccessToken(providerId: "codex", config: config.forInstance("codex"))
+        async let a2 = manager.validAccessToken(providerId: "codex", config: config.forInstance("codex"))
+        async let b1 = manager.validAccessToken(providerId: "codex#abc123", config: config.forInstance("codex#abc123"))
+        _ = try await (a1, a2, b1)
+        XCTAssertEqual(URLProtocolStub.requestCount(for: config.tokenURL), 2)
+        XCTAssertEqual(store.load(providerId: "codex#abc123")?.accessToken, "new-access")
+        XCTAssertEqual(store.load(providerId: "codex")?.accessToken, "new-access")
+    }
+
     private static func makeSyntheticJWT(payload: [String: Any]) -> String {
         let header = ["alg": "none", "typ": "JWT"]
         let headerData = try! JSONSerialization.data(withJSONObject: header)
@@ -145,5 +166,69 @@ final class OAuthManagerTests: XCTestCase {
                 .replacingOccurrences(of: "=", with: "")
         }
         return "\(base64url(headerData)).\(base64url(payloadData)).synthetic-unsigned"
+    }
+
+    // MARK: - Client secret (Antigravity / Google)
+
+    private func secretConfig(tokenPath: String) -> OAuthConfig {
+        var c = OAuthConfig(providerId: "antigravity#abc123",
+                            authorizeURL: URL(string: "https://accounts.example.com/auth")!,
+                            tokenURL: URL(string: "https://oauth2.example.com/\(tokenPath)")!,
+                            clientId: "cid", scopes: ["email"], redirectURI: "http://127.0.0.1/cb")
+        c.clientSecret = "s3cr3t"
+        c.additionalAuthorizeParameters = ["access_type": "offline", "prompt": "consent"]
+        return c
+    }
+
+    func test_exchangeAndRefresh_sendClientSecretWhenConfigured() async throws {
+        let c = secretConfig(tokenPath: "token-secret")
+        let data = try Data(contentsOf: Bundle.module.url(forResource: "oauth_token_response", withExtension: "json", subdirectory: "Fixtures")!)
+        URLProtocolStub.stubResponses[c.tokenURL] = (data, 200)
+        let store = InMemoryTokenStore()
+        let manager = OAuthManager(store: store, session: makeSession())
+
+        _ = try await manager.exchangeCode("code", verifier: "v", config: c)
+        XCTAssertTrue(URLProtocolStub.lastBody(for: c.tokenURL)?.contains("client_secret=s3cr3t") ?? false)
+
+        _ = try await manager.refresh(providerId: "antigravity#abc123", config: c)
+        let refreshBody = URLProtocolStub.lastBody(for: c.tokenURL) ?? ""
+        XCTAssertTrue(refreshBody.contains("grant_type=refresh_token"))
+        XCTAssertTrue(refreshBody.contains("client_secret=s3cr3t"))
+    }
+
+    func test_configWithoutSecret_bodyUnchanged() async throws {
+        let c = OAuthConfig(providerId: "codex", authorizeURL: config.authorizeURL,
+                            tokenURL: URL(string: "https://auth.example.com/oauth/token-nosecret")!,
+                            clientId: "client123", scopes: ["openid"], redirectURI: "http://127.0.0.1:0/callback")
+        let data = try Data(contentsOf: Bundle.module.url(forResource: "oauth_token_response", withExtension: "json", subdirectory: "Fixtures")!)
+        URLProtocolStub.stubResponses[c.tokenURL] = (data, 200)
+        _ = try await OAuthManager(store: InMemoryTokenStore(), session: makeSession()).exchangeCode("code", verifier: "v", config: c)
+        XCTAssertFalse(URLProtocolStub.lastBody(for: c.tokenURL)?.contains("client_secret") ?? true)
+    }
+
+    func test_forInstance_keepsSecretAndExtras() {
+        let c = secretConfig(tokenPath: "t").forInstance("antigravity#ffffff")
+        XCTAssertEqual(c.providerId, "antigravity#ffffff")
+        XCTAssertEqual(c.clientSecret, "s3cr3t")
+        XCTAssertEqual(c.additionalAuthorizeParameters["prompt"], "consent")
+    }
+
+    func test_redirectConfig_preservesSecretAndExtras() {
+        let c = secretConfig(tokenPath: "t")
+        let r = BrowserOAuthFlow.redirectConfig(from: c, redirect: "http://127.0.0.1:5555/callback")
+        XCTAssertEqual(r.redirectURI, "http://127.0.0.1:5555/callback")
+        XCTAssertEqual(r.clientSecret, c.clientSecret)
+        XCTAssertEqual(r.providerId, c.providerId)
+        XCTAssertEqual(r.additionalAuthorizeParameters, c.additionalAuthorizeParameters)
+    }
+
+    func test_authorizeURL_appendsExtraParameters() throws {
+        let url = BrowserOAuthFlow.authorizeURL(config: secretConfig(tokenPath: "t"), redirect: "http://127.0.0.1:1/cb",
+                                                challenge: "ch", state: "st")
+        let items = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        XCTAssertEqual(items.first { $0.name == "access_type" }?.value, "offline")
+        XCTAssertEqual(items.first { $0.name == "prompt" }?.value, "consent")
+        XCTAssertEqual(items.first { $0.name == "code_challenge" }?.value, "ch")
+        XCTAssertNil(items.first { $0.name == "client_secret" })
     }
 }

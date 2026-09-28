@@ -73,13 +73,14 @@ actor OAuthManager: OAuthManaging {
     }
 
     func exchangeCode(_ code: String, verifier: String, config: OAuthConfig) async throws -> OAuthToken {
-        let form = [
+        var form = [
             "grant_type": "authorization_code",
             "code": code,
             "redirect_uri": config.redirectURI,
             "client_id": config.clientId,
             "code_verifier": verifier
         ]
+        if let secret = config.clientSecret { form["client_secret"] = secret }
         let response = try await postForm(form, to: config.tokenURL, failure: OAuthError.tokenExchangeFailed)
         let token = makeToken(from: response, previousRefresh: nil, previousExtra: extraClaims(from: response))
         try store.save(token, providerId: config.providerId)
@@ -123,11 +124,12 @@ actor OAuthManager: OAuthManaging {
         guard let existing = store.load(providerId: providerId), let refreshToken = existing.refreshToken else {
             throw OAuthError.noRefreshToken
         }
-        let form = [
+        var form = [
             "grant_type": "refresh_token",
             "refresh_token": refreshToken,
             "client_id": config.clientId
         ]
+        if let secret = config.clientSecret { form["client_secret"] = secret }
         let response = try await postForm(form, to: config.tokenURL, failure: OAuthError.refreshFailed)
         var extra = existing.extra
         extra.merge(extraClaims(from: response)) { _, new in new }
@@ -148,6 +150,10 @@ actor OAuthManager: OAuthManaging {
         if let authClaim = payload["https://api.openai.com/auth"] as? [String: Any],
            let accountId = authClaim["chatgpt_account_id"] as? String {
             extra["account_id"] = accountId
+        }
+        // A claim OIDC padrão `email` — rótulo automático e chave de dedup da conta.
+        if let email = payload["email"] as? String, !email.isEmpty {
+            extra["email"] = email
         }
         return extra
     }

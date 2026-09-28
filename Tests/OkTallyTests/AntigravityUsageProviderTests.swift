@@ -79,4 +79,61 @@ final class AntigravityUsageProviderTests: XCTestCase {
         XCTAssertEqual(ProviderErrorPresentation.classify(AntigravityError.tokenRejected), .needsReauth)
         XCTAssertEqual(ProviderErrorPresentation.classify(AntigravityError.badResponse(500)), .error)
     }
+
+    // MARK: - Conta própria do OkTally (login Google)
+
+    private final class FixedTokenReader: AntigravityTokenReading {
+        let tokens: AntigravityTokens?
+        init(_ tokens: AntigravityTokens?) { self.tokens = tokens }
+        func readTokens() -> AntigravityTokens? { tokens }
+    }
+
+    private func makeSession() -> URLSession {
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.protocolClasses = [URLProtocolStub.self]
+        return URLSession(configuration: cfg)
+    }
+
+    func test_appOwnedInstance_usesOAuthManagerTokenNotIDE() async throws {
+        let store = InMemoryTokenStore()
+        try store.save(OAuthToken(accessToken: "app-tok", refreshToken: "rt", expiresAt: .distantFuture, extra: [:]),
+                       providerId: "antigravity#abc123")
+        URLProtocolStub.stubResponses[AntigravityOAuth.summaryURL] = (Data(summaryJSON.utf8), 200)
+        let oauth = FakeOAuthManaging(); oauth.accessTokenToReturn = "app-tok"
+        let provider = AntigravityUsageProvider(instanceId: "antigravity#abc123", oauthManager: oauth,
+                                                tokenStore: store, session: makeSession())
+
+        let authenticated = await provider.isAuthenticated()
+        XCTAssertTrue(authenticated)
+        let snapshot = try await provider.fetchSnapshot()
+
+        XCTAssertEqual(snapshot.providerId, "antigravity#abc123")
+        XCTAssertEqual(snapshot.quotas.count, 3)
+        XCTAssertEqual(URLProtocolStub.lastAuthorization(for: AntigravityOAuth.summaryURL), "Bearer app-tok")
+        XCTAssertEqual(oauth.lastConfig?.providerId, "antigravity#abc123")
+        XCTAssertEqual(oauth.lastConfig?.clientSecret, AntigravityOAuth.config.clientSecret)
+    }
+
+    func test_appOwnedInstance_withoutToken_isNotAuthenticated() async {
+        let provider = AntigravityUsageProvider(instanceId: "antigravity#abc123", oauthManager: FakeOAuthManaging(),
+                                                tokenStore: InMemoryTokenStore())
+        let authenticated = await provider.isAuthenticated()
+        XCTAssertFalse(authenticated)
+    }
+
+    func test_legacyInstance_stillReadsIDE() async throws {
+        let ideTokens = AntigravityTokens(accessToken: "ide-access", refreshToken: "ide-refresh")
+        URLProtocolStub.stubResponses[AntigravityOAuth.config.tokenURL] = (Data(#"{"access_token":"ide-fresh","expires_in":3600}"#.utf8), 200)
+        URLProtocolStub.stubResponses[AntigravityOAuth.summaryURL] = (Data(summaryJSON.utf8), 200)
+        let provider = AntigravityUsageProvider(tokenReader: FixedTokenReader(ideTokens), session: makeSession())
+
+        let snapshot = try await provider.fetchSnapshot()
+
+        XCTAssertEqual(snapshot.providerId, "antigravity")
+        XCTAssertEqual(URLProtocolStub.lastAuthorization(for: AntigravityOAuth.summaryURL), "Bearer ide-fresh")
+        // O refresh legado codifica os valores com `.alphanumerics`; basta ver as chaves.
+        let body = URLProtocolStub.lastBody(for: AntigravityOAuth.config.tokenURL) ?? ""
+        XCTAssertTrue(body.contains("refresh_token="))
+        XCTAssertTrue(body.contains("client_secret="))
+    }
 }

@@ -28,6 +28,7 @@ final class AppModelTests: XCTestCase {
         }
 
         func prune(olderThan cutoff: Date) throws {}
+        func deleteSnapshots(providerId: String) throws {}
     }
 
     private final class ForecastReadFailingStorage: StorageManaging {
@@ -48,6 +49,7 @@ final class AppModelTests: XCTestCase {
         }
 
         func prune(olderThan cutoff: Date) throws {}
+        func deleteSnapshots(providerId: String) throws {}
     }
 
     private let forecastHour: TimeInterval = 3_600
@@ -576,5 +578,188 @@ final class AppModelTests: XCTestCase {
         let reloaded = AppModel(registry: registry, scheduler: scheduler, defaults: defaults)
         XCTAssertEqual(reloaded.popoverHiddenProviders, ["mimo"])
         XCTAssertEqual(reloaded.popoverProviders.map(\.id), ["claude"])
+    }
+    // MARK: - Contas
+
+    /// Registry montado como o app monta (uma conta legada por tipo), com provedores
+    /// falsos rotulados pela mesma regra do `ProviderFactory`.
+    private func makeAccountsModel(
+        extra: [AccountInstance] = [],
+        storage: FakeStorage = FakeStorage(),
+        tokens: InMemoryTokenStore = InMemoryTokenStore()
+    ) -> AppModel {
+        let defaults = isolatedProviderOrderDefaults()
+        let preferences = PreferencesStore(store: defaults, secretStore: FakeSecretStore())
+        preferences.accounts = AccountsCatalog.defaultAccounts + extra
+        let registry = PluginRegistry()
+        let baseNames: [AccountKind: String] = [.claude: "Claude Code", .codex: "Codex", .cursor: "Cursor", .grokbot: "GrokBot"]
+        let factory: (AccountInstance) -> [UsageProvider] = { account in
+            var ids = [account.id]
+            if account.kind == .cursor { ids.append(AccountID.grokBotId(forCursor: account.id)) }
+            return ids.map { id in
+                let fake = FakeUsageProvider(id: id, displayName: baseNames[AccountID.kind(of: id)!] ?? id)
+                fake.isAuthenticatedResult = false
+                return ProviderFactory.labeled(fake, account: account, all: [account], preferences: preferences)
+            }
+        }
+        for account in preferences.accounts { factory(account).forEach(registry.register) }
+        let model = AppModel(registry: registry, scheduler: providerOrderScheduler(registry: registry),
+                             storage: storage, defaults: defaults, preferences: preferences)
+        model.providerFactory = factory
+        model.credentialEraser = { try tokens.delete(providerId: $0.id) }
+        return model
+    }
+
+    func test_addAccount_registersInsertsAfterSiblingsAndStartsLoop() {
+        let model = makeAccountsModel()
+        model.commitAccount(AccountInstance(id: "claude#abc123", kind: .claude))
+        XCTAssertEqual(Array(model.orderedProviders.map(\.id).prefix(2)), ["claude", "claude#abc123"])
+        XCTAssertTrue(model.accounts.contains { $0.id == "claude#abc123" })
+        XCTAssertTrue(model.isLooping(providerId: "claude#abc123"))
+    }
+
+    func test_addAccount_persistsAcrossRelaunch() {
+        let model = makeAccountsModel()
+        model.commitAccount(AccountInstance(id: "codex#abc123", kind: .codex))
+        XCTAssertEqual(model.persistedAccounts.last?.id, "codex#abc123")
+    }
+
+    func test_addCursorAccount_alsoRegistersGrokBotTwin() {
+        let model = makeAccountsModel()
+        model.commitAccount(AccountInstance(id: "cursor#abc123", kind: .cursor))
+        let ids = model.orderedProviders.map(\.id)
+        XCTAssertTrue(ids.contains("cursor#abc123"))
+        XCTAssertTrue(ids.contains("cursor-grokbot#abc123"))
+    }
+
+    func test_removeAccount_forgetsSnapshotsErrorsPinsAndCredential() throws {
+        let extra = AccountInstance(id: "claude#abc123", kind: .claude)
+        let storage = FakeStorage()
+        try storage.save(ProviderSnapshot(providerId: "claude#abc123", fetchedAt: Date(), quotas: [
+            QuotaWindow(label: "5h", shape: .rollingWindow(used: 10, limit: 100, windowStart: Date(), resetAt: Date().addingTimeInterval(3600)))
+        ], usageDetail: nil))
+        let tokens = InMemoryTokenStore()
+        try tokens.save(OAuthToken(accessToken: "t", refreshToken: nil, expiresAt: nil, extra: [:]), providerId: "claude#abc123")
+        let model = makeAccountsModel(extra: [extra], storage: storage, tokens: tokens)
+        XCTAssertNotNil(model.snapshotsByProvider["claude#abc123"])
+        model.togglePin(providerId: "claude#abc123", windowLabel: "5h")
+        model.menuBarSlot = .window(providerId: "claude#abc123", windowLabel: "5h")
+        model.forecastSlot = .window(providerId: "claude#abc123", windowLabel: "5h")
+        model.popoverHiddenProviders = ["claude#abc123"]
+
+        try model.removeAccount(id: "claude#abc123")
+
+        XCTAssertNil(model.snapshotsByProvider["claude#abc123"])
+        XCTAssertFalse(model.isPinned(providerId: "claude#abc123", windowLabel: "5h"))
+        XCTAssertEqual(model.menuBarSlot, .automatic)
+        XCTAssertEqual(model.forecastSlot, .automatic)
+        XCTAssertFalse(model.popoverHiddenProviders.contains("claude#abc123"))
+        XCTAssertNil(tokens.load(providerId: "claude#abc123"))
+        XCTAssertTrue(try storage.snapshots(providerId: "claude#abc123", since: .distantPast).isEmpty)
+        XCTAssertFalse(model.orderedProviders.contains { $0.id == "claude#abc123" })
+        XCTAssertFalse(model.accounts.contains { $0.id == "claude#abc123" })
+        XCTAssertFalse(model.isLooping(providerId: "claude#abc123"))
+    }
+
+    /// Revisão: o id legado é reaproveitado ao re-adicionar — não pode herdar a região
+    /// nem a identidade da conta removida.
+    func test_removeAccount_resetsPerAccountPreferencesAndIdentityAttempt() async throws {
+        let model = makeAccountsModel()
+        model.preferencesForTesting.setMinimaxRegionRaw("china", instanceId: "minimax")
+        model.preferencesForTesting.setRefreshInterval(120, for: "minimax")
+        var resolved = 0
+        model.identityResolver = { _ in resolved += 1; return AccountIdentity() }
+        model.markIdentityAttemptedForTesting("minimax")
+
+        try model.removeAccount(id: "minimax")
+
+        XCTAssertEqual(model.preferencesForTesting.minimaxRegionRaw(instanceId: "minimax"), "global")
+        XCTAssertEqual(model.preferencesForTesting.refreshInterval(for: "minimax", default: 300), 300)
+        XCTAssertFalse(model.identityWasAttemptedForTesting("minimax"))
+    }
+
+    func test_removeCursorAccount_cascadesToGrokBotTwin() throws {
+        let model = makeAccountsModel(extra: [AccountInstance(id: "cursor#abc123", kind: .cursor)])
+        try model.removeAccount(id: "cursor#abc123")
+        XCTAssertFalse(model.orderedProviders.contains { $0.id == "cursor-grokbot#abc123" })
+    }
+
+    func test_removeAccount_refusesMachineBoundLegacy() {
+        let model = makeAccountsModel()
+        XCTAssertThrowsError(try model.removeAccount(id: "cursor"))
+        XCTAssertThrowsError(try model.removeAccount(id: "cursor-grokbot"))
+        XCTAssertTrue(model.accounts.contains { $0.id == "cursor" })
+    }
+
+    func test_removeLegacyOAuthAccount_isAllowed() throws {
+        let model = makeAccountsModel()
+        try model.removeAccount(id: "claude")
+        XCTAssertFalse(model.accounts.contains { $0.id == "claude" })
+    }
+
+    func test_renameAccount_updatesDisplayName() {
+        let model = makeAccountsModel()
+        model.renameAccount(id: "claude", nickname: "Trabalho")
+        XCTAssertEqual(model.orderedProviders.first { $0.id == "claude" }?.displayName, "Claude Code · Trabalho")
+        model.renameAccount(id: "claude", nickname: "  ")
+        XCTAssertEqual(model.orderedProviders.first { $0.id == "claude" }?.displayName, "Claude Code")
+    }
+
+    func test_setIdentity_storesEmailAndKey() {
+        let model = makeAccountsModel()
+        model.setIdentity(id: "codex", email: "c@x.com", identityKey: "c@x.com")
+        XCTAssertEqual(model.accounts.first { $0.id == "codex" }?.email, "c@x.com")
+        XCTAssertEqual(model.persistedAccounts.first { $0.id == "codex" }?.identityKey, "c@x.com")
+    }
+
+    func test_successfulFetch_backfillsMissingEmailOncePerLaunch() async {
+        let codex = FakeUsageProvider(id: "codex", displayName: "Codex")
+        codex.snapshotToReturn = ProviderSnapshot(providerId: "codex", fetchedAt: Date(), quotas: [], usageDetail: nil)
+        let registry = PluginRegistry(); registry.register(codex)
+        let defaults = isolatedProviderOrderDefaults()
+        let preferences = PreferencesStore(store: defaults, secretStore: FakeSecretStore())
+        let model = AppModel(registry: registry, scheduler: providerOrderScheduler(registry: registry),
+                             defaults: defaults, preferences: preferences)
+        var calls = 0
+        model.identityResolver = { _ in
+            calls += 1
+            return AccountIdentity(email: "c@x.com", identityKey: "c@x.com")
+        }
+
+        await model.refreshNow()
+        for _ in 0..<200 where model.accounts.first(where: { $0.id == "codex" })?.email == nil { await Task.yield() }
+        await model.refreshNow()
+        for _ in 0..<50 { await Task.yield() }
+
+        XCTAssertEqual(model.accounts.first { $0.id == "codex" }?.email, "c@x.com")
+        XCTAssertEqual(preferences.accounts.first { $0.id == "codex" }?.identityKey, "c@x.com")
+        XCTAssertEqual(calls, 1)
+    }
+
+    /// Codex tem analytics pela API da conta, então cada conta Codex ganha o seu. Claude e
+    /// OpenCode leem disco local, que é da máquina inteira: só a conta legada tem.
+    func test_analyticsLoaders_followCodexInstances() throws {
+        let model = makeAccountsModel()
+        let noAnalytics: () async -> TokenAnalytics? = { nil }
+        model.analyticsLoaderFactory = { (account: AccountInstance) -> (() async -> TokenAnalytics?)? in
+            if account.kind == .codex { return noAnalytics }
+            if account.kind == .claude && AccountID.isLegacy(account.id) { return noAnalytics }
+            return nil
+        }
+        model.commitAccount(AccountInstance(id: "codex#abc123", kind: .codex))
+        model.commitAccount(AccountInstance(id: "claude#abc123", kind: .claude))
+        XCTAssertTrue(model.analyticsProviderIds.contains("codex#abc123"))
+        XCTAssertFalse(model.analyticsProviderIds.contains("claude#abc123"))
+
+        try model.removeAccount(id: "codex#abc123")
+        XCTAssertFalse(model.analyticsProviderIds.contains("codex#abc123"))
+        XCTAssertNil(model.analyticsLoaders["codex#abc123"])
+    }
+
+    /// Sem contas extras, nada muda: mesmos ids, mesma ordem, mesmos nomes.
+    func test_legacyOnlyModel_keepsTodaysIdsAndNames() {
+        let model = makeAccountsModel()
+        XCTAssertEqual(model.accounts, AccountsCatalog.defaultAccounts)
+        XCTAssertEqual(model.orderedProviders.first { $0.id == "claude" }?.displayName, "Claude Code")
     }
 }

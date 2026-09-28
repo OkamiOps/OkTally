@@ -69,3 +69,27 @@ final class CursorUsageAPIClient: CursorUsageFetching {
         return try JSONDecoder().decode(CursorUsageResponse.self, from: data)
     }
 }
+
+/// Dados da conta por trás de uma sessão do Cursor.
+enum CursorAccountAPI {
+    private static let getEmailURL = URL(string: "https://api2.cursor.sh/aiserver.v1.AuthService/GetEmail")!
+
+    /// `POST AuthService/GetEmail` com a própria sessão → `{"email": …}`. Conferido ao vivo
+    /// em 2026-09-28. Rótulo é enfeite: qualquer falha vira `nil`.
+    static func fetchEmail(accessToken: String, session: URLSession = .shared) async -> String? {
+        var request = URLRequest(url: getEmailURL)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data("{}".utf8)
+        guard let (data, response) = try? await session.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        return email(fromGetEmail: data)
+    }
+
+    static func email(fromGetEmail data: Data) -> String? {
+        guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let email = json["email"] as? String, !email.isEmpty else { return nil }
+        return email
+    }
+}

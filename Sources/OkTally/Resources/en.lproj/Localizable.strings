@@ -325,3 +325,39 @@
 "Restaurar padrão" = "Restore default";
 "% restante" = "% left";
 "Remover parada" = "Remove stop";
+
+/* Multiple accounts */
+"Adicionar conta" = "Add account";
+"Apelido (opcional)" = "Nickname (optional)";
+"Conta" = "Account";
+"Conta não encontrada." = "Account not found.";
+"E-mail" = "Email";
+"Esta conta vem de um app instalado neste Mac e não pode ser removida." = "This account comes from an app installed on this Mac and can't be removed.";
+"Remove a conta, o histórico e os pins. Não dá para desfazer." = "Removes the account, its history and its pins. This can't be undone.";
+"Remover conta" = "Remove account";
+"Remover conta…" = "Remove account…";
+"Remover esta conta?" = "Remove this account?";
+
+/* MiMo session recovery */
+"Renovando a sessão do MiMo — o próximo ciclo deve voltar." = "Renewing the MiMo session — the next cycle should recover.";
+"Nova conta · %@" = "New account · %@";
+"Faça login para adicionar esta conta" = "Sign in to add this account";
+"Entre com a OUTRA conta. Se o navegador já estiver logado na conta atual, troque de conta (ou use uma janela anônima) antes de autorizar." = "Sign in with the OTHER account. If the browser is already signed in to the current one, switch accounts (or use a private window) before authorizing.";
+"O login do Codex usa a porta 1455 — feche o Codex CLI se ele estiver fazendo login ao mesmo tempo." = "Codex sign-in uses port 1455 — quit the Codex CLI if it is signing in at the same time.";
+"A conta nova aparece ao lado da atual, rotulada pelo e-mail. Se for a mesma conta, nada é adicionado." = "The new account shows up next to the current one, labelled by its e-mail. If it's the same account, nothing is added.";
+"Identificando a conta…" = "Identifying the account…";
+"Conta adicionada." = "Account added.";
+"Conta adicionada — dê um apelido para distinguir das outras." = "Account added — give it a nickname to tell it apart from the others.";
+"%@ já está no OkTally — nada foi adicionado." = "%@ is already in OkTally — nothing was added.";
+"Esta conta já está no OkTally — nada foi adicionado." = "This account is already in OkTally — nothing was added.";
+"Não foi possível adicionar a conta." = "Couldn't add the account.";
+"Cole a chave da outra conta e tecle Enter. A chave fica no Keychain desta máquina; a mesma chave duas vezes não é adicionada." = "Paste the other account's key and press Return. The key stays in this Mac's Keychain; the same key is never added twice.";
+"Login Google próprio do OkTally, separado do IDE Antigravity." = "OkTally's own Google sign-in, separate from the Antigravity IDE.";
+"Entrar com Google…" = "Sign in with Google…";
+"Login direto na Google fora do IDE pode violar os termos do Antigravity; use por sua conta." = "Signing in to Google outside the IDE may violate Antigravity's terms; use at your own risk.";
+"Sessão própria do OkTally — trocar de conta no Cursor não afeta esta conta." = "OkTally's own session — switching accounts in Cursor doesn't affect this account.";
+"Sessão própria do OkTally — trocar de conta no Cursor não afeta esta conta. A sessão dura cerca de 60 dias; depois, é só entrar de novo." = "OkTally's own session — switching accounts in Cursor doesn't affect this account. The session lasts about 60 days; after that, just sign in again.";
+"Segue a conta %@ — login, apelido e remoção ficam lá." = "Follows the %@ account — sign-in, nickname and removal live there.";
+"Aguardando o login no navegador…" = "Waiting for the browser sign-in…";
+"Entrar no navegador…" = "Sign in in the browser…";
+"Conclua o login no navegador — o OkTally espera por até 20 minutos." = "Finish signing in in the browser — OkTally waits up to 20 minutes.";

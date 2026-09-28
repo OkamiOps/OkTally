@@ -2,7 +2,7 @@
 import Foundation
 
 final class MiniMaxUsageProvider: UsageProvider {
-    let id = "minimax"
+    let id: String
     let displayName = "MiniMax"
     let authMethod: AuthMethod = .apiKey
     let refreshInterval: TimeInterval = 300
@@ -12,10 +12,12 @@ final class MiniMaxUsageProvider: UsageProvider {
     private let client: MiniMaxRemainsFetching
 
     init(
+        instanceId: String = AccountKind.minimax.rawValue,
         apiKeyProvider: @escaping () -> String?,
         region: @escaping () -> MiniMaxRegion,
         client: MiniMaxRemainsFetching = MiniMaxAPIClient()
     ) {
+        self.id = instanceId
         self.apiKeyProvider = apiKeyProvider
         self.region = region
         self.client = client

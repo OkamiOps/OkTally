@@ -41,6 +41,10 @@ final class FakeStorage: StorageManaging {
         (byProvider[providerId] ?? []).filter { $0.fetchedAt >= since }
     }
 
+    func deleteSnapshots(providerId: String) throws {
+        byProvider[providerId] = nil
+    }
+
     func prune(olderThan cutoff: Date) throws {
         for (key, value) in byProvider {
             byProvider[key] = value.filter { $0.fetchedAt >= cutoff }
@@ -49,6 +53,27 @@ final class FakeStorage: StorageManaging {
 }
 
 enum FakeError: Error { case boom }
+
+/// Provedor que some do registry no meio do próprio fetch — a conta removida enquanto a
+/// leitura estava em voo.
+final class SelfRemovingProvider: UsageProvider {
+    let id: String
+    let displayName = "Gone"
+    let authMethod: AuthMethod = .apiKey
+    let refreshInterval: TimeInterval = 60
+    weak var registry: PluginRegistry?
+
+    init(id: String) { self.id = id }
+
+    func isAuthenticated() async -> Bool { true }
+
+    func fetchSnapshot() async throws -> ProviderSnapshot {
+        registry?.remove(ids: [id])
+        return ProviderSnapshot(providerId: id, fetchedAt: Date(), quotas: [
+            QuotaWindow(label: "5h", shape: .rollingWindow(used: 99, limit: 100, windowStart: Date(), resetAt: Date()))
+        ], usageDetail: nil)
+    }
+}
 
 final class SchedulerTests: XCTestCase {
     private func snapshot(providerId: String, percent: Double) -> ProviderSnapshot {
@@ -122,6 +147,50 @@ final class SchedulerTests: XCTestCase {
         _ = await scheduler.fetchAll()
 
         XCTAssertEqual(received.count, 1)
+    }
+
+    /// Revisão: o `save` depois do fetch não pode ressuscitar o histórico que o
+    /// `removeAccount` acabou de apagar, nem disparar alerta de conta que não existe mais.
+    func test_fetch_providerRemovedMidFlight_neitherSavesNorAlerts() async {
+        let registry = PluginRegistry()
+        let gone = SelfRemovingProvider(id: "claude#abc123")
+        gone.registry = registry
+        registry.register(gone)
+        let storage = FakeStorage()
+        let sender = FakeNotificationSender()
+        let scheduler = Scheduler(registry: registry, storage: storage, alertEngine: AlertEngine(),
+                                  alertDispatcher: AlertDispatcher(sender: sender))
+
+        _ = await scheduler.fetchAll()
+
+        XCTAssertEqual(storage.saveCount, 0)
+        XCTAssertTrue(sender.sentMessages.isEmpty)
+    }
+
+    func test_stopLoop_cancelsOnlyThatInstance() async throws {
+        let a = FakeUsageProvider(id: "a", displayName: "A"); a.snapshotToReturn = snapshot(providerId: "a", percent: 1)
+        let b = FakeUsageProvider(id: "b", displayName: "B"); b.snapshotToReturn = snapshot(providerId: "b", percent: 1)
+        let registry = PluginRegistry(); registry.register(a); registry.register(b)
+        let scheduler = Scheduler(registry: registry, storage: FakeStorage(), alertEngine: AlertEngine(),
+                                  alertDispatcher: AlertDispatcher(sender: FakeNotificationSender()))
+        scheduler.startLoop(for: a, initialDelay: 0)
+        scheduler.startLoop(for: b, initialDelay: 0)
+        XCTAssertTrue(scheduler.isLooping(id: "a"))
+        scheduler.stopLoop(id: "a")
+        XCTAssertFalse(scheduler.isLooping(id: "a"))
+        XCTAssertTrue(scheduler.isLooping(id: "b"))
+        scheduler.stopLoop(id: "b")
+    }
+
+    func test_stopLoop_clearsLastErrorOfThatInstance() async {
+        let bad = FakeUsageProvider(id: "bad", displayName: "Bad"); bad.errorToThrow = FakeError.boom
+        let registry = PluginRegistry(); registry.register(bad)
+        let scheduler = Scheduler(registry: registry, storage: FakeStorage(), alertEngine: AlertEngine(),
+                                  alertDispatcher: AlertDispatcher(sender: FakeNotificationSender()))
+        _ = await scheduler.fetchAll()
+        XCTAssertNotNil(scheduler.lastError["bad"])
+        scheduler.stopLoop(id: "bad")
+        XCTAssertNil(scheduler.lastError["bad"])
     }
 
     func test_fetchAll_twoSequentialCallsAboveThreshold_doesNotRefireOnSecondCall() async {

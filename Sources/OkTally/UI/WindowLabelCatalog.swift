@@ -36,3 +36,11 @@ enum WindowLabelCatalog {
         return raw
     }
 }
+
+/// Texto de uma cota escolhível (pickers de slot, previsão, lista de pinos): o rótulo da
+/// conta e a janela. Com duas contas do mesmo provedor, é o rótulo que diz qual é qual.
+enum QuotaSlotLabel {
+    static func text(providerName: String, windowLabel: String) -> String {
+        "\(providerName) · \(WindowLabelCatalog.displayLabel(windowLabel))"
+    }
+}
