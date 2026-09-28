@@ -4,7 +4,12 @@ import XCTest
 final class FakeOAuthManaging: OAuthManaging {
     var accessTokenToReturn = "tok"
     var errorToThrow: Error?
+    /// Últimos argumentos recebidos — para provar que cada conta usa a própria chave.
+    private(set) var lastProviderId: String?
+    private(set) var lastConfig: OAuthConfig?
     func validAccessToken(providerId: String, config: OAuthConfig) async throws -> String {
+        lastProviderId = providerId
+        lastConfig = config
         if let errorToThrow { throw errorToThrow }
         return accessTokenToReturn
     }

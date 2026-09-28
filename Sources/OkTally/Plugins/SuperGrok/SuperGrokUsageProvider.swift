@@ -17,7 +17,7 @@ import Foundation
 /// credit pool as a percentage (`creditUsagePercent`), mapped here to
 /// `rollingWindow("weekly", used: percent, limit: 100)`.
 final class SuperGrokUsageProvider: UsageProvider {
-    let id = SuperGrokOAuth.providerId
+    let id: String
     let displayName = "SuperGrok"
     let authMethod: AuthMethod = .oauthSession
     let refreshInterval: TimeInterval = 300
@@ -28,11 +28,13 @@ final class SuperGrokUsageProvider: UsageProvider {
     private let now: () -> Date
 
     init(
+        instanceId: String = SuperGrokOAuth.providerId,
         oauthManager: OAuthManaging,
         tokenStore: TokenStoring,
         apiClient: SuperGrokUsageFetching = SuperGrokAPIClient(),
         now: @escaping () -> Date = Date.init
     ) {
+        self.id = instanceId
         self.oauthManager = oauthManager
         self.tokenStore = tokenStore
         self.apiClient = apiClient
@@ -44,7 +46,7 @@ final class SuperGrokUsageProvider: UsageProvider {
     }
 
     func fetchSnapshot() async throws -> ProviderSnapshot {
-        let accessToken = try await oauthManager.validAccessToken(providerId: id, config: SuperGrokOAuth.refreshConfig)
+        let accessToken = try await oauthManager.validAccessToken(providerId: id, config: SuperGrokOAuth.refreshConfig.forInstance(id))
         let usage = try await apiClient.fetchUsage(accessToken: accessToken)
 
         // Proto/JSON on the xAI side omits `creditUsagePercent` at 0% usage

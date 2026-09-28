@@ -2,7 +2,7 @@
 import Foundation
 
 final class CodexUsageProvider: UsageProvider {
-    let id = "codex"
+    let id: String
     let displayName = "Codex"
     let authMethod: AuthMethod = .oauthSession
     let refreshInterval: TimeInterval = 300
@@ -11,7 +11,13 @@ final class CodexUsageProvider: UsageProvider {
     private let tokenStore: TokenStoring
     private let apiClient: CodexUsageFetching
 
-    init(oauthManager: OAuthManaging, tokenStore: TokenStoring, apiClient: CodexUsageFetching = CodexUsageAPIClient()) {
+    init(
+        instanceId: String = AccountKind.codex.rawValue,
+        oauthManager: OAuthManaging,
+        tokenStore: TokenStoring,
+        apiClient: CodexUsageFetching = CodexUsageAPIClient()
+    ) {
+        self.id = instanceId
         self.oauthManager = oauthManager
         self.tokenStore = tokenStore
         self.apiClient = apiClient
@@ -22,7 +28,7 @@ final class CodexUsageProvider: UsageProvider {
     }
 
     func fetchSnapshot() async throws -> ProviderSnapshot {
-        let accessToken = try await oauthManager.validAccessToken(providerId: id, config: CodexOAuth.config)
+        let accessToken = try await oauthManager.validAccessToken(providerId: id, config: CodexOAuth.config.forInstance(id))
         let accountId = tokenStore.load(providerId: id)?.extra["account_id"]
         let usage = try await apiClient.fetchUsage(accessToken: accessToken, accountId: accountId)
 

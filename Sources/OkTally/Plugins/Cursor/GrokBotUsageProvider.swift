@@ -48,7 +48,7 @@ final class GrokBotUsageAPIClient: GrokBotUsageFetching {
 }
 
 final class GrokBotUsageProvider: UsageProvider {
-    let id = "cursor-grokbot"
+    let id: String
     let displayName = "GrokBot"
     let authMethod: AuthMethod = .localFile(
         path: NSHomeDirectory() + "/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
@@ -60,10 +60,12 @@ final class GrokBotUsageProvider: UsageProvider {
     private let now: () -> Date
 
     init(
+        instanceId: String = AccountKind.grokbot.rawValue,
         tokenReader: CursorTokenReading = CursorTokenReader(),
         client: GrokBotUsageFetching = GrokBotUsageAPIClient(),
         now: @escaping () -> Date = Date.init
     ) {
+        self.id = instanceId
         self.tokenReader = tokenReader
         self.client = client
         self.now = now

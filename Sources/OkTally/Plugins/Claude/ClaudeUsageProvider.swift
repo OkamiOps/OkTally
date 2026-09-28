@@ -1,7 +1,7 @@
 import Foundation
 
 final class ClaudeUsageProvider: UsageProvider {
-    let id = "claude"
+    let id: String
     let displayName = "Claude Code"
     let authMethod: AuthMethod = .oauthSession
     // api.anthropic.com/api/oauth/usage rate-limits aggressively (429) — it tolerates
@@ -15,12 +15,14 @@ final class ClaudeUsageProvider: UsageProvider {
     private let legacyCredentialProvider: ClaudeCredentialProvider?
 
     init(
+        instanceId: String = AccountKind.claude.rawValue,
         oauthManager: OAuthManaging,
         tokenStore: TokenStoring,
         apiClient: ClaudeUsageFetching = ClaudeUsageAPIClient(),
         profileClient: ClaudeProfileFetching? = ClaudeProfileClient(),
         legacyCredentialProvider: ClaudeCredentialProvider? = ClaudeCredentialProvider()
     ) {
+        self.id = instanceId
         self.oauthManager = oauthManager
         self.tokenStore = tokenStore
         self.apiClient = apiClient
@@ -34,7 +36,10 @@ final class ClaudeUsageProvider: UsageProvider {
 
     @discardableResult
     func importLegacyCredentialsIfAvailable() -> Bool {
-        guard tokenStore.load(providerId: id) == nil,
+        // O login do Claude Code CLI é UM só na máquina: ele semeia apenas a conta
+        // legada, nunca uma extra (senão as duas seriam a mesma conta).
+        guard id == AccountKind.claude.rawValue,
+              tokenStore.load(providerId: id) == nil,
               let credentials = try? legacyCredentialProvider?.loadCredentials() else { return false }
         let token = OAuthToken(
             accessToken: credentials.accessToken,
@@ -46,7 +51,7 @@ final class ClaudeUsageProvider: UsageProvider {
     }
 
     func fetchSnapshot() async throws -> ProviderSnapshot {
-        let accessToken = try await oauthManager.validAccessToken(providerId: id, config: ClaudeOAuth.config)
+        let accessToken = try await oauthManager.validAccessToken(providerId: id, config: ClaudeOAuth.config.forInstance(id))
         let usage = try await apiClient.fetchUsage(accessToken: accessToken)
 
         let now = Date()

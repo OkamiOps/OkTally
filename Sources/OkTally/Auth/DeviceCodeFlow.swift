@@ -10,6 +10,14 @@ struct DeviceCodeOAuthConfig {
     let tokenURL: URL
     let clientId: String
     let scopes: [String]
+
+    /// Mesma ideia de `OAuthConfig.forInstance`: troca só onde o token é guardado.
+    func forInstance(_ instanceId: String) -> DeviceCodeOAuthConfig {
+        DeviceCodeOAuthConfig(
+            providerId: instanceId, deviceAuthorizationURL: deviceAuthorizationURL,
+            tokenURL: tokenURL, clientId: clientId, scopes: scopes
+        )
+    }
 }
 
 /// Verification info to show the user (a URL + short code to enter there).

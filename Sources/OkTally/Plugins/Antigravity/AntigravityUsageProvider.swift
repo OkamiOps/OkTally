@@ -25,7 +25,7 @@ extension AntigravityError: LocalizedError {
 /// `retrieveUserQuotaSummary` do Cloud Code — grupos "Gemini" e "Claude/GPT", cada um
 /// com janelas de 5h e semanal. Cadeia inteira confirmada ao vivo em 2026-08-12.
 final class AntigravityUsageProvider: UsageProvider {
-    let id = "antigravity"
+    let id: String
     let displayName = "Antigravity"
     let authMethod: AuthMethod = .localFile(path: "~/Library/Application Support/Antigravity")
     let refreshInterval: TimeInterval = 600
@@ -48,7 +48,12 @@ final class AntigravityUsageProvider: UsageProvider {
     /// endpoint de token a cada poll.
     private var cachedAccess: (token: String, expiresAt: Date)?
 
-    init(tokenReader: AntigravityTokenReading = AntigravityTokenReader(), session: URLSession = .shared) {
+    init(
+        instanceId: String = AccountKind.antigravity.rawValue,
+        tokenReader: AntigravityTokenReading = AntigravityTokenReader(),
+        session: URLSession = .shared
+    ) {
+        self.id = instanceId
         self.tokenReader = tokenReader
         self.session = session
     }
