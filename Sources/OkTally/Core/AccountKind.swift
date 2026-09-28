@@ -8,8 +8,10 @@ enum AccountKind: String, CaseIterable, Codable {
     case grokbot = "cursor-grokbot"
     case copilot, antigravity, openrouter, minimax, opencode, mimo
 
-    /// Tipos que aceitam segunda conta. Liga fase a fase (ver plano); vazio na Fase 1.
-    static var addableKinds: [AccountKind] { [] }
+    /// Tipos que aceitam segunda conta. OpenCode e MiMo ficam de fora por decisão do dono
+    /// (a estimativa do OpenCode e a sessão web do MiMo são da máquina, não da conta);
+    /// Copilot não foi pedido; o GrokBot nasce junto de cada conta do Cursor.
+    static var addableKinds: [AccountKind] { [.claude, .codex, .supergrok] }
 
     /// Tipos cujo legado lê um app de terceiros (IDE/CLI) e por isso não podem ser removidos.
     var legacyIsMachineBound: Bool {

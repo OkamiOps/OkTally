@@ -86,27 +86,42 @@ struct OkTallyApp: App {
         model.identityResolver = { account in await emailResolver.resolve(account) }
         model.updateFetcher = GitHubLatestReleaseFetcher()
         let codexAnalyticsFetcher = CodexAnalyticsFetcher()
-        model.analyticsLoaders["codex"] = {
-            guard let accessToken = try? await oauthManager.validAccessToken(providerId: "codex", config: CodexOAuth.config) else {
-                return nil
-            }
-            let accountId = tokenStore.load(providerId: "codex")?.extra["account_id"]
-            return try? await codexAnalyticsFetcher.fetch(accessToken: accessToken, accountId: accountId)
-        }
         // Fontes locais: leitura de disco potencialmente pesada (o corpus do Claude Code
         // passa de centenas de MB no primeiro parse) — sempre fora da main thread.
         let claudeScanner = ClaudeLocalUsageScanner()
-        model.analyticsLoaders["claude"] = {
-            await Task.detached(priority: .utility) { claudeScanner.analytics() }.value
-        }
         let openCodeAnalyticsEstimator = OpenCodeLocalEstimator()
-        model.analyticsLoaders["opencode"] = {
-            await Task.detached(priority: .utility) {
-                openCodeAnalyticsEstimator.dailyTokens(windowDays: 365, now: Date()).flatMap { buckets in
-                    buckets.isEmpty ? nil : TokenAnalytics(dailyBuckets: buckets)
+        // Codex tem analytics pela API da CONTA, então cada conta Codex ganha o seu. Claude
+        // e OpenCode leem disco local, que é da máquina inteira: só a conta legada fica
+        // com eles — numa segunda conta seriam os mesmos números repetidos.
+        let analyticsLoader: (AccountInstance) -> (() async -> TokenAnalytics?)? = { account in
+            let id = account.id
+            switch account.kind {
+            case .codex:
+                return {
+                    guard let accessToken = try? await oauthManager.validAccessToken(
+                        providerId: id, config: CodexOAuth.config.forInstance(id)
+                    ) else { return nil }
+                    let accountId = tokenStore.load(providerId: id)?.extra["account_id"]
+                    return try? await codexAnalyticsFetcher.fetch(accessToken: accessToken, accountId: accountId)
                 }
-            }.value
+            case .claude where AccountID.isLegacy(id):
+                return { await Task.detached(priority: .utility) { claudeScanner.analytics() }.value }
+            case .opencode where AccountID.isLegacy(id):
+                return {
+                    await Task.detached(priority: .utility) {
+                        openCodeAnalyticsEstimator.dailyTokens(windowDays: 365, now: Date()).flatMap { buckets in
+                            buckets.isEmpty ? nil : TokenAnalytics(dailyBuckets: buckets)
+                        }
+                    }.value
+                }
+            default:
+                return nil
+            }
         }
+        for account in accounts {
+            if let loader = analyticsLoader(account) { model.analyticsLoaders[account.id] = loader }
+        }
+        model.analyticsLoaderFactory = analyticsLoader
         _appModel = StateObject(wrappedValue: model)
 
         let notchController = NotchHUDController(appModel: model, preferences: preferencesStore, isEnabled: { preferencesStore.notchHUDEnabled })

@@ -45,6 +45,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var analyticsByProvider: [String: TokenAnalytics] = [:]
     private var analyticsLoadedAt: [String: Date] = [:]
     var analyticsLoaders: [String: () async -> TokenAnalytics?] = [:]
+    /// Fonte de analytics de uma conta nova (ou `nil` quando o tipo não tem, ou quando a
+    /// fonte é local e já pertence à conta legada). Injetado pelo app.
+    var analyticsLoaderFactory: ((AccountInstance) -> (() async -> TokenAnalytics?)?)?
 
     /// Providers com fonte de analytics, na ordem visível das contas (para a aba "Análise").
     var analyticsProviderIds: [String] {
@@ -276,6 +279,9 @@ final class AppModel: ObservableObject {
 
         let providers = providerFactory?(account) ?? []
         registry.add(providers)
+        if let loader = analyticsLoaderFactory?(account) {
+            analyticsLoaders[account.id] = loader
+        }
         let entries = registry.providers.map { ($0.id, $0.refreshInterval) }
         for provider in providers {
             scheduler.startLoop(for: provider, initialDelay: RefreshStagger.offset(of: provider.id, among: entries))
@@ -329,6 +335,7 @@ final class AppModel: ObservableObject {
             estimatedCostByProvider[providerId] = nil
             analyticsByProvider[providerId] = nil
             analyticsLoadedAt[providerId] = nil
+            analyticsLoaders[providerId] = nil
         }
         forecastsByWindow = forecastsByWindow.filter { !removed.contains($0.key.providerId) }
 

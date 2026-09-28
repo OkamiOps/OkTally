@@ -719,6 +719,26 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(calls, 1)
     }
 
+    /// Codex tem analytics pela API da conta, então cada conta Codex ganha o seu. Claude e
+    /// OpenCode leem disco local, que é da máquina inteira: só a conta legada tem.
+    func test_analyticsLoaders_followCodexInstances() throws {
+        let model = makeAccountsModel()
+        let noAnalytics: () async -> TokenAnalytics? = { nil }
+        model.analyticsLoaderFactory = { (account: AccountInstance) -> (() async -> TokenAnalytics?)? in
+            if account.kind == .codex { return noAnalytics }
+            if account.kind == .claude && AccountID.isLegacy(account.id) { return noAnalytics }
+            return nil
+        }
+        model.commitAccount(AccountInstance(id: "codex#abc123", kind: .codex))
+        model.commitAccount(AccountInstance(id: "claude#abc123", kind: .claude))
+        XCTAssertTrue(model.analyticsProviderIds.contains("codex#abc123"))
+        XCTAssertFalse(model.analyticsProviderIds.contains("claude#abc123"))
+
+        try model.removeAccount(id: "codex#abc123")
+        XCTAssertFalse(model.analyticsProviderIds.contains("codex#abc123"))
+        XCTAssertNil(model.analyticsLoaders["codex#abc123"])
+    }
+
     /// Sem contas extras, nada muda: mesmos ids, mesma ordem, mesmos nomes.
     func test_legacyOnlyModel_keepsTodaysIdsAndNames() {
         let model = makeAccountsModel()

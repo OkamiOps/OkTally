@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Multiple accounts per provider — Claude, Codex, SuperGrok**: the "+" next to
+  Accounts in Preferences adds a second (third…) account of the same provider. Each one
+  signs in on its own, keeps its own credential in the Keychain, and appears side by side
+  with the others, labelled by the e-mail discovered after login. Adding the same
+  account twice is refused. Codex analytics are per account. Codex sign-in uses the
+  fixed port 1455, so only one Codex sign-in can run at a time.
 - **Account nicknames and e-mail labels**: every account pane in Preferences has an
   Account section with the e-mail OkTally discovered after login and an editable
   nickname. A nickname shows everywhere the account does ("Claude Code · Work") —

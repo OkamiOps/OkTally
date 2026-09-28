@@ -47,4 +47,15 @@ final class AccountKindTests: XCTestCase {
         XCTAssertEqual(QuotaSlot(stored: QuotaSlot.window(providerId: id, windowLabel: "weekly").stored),
                        .window(providerId: id, windowLabel: "weekly"))
     }
+
+    func test_addableKinds_areTheOAuthKindsOfPhase3() {
+        for kind in [AccountKind.claude, .codex, .supergrok] {
+            XCTAssertTrue(AccountKind.addableKinds.contains(kind), "\(kind)")
+        }
+        // Decisão do dono: OpenCode e MiMo ficam com uma conta só.
+        XCTAssertFalse(AccountKind.addableKinds.contains(.opencode))
+        XCTAssertFalse(AccountKind.addableKinds.contains(.mimo))
+        XCTAssertFalse(AccountKind.addableKinds.contains(.copilot))
+        XCTAssertFalse(AccountKind.addableKinds.contains(.grokbot))
+    }
 }
