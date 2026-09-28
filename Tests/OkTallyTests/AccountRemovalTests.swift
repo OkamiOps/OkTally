@@ -34,4 +34,14 @@ final class AccountRemovalTests: XCTestCase {
         XCTAssertFalse(AccountRemoval.canRemove("cursor-grokbot#abc123")) // segue o Cursor dele
         XCTAssertFalse(AccountRemoval.canRemove("ghost"))
     }
+
+    /// Só sai o que pode voltar: OpenCode não aceita conta nova (decisão do dono), então a
+    /// legada não pode ser removida — senão sumiria para sempre.
+    func test_canRemove_legacyOfNonAddableKindIsRefused() {
+        XCTAssertFalse(AccountKind.addableKinds.contains(.opencode))
+        XCTAssertFalse(AccountRemoval.canRemove("opencode"))
+        for kind in AccountKind.addableKinds where !kind.legacyIsMachineBound {
+            XCTAssertTrue(AccountRemoval.canRemove(kind.rawValue), kind.rawValue)
+        }
+    }
 }

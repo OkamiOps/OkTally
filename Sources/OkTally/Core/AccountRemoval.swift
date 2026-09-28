@@ -40,11 +40,14 @@ enum AccountRemoval {
     }
 
     /// Contas legadas que leem um IDE/app instalado não podem sair (voltariam no próximo
-    /// launch de qualquer jeito); o GrokBot sai junto do Cursor dele, nunca sozinho.
+    /// launch de qualquer jeito); o GrokBot sai junto do Cursor dele, nunca sozinho. E a
+    /// legada de um tipo que não aceita conta nova (OpenCode) também fica: removida, não
+    /// haveria como adicioná-la de volta.
     static func canRemove(_ id: String) -> Bool {
         guard let kind = AccountID.kind(of: id) else { return false }
         if kind == .grokbot { return false }
-        return !(AccountID.isLegacy(id) && kind.legacyIsMachineBound)
+        guard AccountID.isLegacy(id) else { return true }
+        return !kind.legacyIsMachineBound && AccountKind.addableKinds.contains(kind)
     }
 
     /// Ids que saem junto: a conta do Cursor leva o GrokBot gêmeo.
