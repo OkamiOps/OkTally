@@ -41,6 +41,7 @@ final class PreferencesStore {
         static let alertPercentThresholds = "alertPercentThresholds"
         static let alertLowBalanceThreshold = "alertLowBalanceThreshold"
         static let providerOrder = "providerOrder"
+        static let popoverHiddenProviders = "popoverHiddenProviders"
         static func refreshInterval(_ providerId: String) -> String { "refreshInterval.\(providerId)" }
         /// Posição horizontal da ilha, POR TELA. A chave carrega o id do display porque
         /// o dono tem dois monitores lado a lado e arrasta a pílula para lugares
@@ -297,6 +298,20 @@ final class PreferencesStore {
         }
         set {
             store.set(newValue.isEmpty ? nil : newValue.joined(separator: "\u{2}"), forKey: Keys.providerOrder)
+        }
+    }
+
+    /// Contas escondidas do popover — o dono continua acompanhando-as pelos pinos, pelo
+    /// notch e pelos alertas, só não quer vê-las na lista do menu do OkTally. Mesma
+    /// codificação de `providerOrder` (separador `\u{2}`); conjunto vazio = nunca
+    /// escondeu nada, então não grava nada.
+    var popoverHiddenProviders: Set<String> {
+        get {
+            guard let raw = store.string(forKey: Keys.popoverHiddenProviders), !raw.isEmpty else { return [] }
+            return Set(raw.split(separator: "\u{2}", omittingEmptySubsequences: true).map(String.init))
+        }
+        set {
+            store.set(newValue.isEmpty ? nil : newValue.joined(separator: "\u{2}"), forKey: Keys.popoverHiddenProviders)
         }
     }
 }

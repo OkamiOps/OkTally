@@ -273,4 +273,25 @@ final class PreferencesStoreTests: XCTestCase {
         store.providerOrder = []
         XCTAssertNil(kv.string(forKey: "providerOrder"))
     }
+
+    // MARK: - Popover hidden providers
+
+    func test_popoverHiddenProviders_emptyWhenUnset() {
+        let store = makeStore()
+        XCTAssertEqual(store.popoverHiddenProviders, [])
+    }
+
+    func test_popoverHiddenProviders_roundTrips() {
+        let store = makeStore()
+        store.popoverHiddenProviders = ["mimo", "claude"]
+        XCTAssertEqual(store.popoverHiddenProviders, ["mimo", "claude"])
+    }
+
+    func test_popoverHiddenProviders_emptySetClearsStorage() {
+        let kv = FakeKeyValueStore()
+        let store = makeStore(kv: kv)
+        store.popoverHiddenProviders = ["claude"]
+        store.popoverHiddenProviders = []
+        XCTAssertNil(kv.string(forKey: "popoverHiddenProviders"))
+    }
 }

@@ -663,6 +663,10 @@ private struct GeneralPane: View {
     /// tinha 70/90/100 salvo continua com 70/90/100.
     private static let percentOptions: [Double] = [0.5, 0.7, 0.8, 0.9, 1.0]
 
+    /// Mesma ordem da sidebar — a que o dono arrumou, ou a lista histórica das
+    /// Preferências quando ele ainda não tocou em nada.
+    private var providerIds: [String] { appModel.orderedProviders.map(\.id) }
+
     var body: some View {
         VStack(spacing: 0) {
             brandHero
@@ -735,6 +739,19 @@ private struct GeneralPane: View {
                             onNotchPreferenceChanged?()
                         }
                     Text(L("Na tela do MacBook o painel abraça o notch. Sem notch — monitor externo, tampa fechada, iMac — ele vira uma ilha flutuante no topo da tela principal, com o mesmo conteúdo."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
+                // Filtro só do POPOVER — pinos, notch e alertas continuam vendo a conta
+                // normalmente mesmo desmarcada aqui. É a resposta direta ao pedido "não
+                // consigo escolher quem aparece no menu": antes o popover mostrava todo
+                // mundo sempre, incluindo os provedores ainda não configurados na seção
+                // de problemas.
+                Section(L("Mostrar no menu")) {
+                    ForEach(providerIds, id: \.self) { id in
+                        showInMenuRow(id)
+                    }
+                    Text(L("Desmarque as contas que você não quer ver no menu do OkTally. Pinos, notch e alertas continuam funcionando."))
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
@@ -1025,6 +1042,31 @@ private struct GeneralPane: View {
                                                onto: target.stored) else { return false }
         appModel.menuBarPins = order.compactMap { AppModel.MenuBarPin(stored: $0) }
         return true
+    }
+
+    /// Uma linha do "Mostrar no menu": chip + nome, igual à sidebar, com um switch no
+    /// lugar do ponto de status. O binding lê/grava direto em `popoverHiddenProviders`
+    /// — não há rascunho porque, ao contrário dos campos de texto ao redor, um switch já
+    /// É o commit.
+    private func showInMenuRow(_ id: String) -> some View {
+        HStack(spacing: Theme.Space.sm) {
+            IconChip(glyph: ProviderPalette.glyph(forId: id), color: ProviderPalette.color(for: id), size: 18)
+            Text(providerName(id)).font(Theme.Font.body)
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { !appModel.popoverHiddenProviders.contains(id) },
+                set: { shown in
+                    if shown {
+                        appModel.popoverHiddenProviders.remove(id)
+                    } else {
+                        appModel.popoverHiddenProviders.insert(id)
+                    }
+                }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.small)
+        }
     }
 
     /// Chip selecionável — substitui a checkbox solta.

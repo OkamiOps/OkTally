@@ -543,4 +543,38 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.moveProvider(dragging: "claude", onto: "claude"))
         XCTAssertEqual(model.providerOrder, [])
     }
+
+    // MARK: - Popover hidden providers
+
+    /// `popoverProviders` é o único lugar filtrado: pinos, notch e a lista completa de
+    /// `orderedProviders` continuam enxergando a conta escondida.
+    func test_popoverProviders_excludesHiddenProvider_butOrderedProvidersKeepsIt() {
+        let registry = PluginRegistry()
+        for id in ["claude", "codex", "mimo"] {
+            registry.register(FakeUsageProvider(id: id, displayName: id))
+        }
+        let defaults = isolatedProviderOrderDefaults()
+        let model = AppModel(registry: registry, scheduler: providerOrderScheduler(registry: registry), defaults: defaults)
+
+        model.popoverHiddenProviders = ["codex"]
+
+        XCTAssertEqual(model.popoverProviders.map(\.id), ["claude", "mimo"])
+        XCTAssertEqual(model.orderedProviders.map(\.id), ["claude", "codex", "mimo"])
+    }
+
+    /// A escolha sobrevive a um relançamento, igual aos pinos e à ordem das contas.
+    func test_popoverHiddenProviders_persist_roundTrip() {
+        let registry = PluginRegistry()
+        registry.register(FakeUsageProvider(id: "claude", displayName: "Claude"))
+        registry.register(FakeUsageProvider(id: "mimo", displayName: "MiMo"))
+        let defaults = isolatedProviderOrderDefaults()
+        let scheduler = providerOrderScheduler(registry: registry)
+        let model = AppModel(registry: registry, scheduler: scheduler, defaults: defaults)
+
+        model.popoverHiddenProviders = ["mimo"]
+
+        let reloaded = AppModel(registry: registry, scheduler: scheduler, defaults: defaults)
+        XCTAssertEqual(reloaded.popoverHiddenProviders, ["mimo"])
+        XCTAssertEqual(reloaded.popoverProviders.map(\.id), ["claude"])
+    }
 }

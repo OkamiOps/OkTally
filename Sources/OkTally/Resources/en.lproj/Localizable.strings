@@ -197,6 +197,8 @@
 "Arraste para reordenar. Os pinos são o conjunto que os seletores abaixo usam no modo automático." = "Drag to reorder. Pins are the set the selectors below draw from in automatic mode.";
 "Automático — maior risco" = "Automatic — highest risk";
 "A estimativa usa a variação líquida observada nas últimas 24 horas e não depende dos pinos da barra." = "The estimate uses the net change observed over the last 24 hours and does not depend on menu bar pins.";
+"Mostrar no menu" = "Show in menu";
+"Desmarque as contas que você não quer ver no menu do OkTally. Pinos, notch e alertas continuam funcionando." = "Uncheck the accounts you don't want to see in the OkTally menu. Pins, the notch and alerts keep working.";
 "Alertas" = "Alerts";
 "Notificações de cota" = "Quota notifications";
 "Avisar quando o uso cruzar:" = "Warn when usage crosses:";
@@ -314,6 +316,7 @@
 "%@ (indisponível)" = "%@ (unavailable)";
 "Em automático, o lado esquerdo mostra a cota mais apertada e o direito a seguinte; a barra inferior mostra sempre a mais apertada; o destaque do menu mostra a mais crítica entre todas. Uma cota escolhida que deixe de existir volta para automático sozinha." = "In automatic mode the left side shows the tightest quota and the right side the next one; the bottom bar always shows the tightest; the menu highlight shows the most critical of all. A chosen quota that stops existing quietly falls back to automatic.";
 "Destacar" = "Highlight";
+"Ocultar do menu" = "Hide from menu";
 
 /* Escala de cor do uso (Preferências → Geral) */
 "Escala de cores" = "Color scale";

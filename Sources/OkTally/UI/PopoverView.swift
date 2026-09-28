@@ -86,7 +86,9 @@ struct PopoverView: View {
 struct PopoverContentView: View {
     @ObservedObject var appModel: AppModel
 
-    private var providers: [UsageProvider] { appModel.orderedProviders }
+    /// `popoverProviders`, não `orderedProviders`: é o único filtro do "Mostrar no
+    /// menu" das Preferências — pinos, notch e alertas continuam enxergando todo mundo.
+    private var providers: [UsageProvider] { appModel.popoverProviders }
 
     /// Providers that produced at least one quota window → hero or list row. A provider whose
     /// latest refresh failed keeps showing its last good snapshot (freshly fetched or
@@ -233,7 +235,8 @@ struct PopoverContentView: View {
                     onPin: { appModel.togglePin(providerId: hero.provider.id, windowLabel: $0) },
                     onHighlight: { appModel.popoverHeroSlot = .window(providerId: hero.provider.id, windowLabel: $0) },
                     forecast: { forecast(providerId: hero.provider.id, windowLabel: $0) },
-                    expandedForecastID: expandedForecastID
+                    expandedForecastID: expandedForecastID,
+                    onHide: { appModel.popoverHiddenProviders.insert(hero.provider.id) }
                 )
             }
             if let forecast = appModel.selectedForecast,
@@ -266,7 +269,8 @@ struct PopoverContentView: View {
                             onPin: { appModel.togglePin(providerId: entry.provider.id, windowLabel: $0) },
                             onHighlight: { appModel.popoverHeroSlot = .window(providerId: entry.provider.id, windowLabel: $0) },
                             forecast: { forecast(providerId: entry.provider.id, windowLabel: $0) },
-                            expandedForecastID: expandedForecastID
+                            expandedForecastID: expandedForecastID,
+                            onHide: { appModel.popoverHiddenProviders.insert(entry.provider.id) }
                         )
                     }
                 }
@@ -277,6 +281,8 @@ struct PopoverContentView: View {
             if !problems.isEmpty {
                 ProblemsSection(problems: problems, onOpenPreferences: { providerId in
                     appModel.requestedPreferencesPane = providerId
+                }, onHide: { providerId in
+                    appModel.popoverHiddenProviders.insert(providerId)
                 })
             }
         }
@@ -404,6 +410,9 @@ private struct HeroBlock: View {
     let onHighlight: (String) -> Void
     let forecast: (String) -> UsageForecast?
     let expandedForecastID: ForecastWindowID?
+    /// Esconde este provedor do popover (menu de contexto "Ocultar do menu"). Pinos,
+    /// notch e alertas continuam intactos — só a lista do menu para de mostrá-lo.
+    let onHide: () -> Void
 
     /// Cor do bloco. Já `heroTint`ada: o glifo do chip é desenhado NELA sobre um chip
     /// off-white, então ele precisa do mesmo escurecimento que o fundo recebe — senão o
@@ -489,6 +498,9 @@ private struct HeroBlock: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .heroSurface(danger)
         .help(window.shape.isEstimated ? L("Estimativa local, não confirmada pelo provedor") : "")
+        .contextMenu {
+            Button(L("Ocultar do menu"), action: onHide)
+        }
     }
 }
 
@@ -509,6 +521,9 @@ private struct ProviderQuotaRow: View {
     let onHighlight: (String) -> Void
     let forecast: (String) -> UsageForecast?
     let expandedForecastID: ForecastWindowID?
+    /// Esconde este provedor do popover (menu de contexto "Ocultar do menu"). Pinos,
+    /// notch e alertas continuam intactos — só a lista do menu para de mostrá-lo.
+    let onHide: () -> Void
 
     private var identity: Color { ProviderPalette.color(for: provider.id) }
     private var windows: [QuotaWindow] {
@@ -624,6 +639,9 @@ private struct ProviderQuotaRow: View {
         }
         .help(snapshot.quotas.contains(where: \.shape.isEstimated)
               ? L("Estimativa local, não confirmada pelo provedor") : "")
+        .contextMenu {
+            Button(L("Ocultar do menu"), action: onHide)
+        }
     }
 
     /// Cost estimate and staleness share one tertiary line — both are footnotes, and two
@@ -724,6 +742,8 @@ private struct SecondaryWindowLine: View {
 private struct ProblemsSection: View {
     let problems: [(provider: UsageProvider, message: String, kind: ProviderErrorPresentation?)]
     let onOpenPreferences: (String) -> Void
+    /// Esconde o provedor da linha do popover (menu de contexto "Ocultar do menu").
+    let onHide: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -750,6 +770,9 @@ private struct ProblemsSection: View {
                                 .foregroundStyle(color(for: entry.kind))
                         }
                     }
+                }
+                .contextMenu {
+                    Button(L("Ocultar do menu")) { onHide(entry.provider.id) }
                 }
             }
         }
