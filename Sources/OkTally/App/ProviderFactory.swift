@@ -61,7 +61,10 @@ struct ProviderFactory {
         case .copilot:
             raw = [CopilotUsageProvider()]
         case .antigravity:
-            raw = [AntigravityUsageProvider(instanceId: id)]
+            // A legada lê o IDE; as extras usam o login Google próprio do OkTally.
+            raw = [AccountID.isLegacy(id)
+                ? AntigravityUsageProvider(instanceId: id)
+                : AntigravityUsageProvider(instanceId: id, oauthManager: deps.oauthManager, tokenStore: deps.tokenStore)]
         case .mimo:
             raw = [MiMoUsageProvider(
                 sessionStore: deps.mimoSessionStore,

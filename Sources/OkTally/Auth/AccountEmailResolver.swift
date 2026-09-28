@@ -18,6 +18,9 @@ struct AccountEmailResolver {
     var apiKey: (String) -> String? = { _ in nil }
     /// Rótulo da chave no OpenRouter (`OpenRouterAPIClient.fetchKeyLabel`).
     var openRouterKeyLabel: (String) async -> String? = { _ in nil }
+    /// E-mail do `userinfo` da Google, para conta Antigravity cujo token veio sem
+    /// `id_token` (`AntigravityOAuth.fetchUserInfoEmail`).
+    var googleUserInfoEmail: (String) async -> String? = { _ in nil }
 
     func resolve(_ account: AccountInstance) async -> AccountIdentity {
         switch account.kind {
@@ -54,9 +57,17 @@ struct AccountEmailResolver {
                 ? cursorEmail()
                 : tokenStore.load(providerId: account.id)?.extra["email"]
         case .antigravity:
-            email = AccountID.isLegacy(account.id)
-                ? antigravityEmail()
-                : tokenStore.load(providerId: account.id)?.extra["email"]
+            if AccountID.isLegacy(account.id) {
+                email = antigravityEmail()
+            } else if let stored = tokenStore.load(providerId: account.id)?.extra["email"] {
+                email = stored
+            } else if let accessToken = try? await oauthManager.validAccessToken(
+                providerId: account.id, config: AntigravityOAuth.config.forInstance(account.id)
+            ) {
+                email = await googleUserInfoEmail(accessToken)
+            } else {
+                email = nil
+            }
         case .grokbot, .copilot, .mimo, .openrouter, .minimax, .opencode:
             email = nil
         }

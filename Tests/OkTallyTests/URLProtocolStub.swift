@@ -6,6 +6,14 @@ final class URLProtocolStub: URLProtocol {
     private static let countLock = NSLock()
     private static var _requestCounts: [URL: Int] = [:]
     private static var _lastBodies: [URL: Data] = [:]
+    private static var _lastAuthorization: [URL: String] = [:]
+
+    /// Cabeçalho `Authorization` da última requisição para a URL.
+    static func lastAuthorization(for url: URL) -> String? {
+        countLock.lock()
+        defer { countLock.unlock() }
+        return _lastAuthorization[url]
+    }
 
     /// Corpo da última requisição para a URL (o `URLProtocol` recebe o corpo como stream).
     static func lastBody(for url: URL) -> String? {
@@ -63,6 +71,11 @@ final class URLProtocolStub: URLProtocol {
         }
         Self.recordRequest(to: url)
         if let body = Self.body(of: request) { Self.recordBody(body, for: url) }
+        if let auth = request.value(forHTTPHeaderField: "Authorization") {
+            Self.countLock.lock()
+            Self._lastAuthorization[url] = auth
+            Self.countLock.unlock()
+        }
         let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: data)
