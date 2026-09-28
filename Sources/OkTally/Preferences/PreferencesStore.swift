@@ -44,6 +44,8 @@ final class PreferencesStore {
         static let popoverHiddenProviders = "popoverHiddenProviders"
         static let accounts = "accounts.v1"
         static func refreshInterval(_ providerId: String) -> String { "refreshInterval.\(providerId)" }
+        /// Região do MiniMax de uma conta EXTRA. A legada continua em `minimaxRegionRaw`.
+        static func minimaxRegionRaw(_ instanceId: String) -> String { "minimaxRegionRaw.\(instanceId)" }
         /// Posição horizontal da ilha, POR TELA. A chave carrega o id do display porque
         /// o dono tem dois monitores lado a lado e arrasta a pílula para lugares
         /// diferentes em cada um; uma chave só faria a segunda tela desfazer a primeira.
@@ -154,6 +156,60 @@ final class PreferencesStore {
 
     func setOpenCodeAPIKey(_ value: String?) throws {
         try setSecret(value, providerId: SecretProviderId.openCode, legacyKey: Keys.openCodeAPIKey)
+    }
+
+    // MARK: - Chave de API por conta
+
+    /// Onde a chave legada de cada tipo morava no `UserDefaults` (fonte de migração).
+    private static func legacyKey(for kind: AccountKind) -> String? {
+        switch kind {
+        case .openrouter: return Keys.openRouterAPIKey
+        case .minimax: return Keys.minimaxAPIKey
+        case .opencode: return Keys.openCodeAPIKey
+        case .mimo: return Keys.mimoAPIKey
+        default: return nil
+        }
+    }
+
+    /// A chave de API de uma conta. A conta legada (`openrouter`) passa pelo mesmo
+    /// caminho de sempre — inclusive a migração do `UserDefaults` —, então quem nunca
+    /// adicionou conta continua lendo exatamente o mesmo item do Keychain. Contas extras
+    /// têm item próprio (`com.oktally.app.apikey.<id>`), sem legado nenhum.
+    func apiKey(instanceId: String) -> String? {
+        guard AccountID.isLegacy(instanceId) else { return secretStore.load(providerId: instanceId) }
+        guard let kind = AccountID.kind(of: instanceId), let legacyKey = Self.legacyKey(for: kind) else {
+            return secretStore.load(providerId: instanceId)
+        }
+        return migratedSecret(providerId: instanceId, legacyKey: legacyKey)
+    }
+
+    /// Grava (ou, com `nil`/vazio, apaga) a chave de uma conta. Lança se o Keychain recusar.
+    func setAPIKey(_ value: String?, instanceId: String) throws {
+        if AccountID.isLegacy(instanceId),
+           let kind = AccountID.kind(of: instanceId), let legacyKey = Self.legacyKey(for: kind) {
+            try setSecret(value, providerId: instanceId, legacyKey: legacyKey)
+            return
+        }
+        if let value, !value.isEmpty {
+            try secretStore.save(value, providerId: instanceId)
+        } else {
+            try secretStore.delete(providerId: instanceId)
+        }
+    }
+
+    /// Região do MiniMax por conta: a legada lê a chave de sempre; extras têm a própria
+    /// e começam em `"global"`.
+    func minimaxRegionRaw(instanceId: String) -> String {
+        guard !AccountID.isLegacy(instanceId) else { return minimaxRegionRaw ?? "global" }
+        return store.string(forKey: Keys.minimaxRegionRaw(instanceId)) ?? "global"
+    }
+
+    func setMinimaxRegionRaw(_ raw: String, instanceId: String) {
+        if AccountID.isLegacy(instanceId) {
+            minimaxRegionRaw = raw
+        } else {
+            store.set(raw, forKey: Keys.minimaxRegionRaw(instanceId))
+        }
     }
 
     // MARK: - Notch

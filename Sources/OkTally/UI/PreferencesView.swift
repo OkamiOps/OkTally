@@ -656,29 +656,19 @@ struct PreferencesView: View {
     }
 
     private func savedAPIKey(_ id: String) -> String? {
-        switch AccountID.kind(of: id) {
-        case .openrouter: return preferencesStore.openRouterAPIKey
-        case .minimax: return preferencesStore.minimaxAPIKey
-        case .opencode: return preferencesStore.openCodeAPIKey
-        default: return nil
-        }
+        preferencesStore.apiKey(instanceId: id)
     }
 
     private func storeAPIKey(_ value: String?, id: String) throws {
-        switch AccountID.kind(of: id) {
-        case .openrouter: try preferencesStore.setOpenRouterAPIKey(value)
-        case .minimax: try preferencesStore.setMinimaxAPIKey(value)
-        case .opencode: try preferencesStore.setOpenCodeAPIKey(value)
-        default: break
-        }
+        try preferencesStore.setAPIKey(value, instanceId: id)
     }
 
     private func minimaxRegion(_ id: String) -> String? {
-        preferencesStore.minimaxRegionRaw
+        preferencesStore.minimaxRegionRaw(instanceId: id)
     }
 
     private func setMinimaxRegion(_ raw: String, id: String) {
-        preferencesStore.minimaxRegionRaw = raw
+        preferencesStore.setMinimaxRegionRaw(raw, instanceId: id)
     }
 
     private func saveAPIKey(_ id: String) {

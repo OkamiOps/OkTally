@@ -76,4 +76,17 @@ final class ProviderFactoryTests: XCTestCase {
         registry.remove(ids: ["a"])
         XCTAssertEqual(registry.providers.map(\.id), ["b"])
     }
+
+    func test_extraOpenRouter_readsItsOwnKey() async throws {
+        let preferences = PreferencesStore(store: FakeKeyValueStore(), secretStore: FakeSecretStore())
+        try preferences.setAPIKey("sk-extra", instanceId: "openrouter#abc123")
+        let factory = ProviderFactory(dependencies: .testing(tokenStore: InMemoryTokenStore(), preferences: preferences))
+        let extra = AccountInstance(id: "openrouter#abc123", kind: .openrouter)
+        let legacy = factory.providers(for: AccountInstance(id: "openrouter", kind: .openrouter), all: [extra])[0]
+        let provider = factory.providers(for: extra, all: [extra])[0]
+        let extraAuthenticated = await provider.isAuthenticated()
+        let legacyAuthenticated = await legacy.isAuthenticated()
+        XCTAssertTrue(extraAuthenticated)
+        XCTAssertFalse(legacyAuthenticated)
+    }
 }

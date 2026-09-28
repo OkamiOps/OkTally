@@ -316,4 +316,53 @@ final class PreferencesStoreTests: XCTestCase {
         let kv = FakeKeyValueStore(); kv.set("[]", forKey: "accounts.v1")
         XCTAssertEqual(makeStore(kv: kv).accounts, AccountsCatalog.defaultAccounts)
     }
+
+    // MARK: - Chaves de API por conta
+
+    func test_apiKey_legacyInstanceUsesLegacyMigrationPath() throws {
+        let kv = FakeKeyValueStore(); kv.set("sk-legacy", forKey: "openRouterAPIKey")
+        let secrets = FakeSecretStore()
+        let store = makeStore(kv: kv, secrets: secrets)
+        XCTAssertEqual(store.apiKey(instanceId: "openrouter"), "sk-legacy")
+        // Mesma migração de sempre: saiu do UserDefaults e foi para o Keychain legado.
+        XCTAssertNil(kv.string(forKey: "openRouterAPIKey"))
+        XCTAssertEqual(secrets.load(providerId: "openrouter"), "sk-legacy")
+    }
+
+    func test_apiKey_extraInstanceIsIsolated() throws {
+        let store = makeStore()
+        try store.setAPIKey("sk-1", instanceId: "openrouter")
+        try store.setAPIKey("sk-2", instanceId: "openrouter#abc123")
+        XCTAssertEqual(store.apiKey(instanceId: "openrouter"), "sk-1")
+        XCTAssertEqual(store.apiKey(instanceId: "openrouter#abc123"), "sk-2")
+        XCTAssertEqual(store.openRouterAPIKey, "sk-1")
+    }
+
+    func test_apiKey_namedAccessorsStillHitTheLegacyInstance() throws {
+        let store = makeStore()
+        try store.setMinimaxAPIKey("mm-1")
+        try store.setOpenCodeAPIKey("oc-1")
+        XCTAssertEqual(store.apiKey(instanceId: "minimax"), "mm-1")
+        XCTAssertEqual(store.apiKey(instanceId: "opencode"), "oc-1")
+    }
+
+    func test_setAPIKey_nilDeletesOnlyThatInstance() throws {
+        let store = makeStore()
+        try store.setAPIKey("sk-1", instanceId: "minimax")
+        try store.setAPIKey("sk-2", instanceId: "minimax#abc123")
+        try store.setAPIKey(nil, instanceId: "minimax#abc123")
+        XCTAssertNil(store.apiKey(instanceId: "minimax#abc123"))
+        XCTAssertEqual(store.apiKey(instanceId: "minimax"), "sk-1")
+    }
+
+    func test_minimaxRegion_perInstance_legacyFallsBackToOldKey() {
+        let kv = FakeKeyValueStore(); kv.set("china", forKey: "minimaxRegionRaw")
+        let store = makeStore(kv: kv)
+        XCTAssertEqual(store.minimaxRegionRaw(instanceId: "minimax"), "china")
+        XCTAssertEqual(store.minimaxRegionRaw(instanceId: "minimax#abc123"), "global")
+        store.setMinimaxRegionRaw("china", instanceId: "minimax#abc123")
+        XCTAssertEqual(store.minimaxRegionRaw(instanceId: "minimax#abc123"), "china")
+        store.setMinimaxRegionRaw("global", instanceId: "minimax")
+        XCTAssertEqual(store.minimaxRegionRaw, "global")
+    }
 }

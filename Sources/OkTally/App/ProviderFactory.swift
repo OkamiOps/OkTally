@@ -41,15 +41,15 @@ struct ProviderFactory {
         case .supergrok:
             raw = [SuperGrokUsageProvider(instanceId: id, oauthManager: deps.oauthManager, tokenStore: deps.tokenStore)]
         case .openrouter:
-            raw = [OpenRouterUsageProvider(instanceId: id, apiKeyProvider: { preferences.openRouterAPIKey })]
+            raw = [OpenRouterUsageProvider(instanceId: id, apiKeyProvider: { preferences.apiKey(instanceId: id) })]
         case .minimax:
             raw = [MiniMaxUsageProvider(
                 instanceId: id,
-                apiKeyProvider: { preferences.minimaxAPIKey },
-                region: { preferences.minimaxRegionRaw == "china" ? .china : .global }
+                apiKeyProvider: { preferences.apiKey(instanceId: id) },
+                region: { preferences.minimaxRegionRaw(instanceId: id) == "china" ? .china : .global }
             )]
         case .opencode:
-            raw = [OpenCodeUsageProvider(instanceId: id, apiKeyProvider: { preferences.openCodeAPIKey })]
+            raw = [OpenCodeUsageProvider(instanceId: id, apiKeyProvider: { preferences.apiKey(instanceId: id) })]
         case .cursor:
             raw = [
                 CursorUsageProvider(instanceId: id),
