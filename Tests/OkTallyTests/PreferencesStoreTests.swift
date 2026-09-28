@@ -294,4 +294,26 @@ final class PreferencesStoreTests: XCTestCase {
         store.popoverHiddenProviders = []
         XCTAssertNil(kv.string(forKey: "popoverHiddenProviders"))
     }
+    // MARK: - Contas
+
+    func test_accounts_unsetReturnsLegacyDefaults() {
+        XCTAssertEqual(makeStore().accounts, AccountsCatalog.defaultAccounts)
+    }
+
+    func test_accounts_roundTrip() {
+        let store = makeStore()
+        var extra = AccountInstance(id: "claude#abc123", kind: .claude); extra.nickname = "Trabalho"
+        store.accounts = AccountsCatalog.defaultAccounts + [extra]
+        XCTAssertEqual(store.accounts.last, extra)
+    }
+
+    func test_accounts_corruptJSONFallsBackToDefaults() {
+        let kv = FakeKeyValueStore(); kv.set("{not json", forKey: "accounts.v1")
+        XCTAssertEqual(makeStore(kv: kv).accounts, AccountsCatalog.defaultAccounts)
+    }
+
+    func test_accounts_emptyListFallsBackToDefaults() {
+        let kv = FakeKeyValueStore(); kv.set("[]", forKey: "accounts.v1")
+        XCTAssertEqual(makeStore(kv: kv).accounts, AccountsCatalog.defaultAccounts)
+    }
 }

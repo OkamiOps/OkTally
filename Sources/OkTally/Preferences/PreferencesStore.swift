@@ -42,6 +42,7 @@ final class PreferencesStore {
         static let alertLowBalanceThreshold = "alertLowBalanceThreshold"
         static let providerOrder = "providerOrder"
         static let popoverHiddenProviders = "popoverHiddenProviders"
+        static let accounts = "accounts.v1"
         static func refreshInterval(_ providerId: String) -> String { "refreshInterval.\(providerId)" }
         /// Posição horizontal da ilha, POR TELA. A chave carrega o id do display porque
         /// o dono tem dois monitores lado a lado e arrasta a pílula para lugares
@@ -312,6 +313,25 @@ final class PreferencesStore {
         }
         set {
             store.set(newValue.isEmpty ? nil : newValue.joined(separator: "\u{2}"), forKey: Keys.popoverHiddenProviders)
+        }
+    }
+    // MARK: - Contas
+
+    /// As contas acompanhadas, em JSON. Nada gravado (ou gravado corrompido/vazio) vale
+    /// como uma conta legada por tipo — exatamente o app de antes das contas múltiplas.
+    /// O e-mail mora aqui porque não é segredo (é rótulo); credencial NUNCA entra neste
+    /// JSON, ela continua no Keychain sob o id da conta.
+    var accounts: [AccountInstance] {
+        get {
+            guard let raw = store.string(forKey: Keys.accounts),
+                  let decoded = try? JSONDecoder().decode([AccountInstance].self, from: Data(raw.utf8)),
+                  !decoded.isEmpty
+            else { return AccountsCatalog.defaultAccounts }
+            return decoded
+        }
+        set {
+            guard let data = try? JSONEncoder().encode(newValue) else { return }
+            store.set(String(decoding: data, as: UTF8.self), forKey: Keys.accounts)
         }
     }
 }
