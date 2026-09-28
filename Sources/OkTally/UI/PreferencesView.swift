@@ -1000,6 +1000,9 @@ struct PreferencesView: View {
                 apiKeyFields[current.id] = ""
                 statusMessage = email.map { LF("%@ já está no OkTally — nada foi adicionado.", $0) }
                     ?? L("Esta conta já está no OkTally — nada foi adicionado.")
+            case .cancelled:
+                // Cancelado durante a identificação: a tela já foi limpa por `cancelDraft`.
+                loggedIn.remove(current.id)
             case .failed:
                 loggedIn.remove(current.id)
                 statusMessage = L("Não foi possível adicionar a conta.")

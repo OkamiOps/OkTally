@@ -14,6 +14,9 @@ final class AccountEnrollment {
         case committed
         /// Já existe uma conta com a mesma identidade; a credencial do rascunho foi apagada.
         case duplicate(email: String?)
+        /// O rascunho deixou de ser o ativo (cancelado ou trocado) antes de terminar; nada
+        /// foi adicionado e a credencial dele foi apagada.
+        case cancelled
         case failed
     }
 
@@ -41,7 +44,18 @@ final class AccountEnrollment {
     func finish(draftId: String, kind: AccountKind) async -> Result {
         guard !model.accounts.contains(where: { $0.id == draftId }) else { return .failed }
         var account = AccountInstance(id: draftId, kind: kind)
+        guard model.activeDraftId == draftId else {
+            try? model.credentialEraser?(account)
+            return .cancelled
+        }
         let identity = await model.identityResolver?(account) ?? AccountIdentity()
+        // A descoberta da identidade é assíncrona: o dono pode ter cancelado (ou começado
+        // outro rascunho) enquanto isso. `abandon` já apagou o token, mas um commit aqui
+        // criaria uma conta zumbi sem credencial.
+        guard model.activeDraftId == draftId else {
+            try? model.credentialEraser?(account)
+            return .cancelled
+        }
         if AccountDedup.isDuplicate(identityKey: identity.identityKey, kind: kind,
                                     among: model.accounts, excluding: draftId) {
             // A credencial gravada sob o rascunho é de uma conta que já acompanhamos:

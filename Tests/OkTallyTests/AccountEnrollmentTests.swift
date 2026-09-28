@@ -6,6 +6,8 @@ final class AccountEnrollmentTests: XCTestCase {
     /// Resolver falso: devolve o que o teste mandar.
     final class FakeResolver {
         var next = AccountIdentity()
+        /// Roda no meio da resolução — simula o dono clicando "Cancelar" durante o await.
+        var onResolve: (@MainActor () -> Void)?
     }
 
     /// Modelo com as contas legadas mais `existing`, provedores falsos e o Keychain em
@@ -36,11 +38,19 @@ final class AccountEnrollmentTests: XCTestCase {
             let resolver = FakeResolver()
             model.providerFactory = factory
             model.credentialEraser = { try tokens.delete(providerId: $0.id) }
-            model.identityResolver = { _ in resolver.next }
+            model.identityResolver = { _ in
+                await resolver.onResolve?()
+                return resolver.next
+            }
             self.model = model
             self.tokens = tokens
             self.resolver = resolver
             self.enrollment = AccountEnrollment(model: model)
+        }
+
+        /// Marca `id` como o rascunho ativo (o que `beginDraft` faz com um id sorteado).
+        @MainActor func activate(_ id: String) {
+            model.activeDraftId = id
         }
     }
 
@@ -54,6 +64,7 @@ final class AccountEnrollmentTests: XCTestCase {
     func test_enroll_commitsWhenIdentityIsNew() async throws {
         let env = EnrollmentEnv(existing: [AccountInstance(id: "claude", kind: .claude, identityKey: "a@x.com")])
         env.resolver.next = AccountIdentity(email: "b@x.com", identityKey: "b@x.com")
+        env.activate("claude#abc123")
         let result = await env.enrollment.finish(draftId: "claude#abc123", kind: .claude)
         XCTAssertEqual(result, .committed)
         XCTAssertEqual(env.model.accounts.last?.id, "claude#abc123")
@@ -65,6 +76,7 @@ final class AccountEnrollmentTests: XCTestCase {
         let env = EnrollmentEnv(existing: [AccountInstance(id: "claude", kind: .claude, identityKey: "a@x.com")])
         try env.tokens.save(OAuthToken(accessToken: "t", refreshToken: nil, expiresAt: nil, extra: [:]), providerId: "claude#abc123")
         env.resolver.next = AccountIdentity(email: "A@x.com", identityKey: "a@x.com")
+        env.activate("claude#abc123")
         let result = await env.enrollment.finish(draftId: "claude#abc123", kind: .claude)
         XCTAssertEqual(result, .duplicate(email: "A@x.com"))
         XCTAssertNil(env.tokens.load(providerId: "claude#abc123"))
@@ -75,6 +87,7 @@ final class AccountEnrollmentTests: XCTestCase {
     func test_enroll_claudeSameEmailOtherOrg_isStillDuplicate() async {
         let env = EnrollmentEnv(existing: [AccountInstance(id: "claude", kind: .claude, email: "a@x.com", identityKey: "a@x.com")])
         env.resolver.next = AccountIdentity(email: "a@x.com", identityKey: "a@x.com")
+        env.activate("claude#abc123")
         let result = await env.enrollment.finish(draftId: "claude#abc123", kind: .claude)
         XCTAssertEqual(result, .duplicate(email: "a@x.com"))
     }
@@ -82,6 +95,7 @@ final class AccountEnrollmentTests: XCTestCase {
     func test_enroll_unresolvableIdentity_commitsWithoutEmail() async {
         let env = EnrollmentEnv(existing: [])
         env.resolver.next = AccountIdentity()
+        env.activate("codex#abc123")
         let result = await env.enrollment.finish(draftId: "codex#abc123", kind: .codex)
         XCTAssertEqual(result, .committed)
         XCTAssertNil(env.model.accounts.last?.email)
@@ -89,6 +103,7 @@ final class AccountEnrollmentTests: XCTestCase {
 
     func test_enroll_alreadyCommittedDraft_fails() async {
         let env = EnrollmentEnv(existing: [])
+        env.activate("codex")
         let result = await env.enrollment.finish(draftId: "codex", kind: .codex)
         XCTAssertEqual(result, .failed)
     }
@@ -111,10 +126,12 @@ final class AccountEnrollmentTests: XCTestCase {
         let fingerprint = AccountDedup.fingerprint(apiKey: "sk-or-1")
         let env = EnrollmentEnv(existing: [AccountInstance(id: "openrouter", kind: .openrouter, identityKey: fingerprint)])
         env.resolver.next = AccountIdentity(email: nil, identityKey: fingerprint, autoLabel: "sk-or-v1-aaa...111")
+        env.activate("openrouter#abc123")
         let duplicate = await env.enrollment.finish(draftId: "openrouter#abc123", kind: .openrouter)
         XCTAssertEqual(duplicate, .duplicate(email: nil))
 
         env.resolver.next = AccountIdentity(email: nil, identityKey: AccountDedup.fingerprint(apiKey: "sk-or-2"), autoLabel: "Trabalho key")
+        env.activate("openrouter#abc123")
         let committed = await env.enrollment.finish(draftId: "openrouter#abc123", kind: .openrouter)
         XCTAssertEqual(committed, .committed)
         XCTAssertEqual(env.model.accounts.last?.autoLabel, "Trabalho key")
@@ -135,5 +152,37 @@ final class AccountEnrollmentTests: XCTestCase {
         XCTAssertTrue(env.enrollment.acceptsCredential(for: draft))
         env.enrollment.abandon(draftId: draft, kind: .openrouter)
         XCTAssertFalse(env.enrollment.acceptsCredential(for: draft))
+    }
+
+    // MARK: - Revisão: cancelar durante "Identificando a conta…"
+
+    func test_finish_draftCancelledDuringIdentityLookup_doesNotCommitAndErasesCredential() async throws {
+        let env = EnrollmentEnv(existing: [])
+        let draft = env.enrollment.beginDraft(kind: .claude)
+        try env.tokens.save(OAuthToken(accessToken: "t", refreshToken: nil, expiresAt: nil, extra: [:]), providerId: draft)
+        env.resolver.next = AccountIdentity(email: "new@x.com", identityKey: "new@x.com")
+        env.resolver.onResolve = { env.enrollment.abandon(draftId: draft, kind: .claude) }
+
+        let result = await env.enrollment.finish(draftId: draft, kind: .claude)
+
+        XCTAssertEqual(result, .cancelled)
+        XCTAssertFalse(env.model.accounts.contains { $0.id == draft })
+        XCTAssertNil(env.tokens.load(providerId: draft))
+    }
+
+    func test_finish_notTheActiveDraft_isCancelled() async {
+        let env = EnrollmentEnv(existing: [])
+        env.resolver.next = AccountIdentity(email: "n@x.com", identityKey: "n@x.com")
+        let result = await env.enrollment.finish(draftId: "codex#dead00", kind: .codex)
+        XCTAssertEqual(result, .cancelled)
+        XCTAssertFalse(env.model.accounts.contains { $0.id == "codex#dead00" })
+    }
+
+    func test_finish_commit_clearsActiveDraft() async {
+        let env = EnrollmentEnv(existing: [])
+        let draft = env.enrollment.beginDraft(kind: .codex)
+        let result = await env.enrollment.finish(draftId: draft, kind: .codex)
+        XCTAssertEqual(result, .committed)
+        XCTAssertNil(env.model.activeDraftId)
     }
 }
