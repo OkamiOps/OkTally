@@ -124,6 +124,32 @@ final class SchedulerTests: XCTestCase {
         XCTAssertEqual(received.count, 1)
     }
 
+    func test_stopLoop_cancelsOnlyThatInstance() async throws {
+        let a = FakeUsageProvider(id: "a", displayName: "A"); a.snapshotToReturn = snapshot(providerId: "a", percent: 1)
+        let b = FakeUsageProvider(id: "b", displayName: "B"); b.snapshotToReturn = snapshot(providerId: "b", percent: 1)
+        let registry = PluginRegistry(); registry.register(a); registry.register(b)
+        let scheduler = Scheduler(registry: registry, storage: FakeStorage(), alertEngine: AlertEngine(),
+                                  alertDispatcher: AlertDispatcher(sender: FakeNotificationSender()))
+        scheduler.startLoop(for: a, initialDelay: 0)
+        scheduler.startLoop(for: b, initialDelay: 0)
+        XCTAssertTrue(scheduler.isLooping(id: "a"))
+        scheduler.stopLoop(id: "a")
+        XCTAssertFalse(scheduler.isLooping(id: "a"))
+        XCTAssertTrue(scheduler.isLooping(id: "b"))
+        scheduler.stopLoop(id: "b")
+    }
+
+    func test_stopLoop_clearsLastErrorOfThatInstance() async {
+        let bad = FakeUsageProvider(id: "bad", displayName: "Bad"); bad.errorToThrow = FakeError.boom
+        let registry = PluginRegistry(); registry.register(bad)
+        let scheduler = Scheduler(registry: registry, storage: FakeStorage(), alertEngine: AlertEngine(),
+                                  alertDispatcher: AlertDispatcher(sender: FakeNotificationSender()))
+        _ = await scheduler.fetchAll()
+        XCTAssertNotNil(scheduler.lastError["bad"])
+        scheduler.stopLoop(id: "bad")
+        XCTAssertNil(scheduler.lastError["bad"])
+    }
+
     func test_fetchAll_twoSequentialCallsAboveThreshold_doesNotRefireOnSecondCall() async {
         let provider = FakeUsageProvider(id: "claude", displayName: "Claude Code")
         provider.snapshotToReturn = snapshot(providerId: "claude", percent: 75)
