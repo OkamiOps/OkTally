@@ -54,6 +54,27 @@ final class FakeStorage: StorageManaging {
 
 enum FakeError: Error { case boom }
 
+/// Provedor que some do registry no meio do próprio fetch — a conta removida enquanto a
+/// leitura estava em voo.
+final class SelfRemovingProvider: UsageProvider {
+    let id: String
+    let displayName = "Gone"
+    let authMethod: AuthMethod = .apiKey
+    let refreshInterval: TimeInterval = 60
+    weak var registry: PluginRegistry?
+
+    init(id: String) { self.id = id }
+
+    func isAuthenticated() async -> Bool { true }
+
+    func fetchSnapshot() async throws -> ProviderSnapshot {
+        registry?.remove(ids: [id])
+        return ProviderSnapshot(providerId: id, fetchedAt: Date(), quotas: [
+            QuotaWindow(label: "5h", shape: .rollingWindow(used: 99, limit: 100, windowStart: Date(), resetAt: Date()))
+        ], usageDetail: nil)
+    }
+}
+
 final class SchedulerTests: XCTestCase {
     private func snapshot(providerId: String, percent: Double) -> ProviderSnapshot {
         ProviderSnapshot(
@@ -126,6 +147,24 @@ final class SchedulerTests: XCTestCase {
         _ = await scheduler.fetchAll()
 
         XCTAssertEqual(received.count, 1)
+    }
+
+    /// Revisão: o `save` depois do fetch não pode ressuscitar o histórico que o
+    /// `removeAccount` acabou de apagar, nem disparar alerta de conta que não existe mais.
+    func test_fetch_providerRemovedMidFlight_neitherSavesNorAlerts() async {
+        let registry = PluginRegistry()
+        let gone = SelfRemovingProvider(id: "claude#abc123")
+        gone.registry = registry
+        registry.register(gone)
+        let storage = FakeStorage()
+        let sender = FakeNotificationSender()
+        let scheduler = Scheduler(registry: registry, storage: storage, alertEngine: AlertEngine(),
+                                  alertDispatcher: AlertDispatcher(sender: sender))
+
+        _ = await scheduler.fetchAll()
+
+        XCTAssertEqual(storage.saveCount, 0)
+        XCTAssertTrue(sender.sentMessages.isEmpty)
     }
 
     func test_stopLoop_cancelsOnlyThatInstance() async throws {

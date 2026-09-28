@@ -1,5 +1,6 @@
 // Sources/OkTally/App/AppModel.swift
 import Foundation
+import os
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -165,6 +166,7 @@ final class AppModel: ObservableObject {
     /// O que está gravado — usado em testes para provar a persistência.
     var persistedAccounts: [AccountInstance] { preferences.accounts }
 
+    private static let log = Logger(subsystem: "com.oktally.app", category: "accounts")
     private static let menuBarPinsKey = "menuBarPins"
     private static let legacyMenuBarPinKey = "menuBarPin"
     private let defaults: UserDefaults
@@ -320,9 +322,19 @@ final class AppModel: ObservableObject {
         let removed = Set(ids)
         for providerId in ids {
             scheduler.stopLoop(id: providerId)
-            try? storage?.deleteSnapshots(providerId: providerId)
         }
+        // Sai do registry ANTES de apagar o histórico: um fetch em voo confere o registry
+        // antes de gravar, e assim não regrava o que vem a seguir.
         registry.remove(ids: removed)
+        for providerId in ids {
+            do {
+                try storage?.deleteSnapshots(providerId: providerId)
+            } catch {
+                // A conta sai mesmo assim (credencial já foi apagada); o histórico órfão
+                // não aparece em lugar nenhum e cai na retenção de 30 dias. Fica registrado.
+                Self.log.error("Falha ao apagar o histórico de \(providerId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+        }
 
         let cleaned = AccountRemoval.cleanup(
             removedIds: removed,

@@ -131,6 +131,10 @@ final class Scheduler {
             setLastError(nil, for: provider.id)
             let result = SchedulerFetchResult(providerId: provider.id, outcome: .success(snapshot))
             onResult?(result)
+            // A conta pode ter sido removida enquanto o fetch estava em voo: gravar agora
+            // ressuscitaria o histórico que o `removeAccount` acabou de apagar (e um alerta
+            // de conta que não existe mais).
+            guard registry.providers.contains(where: { $0.id == provider.id }) else { return result }
             do {
                 try storage.save(snapshot)
                 let thresholds = thresholdsProvider(provider.id)
