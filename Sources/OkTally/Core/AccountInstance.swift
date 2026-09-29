@@ -17,15 +17,24 @@ struct AccountInstance: Codable, Equatable, Identifiable {
     /// Rótulo automático quando não há e-mail — hoje, o `label` que o OpenRouter devolve
     /// para a chave (o nome dela, ou a chave mascarada `sk-or-v1-0e6...1c96`).
     var autoLabel: String?
+    /// Janela que o dono elegeu como a cota PRINCIPAL desta conta (a barra grande do
+    /// menu, a asa do notch e o número da barra em modo automático). `nil` = automático.
+    ///
+    /// Mora na conta e não numa preferência global porque a resposta é diferente por
+    /// conta do MESMO tipo: num Codex Pro só existe a semanal, num Codex Business é a
+    /// sessão de 5h que acaba no meio do dia. Chave ausente decodifica como `nil` — as
+    /// contas gravadas por versões anteriores continuam válidas.
+    var primaryWindowLabel: String?
 
     init(id: String, kind: AccountKind, nickname: String? = nil, email: String? = nil,
-         identityKey: String? = nil, autoLabel: String? = nil) {
+         identityKey: String? = nil, autoLabel: String? = nil, primaryWindowLabel: String? = nil) {
         self.id = id
         self.kind = kind
         self.nickname = nickname
         self.email = email
         self.identityKey = identityKey
         self.autoLabel = autoLabel
+        self.primaryWindowLabel = primaryWindowLabel
     }
 }
 
@@ -141,6 +150,13 @@ struct AccountDirectory {
     /// Nome para lugares estreitos (linhas do notch): o nome do tipo mais o rótulo curto.
     func compactName(for id: String, baseName: String) -> String {
         shortLabel(for: id).map { "\(baseName) · \($0)" } ?? baseName
+    }
+
+    /// A cota principal escolhida para a conta dona deste provedor, ou `nil` =
+    /// automático. É por aqui que o código estático (barra de menu e notch, desenhados
+    /// dentro de um `ImageRenderer`, sem acesso ao `AppModel`) enxerga a escolha.
+    func primaryWindowLabel(forProviderId id: String) -> String? {
+        account(forProviderId: id)?.primaryWindowLabel
     }
 }
 

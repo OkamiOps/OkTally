@@ -132,7 +132,10 @@ struct PopoverContentView: View {
         guard let candidate = QuotaSlotResolver.popoverHero(
             slot: appModel.popoverHeroSlot,
             snapshots: Dictionary(uniqueKeysWithValues: withData.map { ($0.provider.id, $0.snapshot) }),
-            providerOrder: providers.map(\.id)
+            providerOrder: providers.map(\.id),
+            // Do MODELO e não do `AccountDirectoryHolder`: assim o popover recompõe no
+            // mesmo quadro em que o dono escolhe outra cota principal.
+            preferredLabels: { appModel.primaryWindowLabel(forProviderId: $0) }
         ), let provider = providers.first(where: { $0.id == candidate.providerId }) else {
             return nil
         }
@@ -229,11 +232,14 @@ struct PopoverContentView: View {
                     remaining: hero.remaining,
                     others: PopoverLayout.orderedWindows(
                         appModel.snapshotsByProvider[hero.provider.id]?.quotas ?? [],
-                        providerId: hero.provider.id
+                        providerId: hero.provider.id,
+                        preferredLabel: appModel.primaryWindowLabel(forProviderId: hero.provider.id)
                     ).filter { $0.label != hero.window.label },
+                    preferredLabel: appModel.primaryWindowLabel(forProviderId: hero.provider.id),
                     isPinned: { appModel.isPinned(providerId: hero.provider.id, windowLabel: $0) },
                     onPin: { appModel.togglePin(providerId: hero.provider.id, windowLabel: $0) },
                     onHighlight: { appModel.popoverHeroSlot = .window(providerId: hero.provider.id, windowLabel: $0) },
+                    onMakePrimary: { appModel.setPrimaryWindow(providerId: hero.provider.id, windowLabel: $0) },
                     forecast: { forecast(providerId: hero.provider.id, windowLabel: $0) },
                     expandedForecastID: expandedForecastID,
                     onHide: { appModel.popoverHiddenProviders.insert(hero.provider.id) }
@@ -265,9 +271,11 @@ struct PopoverContentView: View {
                             provider: entry.provider,
                             snapshot: entry.snapshot,
                             estimatedCost: appModel.estimatedCostByProvider[entry.provider.id],
+                            preferredLabel: appModel.primaryWindowLabel(forProviderId: entry.provider.id),
                             isPinned: { appModel.isPinned(providerId: entry.provider.id, windowLabel: $0) },
                             onPin: { appModel.togglePin(providerId: entry.provider.id, windowLabel: $0) },
                             onHighlight: { appModel.popoverHeroSlot = .window(providerId: entry.provider.id, windowLabel: $0) },
+                            onMakePrimary: { appModel.setPrimaryWindow(providerId: entry.provider.id, windowLabel: $0) },
                             forecast: { forecast(providerId: entry.provider.id, windowLabel: $0) },
                             expandedForecastID: expandedForecastID,
                             onHide: { appModel.popoverHiddenProviders.insert(entry.provider.id) }
@@ -300,10 +308,25 @@ struct PopoverContentView: View {
 
 /// Pure ordering rules for the popover, kept out of the views so they can be tested.
 enum PopoverLayout {
-    /// Windows of one provider, normally tightest first. The Codex general Weekly quota
-    /// is its semantic primary; model-specific windows remain below it. Windows without
-    /// a percentage sink to the end. Stable for equal remainings: original order wins.
-    static func orderedWindows(_ quotas: [QuotaWindow], providerId: String? = nil) -> [QuotaWindow] {
+    /// Windows of one provider, normally tightest first. Windows without a percentage
+    /// sink to the end. Stable for equal remainings: original order wins.
+    ///
+    /// `preferredLabel` é a escolha do dono para esta conta
+    /// (`AccountInstance.primaryWindowLabel`): quando a janela existe no snapshot, ela
+    /// vai para a frente, seja ela qual for. Escolha que sumiu cai para automático em
+    /// silêncio — a mesma regra dos slots do notch, e pela mesma razão: um provedor que
+    /// parou de devolver uma janela não pode virar um buraco na tela.
+    ///
+    /// No automático do Codex, a principal é a mais apertada entre as janelas GERAIS
+    /// (a sessão de 5h e a semanal). Antes era sempre a semanal, e numa conta Business
+    /// isso escondia justamente a cota que acaba durante o dia. Janelas específicas de
+    /// modelo ("GPT-5.3-Codex-Spark (5h)") continuam sem poder ganhar no automático:
+    /// elas medem a capacidade de um modelo, não a do plano.
+    static func orderedWindows(
+        _ quotas: [QuotaWindow],
+        providerId: String? = nil,
+        preferredLabel: String? = nil
+    ) -> [QuotaWindow] {
         let tightestFirst = quotas.enumerated().sorted { lhs, rhs in
             let l = QuotaPresentation.remainingFraction(lhs.element.shape)
             let r = QuotaPresentation.remainingFraction(rhs.element.shape)
@@ -317,26 +340,61 @@ enum PopoverLayout {
             }
         }.map(\.element)
 
-        // Codex exposes the general plan windows plus model-specific limits. The
-        // standard weekly quota is the useful overview of frontier-model capacity;
-        // Spark remains visible below, but must not replace that overview merely
-        // because its percentage is lower.
-        guard let providerId, AccountID.kind(of: providerId) == .codex,
-              let weeklyIndex = tightestFirst.firstIndex(where: isGeneralCodexWeekly)
-        else { return tightestFirst }
+        guard let primaryIndex = primaryIndex(
+            in: tightestFirst, providerId: providerId, preferredLabel: preferredLabel
+        ) else { return tightestFirst }
         var ordered = tightestFirst
-        let weekly = ordered.remove(at: weeklyIndex)
-        ordered.insert(weekly, at: 0)
+        ordered.insert(ordered.remove(at: primaryIndex), at: 0)
         return ordered
     }
 
-    static func primaryWindow(providerId: String, quotas: [QuotaWindow]) -> QuotaWindow? {
-        orderedWindows(quotas, providerId: providerId).first
+    static func primaryWindow(
+        providerId: String,
+        quotas: [QuotaWindow],
+        preferredLabel: String? = nil
+    ) -> QuotaWindow? {
+        orderedWindows(quotas, providerId: providerId, preferredLabel: preferredLabel).first
     }
 
-    private static func isGeneralCodexWeekly(_ window: QuotaWindow) -> Bool {
-        let label = window.label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return label == "weekly" || label == "semanal"
+    /// Qual das janelas já ordenadas por aperto vai para a frente, ou `nil` para deixar a
+    /// ordem como está (a mais apertada já é a primeira).
+    private static func primaryIndex(
+        in tightestFirst: [QuotaWindow],
+        providerId: String?,
+        preferredLabel: String?
+    ) -> Int? {
+        if let preferredLabel, !preferredLabel.isEmpty,
+           let chosen = tightestFirst.firstIndex(where: { $0.label == preferredLabel }) {
+            return chosen
+        }
+        guard let providerId, AccountID.kind(of: providerId) == .codex else { return nil }
+        // `tightestFirst` já está em ordem de aperto, então a PRIMEIRA geral com
+        // percentual é a mais apertada entre as gerais.
+        return tightestFirst.firstIndex {
+            !isModelSpecific($0) && QuotaPresentation.remainingFraction($0.shape) != nil
+        }
+    }
+
+    /// Janela específica de modelo: o Codex as devolve no formato "Modelo (janela)" —
+    /// "GPT-5.3-Codex-Spark (5h)". As gerais do plano ("5h", "weekly", "semanal") não têm
+    /// esse prefixo. Reconhecer pela FORMA e não por uma lista de modelos é o que faz a
+    /// regra sobreviver ao próximo modelo que a OpenAI lançar.
+    static func isModelSpecific(_ window: QuotaWindow) -> Bool {
+        let label = window.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard label.hasSuffix(")"), let open = label.lastIndex(of: "(") else { return false }
+        return !label[..<open].trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// Quais janelas secundárias ganham uma barra própria no popover.
+    ///
+    /// Com até duas, todas as que têm percentual ganham: era esse o buraco do relato do
+    /// dono — a sessão de 5h da conta Business aparecia só como um textinho ao pé da
+    /// linha. Passando disso, só as GERAIS ganham barra e o resto fica compacto: seis
+    /// barras empilhadas viram um gráfico acidental e a linha principal deixa de dominar.
+    static func barredSecondaryLabels(_ secondaries: [QuotaWindow]) -> [String] {
+        let withPercentage = secondaries.filter { QuotaPresentation.remainingFraction($0.shape) != nil }
+        guard withPercentage.count > 2 else { return withPercentage.map(\.label) }
+        return withPercentage.filter { !isModelSpecific($0) }.map(\.label)
     }
 }
 
@@ -405,9 +463,14 @@ private struct HeroBlock: View {
     /// The hero provider's remaining windows — it is excluded from the list below, so
     /// they would otherwise disappear.
     let others: [QuotaWindow]
+    /// A cota principal escolhida para esta conta, ou `nil` = automático.
+    let preferredLabel: String?
     let isPinned: (String) -> Bool
     let onPin: (String) -> Void
     let onHighlight: (String) -> Void
+    /// Elege esta janela como a cota principal da conta (menu de contexto da linha);
+    /// `nil` volta para automático.
+    let onMakePrimary: (String?) -> Void
     let forecast: (String) -> UsageForecast?
     let expandedForecastID: ForecastWindowID?
     /// Esconde este provedor do popover (menu de contexto "Ocultar do menu"). Pinos,
@@ -418,6 +481,12 @@ private struct HeroBlock: View {
     /// off-white, então ele precisa do mesmo escurecimento que o fundo recebe — senão o
     /// amarelo da escala vira uma letra invisível dentro de um selo branco.
     private var danger: Color { Theme.heroTint(QuotaPresentation.color(remaining: remaining)) }
+
+    /// Quais das outras janelas ganham barra própria. Ver
+    /// `PopoverLayout.barredSecondaryLabels`.
+    private var barredSecondaries: Set<String> {
+        Set(PopoverLayout.barredSecondaryLabels(others))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -480,9 +549,11 @@ private struct HeroBlock: View {
                     SecondaryWindowLine(window: other,
                                         identity: Theme.onHero,
                                         onHero: true,
+                                        showsBar: barredSecondaries.contains(other.label),
                                         isPinned: isPinned(other.label),
                                         onPin: { onPin(other.label) },
-                                        onHighlight: { onHighlight(other.label) })
+                                        onHighlight: { onHighlight(other.label) },
+                                        onMakePrimary: { onMakePrimary(other.label) })
                     if let pace = forecast(other.label), pace.id != expandedForecastID {
                         ForecastInlinePaceView(
                             providerId: provider.id,
@@ -499,6 +570,9 @@ private struct HeroBlock: View {
         .heroSurface(danger)
         .help(window.shape.isEstimated ? L("Estimativa local, não confirmada pelo provedor") : "")
         .contextMenu {
+            if preferredLabel != nil {
+                Button(L("Cota principal: automático")) { onMakePrimary(nil) }
+            }
             Button(L("Ocultar do menu"), action: onHide)
         }
     }
@@ -516,9 +590,14 @@ private struct ProviderQuotaRow: View {
     let provider: UsageProvider
     let snapshot: ProviderSnapshot
     let estimatedCost: Decimal?
+    /// A cota principal escolhida para esta conta, ou `nil` = automático.
+    let preferredLabel: String?
     let isPinned: (String) -> Bool
     let onPin: (String) -> Void
     let onHighlight: (String) -> Void
+    /// Elege esta janela como a cota principal da conta (menu de contexto da linha);
+    /// `nil` volta para automático.
+    let onMakePrimary: (String?) -> Void
     let forecast: (String) -> UsageForecast?
     let expandedForecastID: ForecastWindowID?
     /// Esconde este provedor do popover (menu de contexto "Ocultar do menu"). Pinos,
@@ -527,7 +606,13 @@ private struct ProviderQuotaRow: View {
 
     private var identity: Color { ProviderPalette.color(for: provider.id) }
     private var windows: [QuotaWindow] {
-        PopoverLayout.orderedWindows(snapshot.quotas, providerId: provider.id)
+        PopoverLayout.orderedWindows(snapshot.quotas, providerId: provider.id,
+                                     preferredLabel: preferredLabel)
+    }
+
+    /// Quais secundárias ganham barra própria. Ver `PopoverLayout.barredSecondaryLabels`.
+    private var barredSecondaries: Set<String> {
+        Set(PopoverLayout.barredSecondaryLabels(Array(windows.dropFirst())))
     }
 
     var body: some View {
@@ -618,9 +703,11 @@ private struct ProviderQuotaRow: View {
             ForEach(windows.dropFirst(), id: \.label) { window in
                 VStack(alignment: .leading, spacing: 4) {
                     SecondaryWindowLine(window: window, identity: identity,
+                                        showsBar: barredSecondaries.contains(window.label),
                                         isPinned: isPinned(window.label),
                                         onPin: { onPin(window.label) },
-                                        onHighlight: { onHighlight(window.label) })
+                                        onHighlight: { onHighlight(window.label) },
+                                        onMakePrimary: { onMakePrimary(window.label) })
                     if let pace = forecast(window.label), pace.id != expandedForecastID {
                         ForecastInlinePaceView(providerId: provider.id, forecast: pace)
                             .padding(.leading, 30)
@@ -640,6 +727,12 @@ private struct ProviderQuotaRow: View {
         .help(snapshot.quotas.contains(where: \.shape.isEstimated)
               ? L("Estimativa local, não confirmada pelo provedor") : "")
         .contextMenu {
+            // O caminho de VOLTA da escolha feita no menu de contexto da linha
+            // secundária. Sem ele, desfazer exigiria abrir as Preferências — e o dono
+            // teria de descobrir sozinho que foi ali que ele mexeu.
+            if preferredLabel != nil {
+                Button(L("Cota principal: automático")) { onMakePrimary(nil) }
+            }
             Button(L("Ocultar do menu"), action: onHide)
         }
     }
@@ -700,41 +793,80 @@ private struct BalanceChip: View {
 }
 
 /// A provider's second (and third…) window: same columns as the row above it, one step
-/// quieter, and no bar — the bar belongs to the window that is actually at risk.
+/// quieter.
+///
+/// `showsBar` é a correção do relato do dono. A conta Business do Codex tem duas cotas
+/// que importam — a semanal e a sessão de 5h —, e a que acaba durante o dia aparecia só
+/// como "5h session 4h 55m 100%" num texto de 9–11pt ao pé da linha: "quase
+/// imperceptível". Com a barra, a janela secundária vira um OBJETO com a mesma anatomia
+/// da principal (rótulo, reset, número e preenchimento), só que menor — a hierarquia
+/// continua existindo, a informação deixa de se esconder. Ver
+/// `PopoverLayout.barredSecondaryLabels` para quem ganha barra quando há muitas janelas.
 private struct SecondaryWindowLine: View {
     let window: QuotaWindow
     let identity: Color
     var onHero: Bool = false
+    /// Desenha a barrinha de sobra abaixo da linha.
+    var showsBar: Bool = false
     let isPinned: Bool
     let onPin: () -> Void
     var onHighlight: (() -> Void)? = nil
+    /// Elege esta janela como a cota principal da conta. `nil` esconde o item do menu.
+    var onMakePrimary: (() -> Void)? = nil
 
     var body: some View {
         let remaining = QuotaPresentation.remainingFraction(window.shape)
-        HStack(spacing: 6) {
-            Text(WindowLabelCatalog.displayLabel(window.label))
-                .font(.system(size: 10))
-                .foregroundStyle(onHero ? AnyShapeStyle(Theme.onHero.opacity(0.75)) : AnyShapeStyle(HierarchicalShapeStyle.secondary))
-                .lineLimit(1)
-            Spacer(minLength: 4)
-            if let reset = QuotaPresentation.resetCompactText(window.shape) {
-                Text(reset)
-                    .font(.system(size: 9))
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Text(WindowLabelCatalog.displayLabel(window.label))
+                    .font(.system(size: 10))
+                    .foregroundStyle(onHero ? AnyShapeStyle(Theme.onHero.opacity(0.75)) : AnyShapeStyle(HierarchicalShapeStyle.secondary))
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                if let reset = QuotaPresentation.resetCompactText(window.shape) {
+                    Text(reset)
+                        .font(.system(size: 9))
+                        .monospacedDigit()
+                        .foregroundStyle(onHero ? AnyShapeStyle(Theme.onHero.opacity(0.6)) : AnyShapeStyle(HierarchicalShapeStyle.tertiary))
+                        .layoutPriority(1)
+                }
+                Text(QuotaPresentation.remainingValueText(window.shape))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(onHero ? AnyShapeStyle(Theme.onHero.opacity(0.6)) : AnyShapeStyle(HierarchicalShapeStyle.tertiary))
-                    .layoutPriority(1)
+                    .foregroundStyle(onHero ? AnyShapeStyle(Theme.onHero) : QuotaPresentation.valueStyle(remaining: remaining))
+                    .frame(minWidth: 44, alignment: .trailing)
+                    .layoutPriority(2)
+                PinButton(isPinned: isPinned, identity: identity, onHero: onHero, onPin: onPin, onHighlight: onHighlight)
             }
-            Text(QuotaPresentation.remainingValueText(window.shape))
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(onHero ? AnyShapeStyle(Theme.onHero) : QuotaPresentation.valueStyle(remaining: remaining))
-                .frame(minWidth: 44, alignment: .trailing)
-                .layoutPriority(2)
-            PinButton(isPinned: isPinned, identity: identity, onHero: onHero, onPin: onPin, onHighlight: onHighlight)
+            if showsBar, let remaining {
+                // 2pt contra os 3pt da barra principal, e na cor da ESCALA de uso em vez
+                // da cor do provedor: a identidade já foi dita pela barra de cima, então
+                // aqui a única coisa que a cor ainda pode dizer é o estado desta janela.
+                // Dentro do herói a escala sairia como mancha sobre o gradiente saturado
+                // — lá a barra é off-white, igual à principal do bloco.
+                QuotaCapsuleBar(
+                    remaining: remaining,
+                    color: onHero ? Theme.onHero.opacity(0.85) : QuotaPresentation.color(remaining: remaining),
+                    height: 2,
+                    track: onHero ? AnyShapeStyle(Color.black.opacity(0.22)) : nil
+                )
+                .padding(.trailing, 14)
+                .animation(.easeInOut(duration: 0.25), value: remaining)
+                .transition(.opacity)
+            }
         }
         // Deeper than the provider name's column: the extra step is what says this
         // window hangs off the row above instead of starting a new provider.
         .padding(.leading, 30)
+        .animation(.easeInOut(duration: 0.25), value: showsBar)
+        .contextMenu {
+            if let onMakePrimary {
+                Button(L("Usar como principal"), action: onMakePrimary)
+            }
+            if let onHighlight {
+                Button(L("Destacar"), action: onHighlight)
+            }
+        }
     }
 }
 // MARK: - Problems

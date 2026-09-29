@@ -1,6 +1,19 @@
 // Sources/OkTally/UI/QuotaSlotResolver.swift
 import Foundation
 
+/// A escolha de cota principal da conta, vista de fora do `AppModel`.
+///
+/// O notch e a barra de menu desenham dentro de um `ImageRenderer`, longe de qualquer
+/// `@ObservedObject`, então eles não têm como receber o modelo — leem o diretório
+/// vigente, igual ao glifo com ordinal (`AccountDirectoryHolder`). Quem TEM o modelo (as
+/// views do popover e das Preferências) passa a escolha explicitamente, para a tela
+/// reagir no mesmo quadro em que o dono muda a preferência.
+enum PrimaryWindowPreference {
+    static func label(forProviderId id: String) -> String? {
+        AccountDirectoryHolder.current.primaryWindowLabel(forProviderId: id)
+    }
+}
+
 /// De `QuotaSlot` para a janela concreta que o pixel vai mostrar. Puro, para as regras
 /// (ordem, desempate, queda para automático) serem testáveis sem tela.
 ///
@@ -19,10 +32,12 @@ enum QuotaSlotResolver {
     static func ranked(
         pins: [AppModel.MenuBarPin],
         snapshots: [String: ProviderSnapshot],
-        providerOrder: [String]
+        providerOrder: [String],
+        preferredLabels: (String) -> String? = PrimaryWindowPreference.label(forProviderId:)
     ) -> [MenuBarLabelModel.Candidate] {
         let base = pins.isEmpty
-            ? NotchHUDModel.automaticCandidates(snapshots: snapshots, providerOrder: providerOrder)
+            ? NotchHUDModel.automaticCandidates(snapshots: snapshots, providerOrder: providerOrder,
+                                                preferredLabels: preferredLabels)
             : MenuBarLabelModel.candidates(pins: pins, snapshots: snapshots)
         return sortedByTightness(base)
     }
@@ -82,9 +97,11 @@ enum QuotaSlotResolver {
         trailing: QuotaSlot,
         pins: [AppModel.MenuBarPin],
         snapshots: [String: ProviderSnapshot],
-        providerOrder: [String]
+        providerOrder: [String],
+        preferredLabels: (String) -> String? = PrimaryWindowPreference.label(forProviderId:)
     ) -> (leading: MenuBarLabelModel.Candidate?, trailing: MenuBarLabelModel.Candidate?) {
-        let ranked = self.ranked(pins: pins, snapshots: snapshots, providerOrder: providerOrder)
+        let ranked = self.ranked(pins: pins, snapshots: snapshots, providerOrder: providerOrder,
+                                 preferredLabels: preferredLabels)
         let left = resolve(leading, ranked: ranked, snapshots: snapshots)
         let right = resolve(trailing, ranked: ranked, snapshots: snapshots, excluding: left)
         return (left, right)
@@ -123,7 +140,8 @@ enum QuotaSlotResolver {
     static func popoverHero(
         slot: QuotaSlot,
         snapshots: [String: ProviderSnapshot],
-        providerOrder: [String]
+        providerOrder: [String],
+        preferredLabels: (String) -> String? = PrimaryWindowPreference.label(forProviderId:)
     ) -> MenuBarLabelModel.Candidate? {
         if case .window(let providerId, let windowLabel) = slot,
            let snapshot = snapshots[providerId],
@@ -139,11 +157,21 @@ enum QuotaSlotResolver {
         var bestReset = Date.distantFuture
         for providerId in order {
             guard let snapshot = snapshots[providerId] else { continue }
-            // Model-specific Codex limits stay selectable explicitly, but the automatic
-            // headline represents Codex with its general Weekly quota.
-            let windows = AccountID.kind(of: providerId) == .codex
-                ? PopoverLayout.primaryWindow(providerId: providerId, quotas: snapshot.quotas).map { [$0] } ?? []
-                : snapshot.quotas
+            // Uma conta com cota principal escolhida é representada por ELA e só por ela:
+            // se as outras janelas continuassem concorrendo, a escolha do dono valeria
+            // apenas quando por acaso fosse também a mais apertada — ou seja, nunca
+            // quando importa.
+            let windows: [QuotaWindow]
+            if let preferred = preferredLabels(providerId),
+               let chosen = snapshot.quotas.first(where: { $0.label == preferred }) {
+                windows = [chosen]
+            } else if AccountID.kind(of: providerId) == .codex {
+                // Limites específicos de modelo continuam escolhíveis à mão, mas a
+                // manchete automática representa o Codex por uma janela geral.
+                windows = PopoverLayout.primaryWindow(providerId: providerId, quotas: snapshot.quotas).map { [$0] } ?? []
+            } else {
+                windows = snapshot.quotas
+            }
             for window in windows {
                 guard let remaining = QuotaPresentation.remainingFraction(window.shape) else { continue }
                 let reset = window.shape.resetAt ?? .distantFuture
@@ -186,9 +214,11 @@ extension QuotaSlotResolver {
         slot: QuotaSlot,
         pins: [AppModel.MenuBarPin],
         snapshots: [String: ProviderSnapshot],
-        providerOrder: [String]
+        providerOrder: [String],
+        preferredLabels: (String) -> String? = PrimaryWindowPreference.label(forProviderId:)
     ) -> NotchBottomBar? {
-        let ranked = self.ranked(pins: pins, snapshots: snapshots, providerOrder: providerOrder)
+        let ranked = self.ranked(pins: pins, snapshots: snapshots, providerOrder: providerOrder,
+                                 preferredLabels: preferredLabels)
         guard let candidate = resolve(slot, ranked: ranked, snapshots: snapshots),
               let remaining = QuotaPresentation.remainingFraction(candidate.window.shape)
         else { return nil }
