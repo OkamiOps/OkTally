@@ -36,9 +36,11 @@ enum MenuBarLabelModel {
     static func criticalSegment(
         pins: [AppModel.MenuBarPin],
         snapshots: [String: ProviderSnapshot],
-        hasAnyError: Bool
+        hasAnyError: Bool,
+        preferredLabels: (String) -> String? = PrimaryWindowPreference.label(forProviderId:)
     ) -> MenuBarSegment {
-        let candidates = self.candidates(pins: pins, snapshots: snapshots)
+        let candidates = self.candidates(pins: pins, snapshots: snapshots,
+                                         preferredLabels: preferredLabels)
         // Janelas com porcentagem primeiro: um saldo em dólares não tem "aperto" para
         // comparar com uma cota em porcento, então ele só aparece quando é tudo o que há.
         let ranked = candidates.enumerated().compactMap { index, candidate -> (Int, Candidate, Double)? in
@@ -76,12 +78,19 @@ enum MenuBarLabelModel {
     }
 
     /// Janelas elegíveis, em ordem determinística: com pinos, a ordem dos pinos; sem
-    /// pinos, provedores por id (o dicionário de snapshots não tem ordem própria) e,
-    /// dentro de cada um, a ordem em que o provedor devolveu as janelas.
+    /// pinos, UMA janela por provedor — a representativa da conta —, provedores por id (o
+    /// dicionário de snapshots não tem ordem própria).
     ///
     /// Compartilhado com o painel do notch: os dois precisam concordar sobre o que conta
-    /// como "as cotas que o dono está acompanhando".
-    static func candidates(pins: [AppModel.MenuBarPin], snapshots: [String: ProviderSnapshot]) -> [Candidate] {
+    /// como "as cotas que o dono está acompanhando". Em automático a barra varria TODAS
+    /// as janelas, e por isso era o último lugar onde um limite específico de modelo no
+    /// fim (o Spark do Codex) ainda podia virar o número do dia — e onde a cota principal
+    /// escolhida pelo dono não valia nada.
+    static func candidates(
+        pins: [AppModel.MenuBarPin],
+        snapshots: [String: ProviderSnapshot],
+        preferredLabels: (String) -> String? = PrimaryWindowPreference.label(forProviderId:)
+    ) -> [Candidate] {
         if !pins.isEmpty {
             return pins.compactMap { pin in
                 guard let snapshot = snapshots[pin.providerId],
@@ -90,8 +99,13 @@ enum MenuBarLabelModel {
                 return Candidate(providerId: pin.providerId, window: window)
             }
         }
-        return snapshots.keys.sorted().flatMap { providerId in
-            (snapshots[providerId]?.quotas ?? []).map { Candidate(providerId: providerId, window: $0) }
+        return snapshots.keys.sorted().compactMap { providerId in
+            guard let snapshot = snapshots[providerId],
+                  let window = PopoverLayout.primaryWindow(
+                      providerId: providerId, quotas: snapshot.quotas,
+                      preferredLabel: preferredLabels(providerId))
+            else { return nil }
+            return Candidate(providerId: providerId, window: window)
         }
     }
 
@@ -102,14 +116,16 @@ enum MenuBarLabelModel {
         slot: QuotaSlot,
         pins: [AppModel.MenuBarPin],
         snapshots: [String: ProviderSnapshot],
-        hasAnyError: Bool
+        hasAnyError: Bool,
+        preferredLabels: (String) -> String? = PrimaryWindowPreference.label(forProviderId:)
     ) -> MenuBarSegment {
         if case .window(let providerId, let windowLabel) = slot,
            let snapshot = snapshots[providerId],
            let window = snapshot.quotas.first(where: { $0.label == windowLabel }) {
             return segment(providerId: providerId, shape: window.shape)
         }
-        return criticalSegment(pins: pins, snapshots: snapshots, hasAnyError: hasAnyError)
+        return criticalSegment(pins: pins, snapshots: snapshots, hasAnyError: hasAnyError,
+                               preferredLabels: preferredLabels)
     }
 
     static func segment(for candidate: Candidate) -> MenuBarSegment {

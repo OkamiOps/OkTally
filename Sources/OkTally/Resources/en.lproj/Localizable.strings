@@ -340,6 +340,11 @@
 "Apelido" = "Nickname";
 "ex.: Trabalho" = "e.g. Work";
 "Aparece ao lado do nome no menu, no notch e nos alertas." = "Shows up next to the name in the menu, the notch and alerts.";
+"Cota principal" = "Primary quota";
+"Automático (a mais apertada)" = "Automatic (the tightest one)";
+"Define qual cota aparece como barra principal no menu, no notch e na barra de menu em modo automático." = "Sets which quota shows as the main bar in the menu, the notch and the menu bar in automatic mode.";
+"Usar como principal" = "Use as primary";
+"Cota principal: automático" = "Primary quota: automatic";
 "Conta" = "Account";
 "Conta não encontrada." = "Account not found.";
 "E-mail" = "Email";

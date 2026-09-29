@@ -36,28 +36,35 @@ enum NotchHUDModel {
         pins: [AppModel.MenuBarPin],
         snapshots: [String: ProviderSnapshot],
         providerOrder: [String],
-        limit: Int = maxEntries
+        limit: Int = maxEntries,
+        preferredLabels: (String) -> String? = PrimaryWindowPreference.label(forProviderId:)
     ) -> [NotchQuotaEntry] {
         let chosen = pins.isEmpty
-            ? automaticCandidates(snapshots: snapshots, providerOrder: providerOrder)
+            ? automaticCandidates(snapshots: snapshots, providerOrder: providerOrder,
+                                  preferredLabels: preferredLabels)
             : MenuBarLabelModel.candidates(pins: pins, snapshots: snapshots)
         return chosen.prefix(max(0, limit)).map(entry(for:))
     }
 
-    /// Uma janela por provedor, da mais apertada para a mais folgada. No Codex, a janela
-    /// representativa é o Weekly geral, não uma cota específica do Spark. `providerOrder` (a
-    /// ordem visível das contas) é o desempate: sem ele, dois provedores com a mesma sobra
-    /// trocariam de lugar a cada recomposição, porque `snapshots` é um dicionário.
+    /// Uma janela por provedor, da mais apertada para a mais folgada. A representativa é
+    /// a que a conta escolheu (`preferredLabels`) ou, em automático, a que
+    /// `PopoverLayout` elege — no Codex, a mais apertada entre as GERAIS, nunca uma cota
+    /// específica de modelo. `providerOrder` (a ordem visível das contas) é o desempate:
+    /// sem ele, dois provedores com a mesma sobra trocariam de lugar a cada
+    /// recomposição, porque `snapshots` é um dicionário.
     static func automaticCandidates(
         snapshots: [String: ProviderSnapshot],
-        providerOrder: [String]
+        providerOrder: [String],
+        preferredLabels: (String) -> String? = PrimaryWindowPreference.label(forProviderId:)
     ) -> [MenuBarLabelModel.Candidate] {
         // Provedores que o registry não conhece ainda assim aparecem, no fim e por id, em
         // vez de sumirem em silêncio.
         let order = providerOrder + snapshots.keys.sorted().filter { !providerOrder.contains($0) }
         let tightest = order.compactMap { providerId -> (Int, MenuBarLabelModel.Candidate, Double)? in
             guard let snapshot = snapshots[providerId],
-                  let window = PopoverLayout.primaryWindow(providerId: providerId, quotas: snapshot.quotas)
+                  let window = PopoverLayout.primaryWindow(
+                      providerId: providerId, quotas: snapshot.quotas,
+                      preferredLabel: preferredLabels(providerId))
             else { return nil }
             let rank = order.firstIndex(of: providerId) ?? order.count
             // Saldos vão para o fim: não há "aperto" para comparar com uma porcentagem.

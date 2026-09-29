@@ -378,6 +378,27 @@ final class AppModel: ObservableObject {
         updateAccount(id: id) { $0.nickname = (trimmed?.isEmpty ?? true) ? nil : trimmed }
     }
 
+    /// A cota principal desta conta — a barra grande do menu, a asa do notch e o número
+    /// da barra de menu em modo automático. `nil` volta para automático.
+    ///
+    /// Recebe um `providerId` e não um id de conta porque quem chama é a linha do
+    /// popover, que só conhece o provedor (e o GrokBot pertence à conta do Cursor dele —
+    /// o diretório resolve isso).
+    func setPrimaryWindow(providerId: String, windowLabel: String?) {
+        guard let account = AccountDirectory(accounts: accounts).account(forProviderId: providerId)
+        else { return }
+        let trimmed = windowLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
+        updateAccount(id: account.id) {
+            $0.primaryWindowLabel = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        }
+    }
+
+    /// A escolha vigente, `nil` = automático. As views leem por aqui (e não pelo
+    /// `AccountDirectoryHolder`) para recompor no mesmo quadro em que a conta muda.
+    func primaryWindowLabel(forProviderId id: String) -> String? {
+        AccountDirectory(accounts: accounts).primaryWindowLabel(forProviderId: id)
+    }
+
     /// E-mail e chave de dedup descobertos depois do login.
     func setIdentity(id: String, email: String?, identityKey: String?, autoLabel: String? = nil) {
         updateAccount(id: id) {

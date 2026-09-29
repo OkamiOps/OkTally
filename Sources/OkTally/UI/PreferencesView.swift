@@ -325,6 +325,7 @@ struct PreferencesView: View {
             }
             Text(L("Aparece ao lado do nome no menu, no notch e nos alertas."))
                 .font(.caption).foregroundStyle(.secondary)
+            primaryWindowPicker(id)
             // O único jeito de adicionar uma segunda conta antes disto era o "+" minúsculo
             // no cabeçalho da sidebar — sem nenhum aviso de que ele existia. Este botão
             // vive exatamente onde o dono está olhando quando quer "mais uma conta desta
@@ -344,6 +345,41 @@ struct PreferencesView: View {
                     Spacer()
                 }
             }
+        }
+    }
+
+    /// Qual das cotas desta conta é a PRINCIPAL — a barra grande do menu, a asa do notch
+    /// e o número da barra de menu em automático.
+    ///
+    /// Só aparece quando a conta tem mais de uma janela: com uma só não há escolha a
+    /// fazer, e um seletor de um item é ruído. Não é exclusivo do Codex de propósito —
+    /// o Claude (5h + semanal) tem exatamente a mesma pergunta.
+    ///
+    /// As opções vêm do ÚLTIMO snapshot: são as janelas que o provedor realmente devolve
+    /// hoje. Uma escolha antiga que sumiu de lá continua na lista (marcada como
+    /// indisponível) para o seletor não trocar sozinho o que o dono escolheu — quem
+    /// ignora a escolha órfã é a resolução, que cai em automático em silêncio.
+    @ViewBuilder private func primaryWindowPicker(_ id: String) -> some View {
+        let windows = appModel.snapshotsByProvider[id]?.quotas.map(\.label) ?? []
+        if windows.count > 1 {
+            let chosen = appModel.primaryWindowLabel(forProviderId: id)
+            let options = windows.contains(where: { $0 == chosen }) || chosen == nil
+                ? windows
+                : windows + [chosen!]
+            Picker(L("Cota principal"), selection: Binding(
+                get: { chosen ?? "" },
+                set: { appModel.setPrimaryWindow(providerId: id, windowLabel: $0.isEmpty ? nil : $0) }
+            )) {
+                Text(L("Automático (a mais apertada)")).tag("")
+                ForEach(options, id: \.self) { label in
+                    Text(windows.contains(label)
+                         ? WindowLabelCatalog.displayLabel(label)
+                         : LF("%@ (indisponível)", WindowLabelCatalog.displayLabel(label)))
+                        .tag(label)
+                }
+            }
+            Text(L("Define qual cota aparece como barra principal no menu, no notch e na barra de menu em modo automático."))
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 

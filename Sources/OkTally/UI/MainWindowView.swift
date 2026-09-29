@@ -274,7 +274,8 @@ struct ProviderDetailScreen: View {
     private var identity: Color { ProviderPalette.color(for: provider.id) }
 
     private var windows: [QuotaLedgerEntry] {
-        PopoverLayout.orderedWindows(snapshot.quotas, providerId: provider.id).map {
+        PopoverLayout.orderedWindows(snapshot.quotas, providerId: provider.id,
+                                     preferredLabel: appModel.primaryWindowLabel(forProviderId: provider.id)).map {
             QuotaLedgerEntry(providerId: provider.id, providerName: provider.displayName, window: $0)
         }
     }
