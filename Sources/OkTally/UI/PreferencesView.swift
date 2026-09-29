@@ -100,6 +100,13 @@ struct PreferencesView: View {
                 }
             }
             .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 220)
+            // Rodapé sempre visível da sidebar — antes o único jeito de adicionar uma
+            // conta era o "+" minúsculo no cabeçalho da seção "Contas", que ninguém
+            // achou. `.safeAreaInset` mantém o botão colado embaixo mesmo com a lista
+            // rolando, então ele não some atrás de contas demais.
+            .safeAreaInset(edge: .bottom) {
+                bottomAddAccountButton
+            }
         } detail: {
             // Geral e os panes de provider são `Form` agrupados, que já rolam sozinhos —
             // o `ScrollView` que os panes de provider tinham daria rolagem aninhada.
@@ -156,7 +163,9 @@ struct PreferencesView: View {
 
     // MARK: - Sidebar
 
-    /// "+" no cabeçalho das contas. Some enquanto nenhum tipo aceita segunda conta.
+    /// "+" no cabeçalho das contas. Some enquanto nenhum tipo aceita segunda conta. Maior
+    /// que um "+" de cabeçalho comum de propósito — era pequeno demais para ser notado, e
+    /// é a única entrada de "adicionar conta" que fica ao lado do título da seção.
     @ViewBuilder private var addAccountMenu: some View {
         if !AccountKind.addableKinds.isEmpty {
             Menu {
@@ -164,12 +173,33 @@ struct PreferencesView: View {
                     Button(Self.kindName(kind)) { beginAddAccount(kind) }
                 }
             } label: {
-                Image(systemName: "plus")
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 15, weight: .semibold))
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
             .help(L("Adicionar conta"))
+        }
+    }
+
+    /// Rodapé fixo da sidebar — o mesmo menu de tipos do "+" do cabeçalho, só que
+    /// impossível de não ver: ocupa a largura inteira, abaixo da lista de contas.
+    @ViewBuilder private var bottomAddAccountButton: some View {
+        if !AccountKind.addableKinds.isEmpty {
+            Menu {
+                ForEach(AccountKind.addableKinds, id: \.self) { kind in
+                    Button(Self.kindName(kind)) { beginAddAccount(kind) }
+                }
+            } label: {
+                Label(L("Adicionar conta…"), systemImage: "plus")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+            .padding(.horizontal, Theme.Space.sm)
+            .padding(.vertical, Theme.Space.sm)
+            .background(.bar)
         }
     }
 
@@ -273,9 +303,9 @@ struct PreferencesView: View {
 
     // MARK: - Seção "Conta"
 
-    /// E-mail (quando conhecido), apelido e remoção. O apelido grava no Enter e ao perder
-    /// o foco, como o resto da tela; vazio apaga o apelido — diferente das chaves, aqui
-    /// "nada" é um valor legítimo.
+    /// E-mail (quando conhecido), apelido, "adicionar outra conta" e remoção. O apelido
+    /// grava no Enter e ao perder o foco, como o resto da tela; vazio apaga o apelido —
+    /// diferente das chaves, aqui "nada" é um valor legítimo.
     @ViewBuilder private func accountSection(_ id: String) -> some View {
         if AccountPaneRouting.showsAccountSection(id), let account = account(id) {
             if let email = account.email {
@@ -283,11 +313,30 @@ struct PreferencesView: View {
                     Text(email).foregroundStyle(.secondary).textSelection(.enabled)
                 }
             }
-            AutoSaveField(placeholder: L("Apelido (opcional)"),
-                          text: Binding(get: { nicknameFields[id] ?? account.nickname ?? "" },
-                                        set: { nicknameFields[id] = $0 }),
-                          onCommit: { appModel.renameAccount(id: id, nickname: nicknameFields[id] ?? account.nickname) })
-                .frame(maxWidth: 380)
+            // Linha rotulada, igual ao e-mail acima — antes era só um campo solto e sem
+            // rótulo, com um placeholder que não aparecia (ver `AutoSaveField`); o dono
+            // via uma caixa vazia sem nenhuma pista do que fazer com ela.
+            LabeledContent(L("Apelido")) {
+                AutoSaveField(placeholder: L("ex.: Trabalho"),
+                              text: Binding(get: { nicknameFields[id] ?? account.nickname ?? "" },
+                                            set: { nicknameFields[id] = $0 }),
+                              onCommit: { appModel.renameAccount(id: id, nickname: nicknameFields[id] ?? account.nickname) })
+                    .frame(maxWidth: 380)
+            }
+            Text(L("Aparece ao lado do nome no menu, no notch e nos alertas."))
+                .font(.caption).foregroundStyle(.secondary)
+            // O único jeito de adicionar uma segunda conta antes disto era o "+" minúsculo
+            // no cabeçalho da sidebar — sem nenhum aviso de que ele existia. Este botão
+            // vive exatamente onde o dono está olhando quando quer "mais uma conta desta
+            // aqui": dentro da própria conta.
+            if let kind = AccountID.kind(of: id), AccountKind.addableKinds.contains(kind) {
+                Button {
+                    beginAddAccount(kind)
+                } label: {
+                    Label(LF("Adicionar outra conta %@", providerName(id)), systemImage: "plus.circle")
+                }
+                .buttonStyle(.bordered)
+            }
             if AccountPaneRouting.canRemove(id) {
                 HStack {
                     Button(L("Remover conta…"), role: .destructive) { pendingRemoval = id }

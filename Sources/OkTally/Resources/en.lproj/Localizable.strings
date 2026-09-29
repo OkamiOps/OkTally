@@ -335,7 +335,11 @@
 
 /* Multiple accounts */
 "Adicionar conta" = "Add account";
-"Apelido (opcional)" = "Nickname (optional)";
+"Adicionar conta…" = "Add account…";
+"Adicionar outra conta %@" = "Add another %@ account";
+"Apelido" = "Nickname";
+"ex.: Trabalho" = "e.g. Work";
+"Aparece ao lado do nome no menu, no notch e nos alertas." = "Shows up next to the name in the menu, the notch and alerts.";
 "Conta" = "Account";
 "Conta não encontrada." = "Account not found.";
 "E-mail" = "Email";

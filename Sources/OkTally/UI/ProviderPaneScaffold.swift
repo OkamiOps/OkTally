@@ -148,6 +148,12 @@ extension ProviderPaneScaffold where Account == EmptyView {
 /// Campo com auto-save: grava no Enter e ao perder o foco. O botão "Salvar" saiu de todos
 /// os painéis, então a guarda que ele dava de graça (campo vazio não apaga nada) passou a
 /// viver no `FieldCommit`, chamado dentro de `onCommit`.
+///
+/// O placeholder usa `prompt:`, não `TextField(titleKey:text:)`/`SecureField(titleKey:text:)`
+/// — a `titleKey` some quando o campo perde o rótulo (`.labelsHidden()`, obrigatório dentro
+/// de `Form`) e o campo fica uma caixa vazia sem nenhuma pista do que digitar ali. O
+/// `Text(placeholder)` em `.secondary` explícito garante contraste contra a superfície
+/// quase preta do app, em vez de depender do cinza padrão do sistema.
 struct AutoSaveField: View {
     let placeholder: String
     @Binding var text: String
@@ -159,9 +165,9 @@ struct AutoSaveField: View {
     var body: some View {
         Group {
             if isSecure {
-                SecureField(placeholder, text: $text)
+                SecureField("", text: $text, prompt: Text(placeholder).foregroundStyle(.secondary))
             } else {
-                TextField(placeholder, text: $text)
+                TextField("", text: $text, prompt: Text(placeholder).foregroundStyle(.secondary))
             }
         }
         .textFieldStyle(.roundedBorder)
