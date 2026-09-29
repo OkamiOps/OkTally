@@ -236,6 +236,17 @@ struct PreferencesView: View {
         appModel.accounts.first { $0.id == id }
     }
 
+    /// Rótulo do botão "adicionar outra conta" da seção Conta.
+    ///
+    /// Nome do TIPO e não `providerName(id)`: o nome do provedor já vem rotulado com o
+    /// apelido ou o e-mail da conta aberta, e o botão virava "Adicionar outra conta
+    /// Codex · OkamiOps" — que lê como "adicionar outra conta DA OkamiOps", exatamente o
+    /// contrário do que ele faz (a conta nova é vazia, de outra pessoa). O tipo é o que
+    /// o botão realmente promete.
+    static func addAnotherAccountTitle(_ kind: AccountKind) -> String {
+        LF("Adicionar outra conta %@", kindName(kind))
+    }
+
     /// Nome do TIPO, para o menu "+" e mensagens — o mesmo dos provedores legados.
     static func kindName(_ kind: AccountKind) -> String {
         switch kind {
@@ -334,7 +345,7 @@ struct PreferencesView: View {
                 Button {
                     beginAddAccount(kind)
                 } label: {
-                    Label(LF("Adicionar outra conta %@", providerName(id)), systemImage: "plus.circle")
+                    Label(Self.addAnotherAccountTitle(kind), systemImage: "plus.circle")
                 }
                 .buttonStyle(.bordered)
             }

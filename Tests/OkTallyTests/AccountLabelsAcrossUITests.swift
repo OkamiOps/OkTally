@@ -56,6 +56,20 @@ final class AccountLabelsAcrossUITests: XCTestCase {
         XCTAssertEqual(AccountDirectory.empty.compactName(for: "codex", baseName: "Codex"), "Codex")
     }
 
+    /// O botão "adicionar outra conta" é o ÚNICO lugar da tela de conta que fala do
+    /// TIPO e não daquela conta. Com o nome rotulado ele lia "Adicionar outra conta
+    /// Codex · OkamiOps" — ou seja, prometia outra conta da OkamiOps, quando o que ele
+    /// abre é um login vazio para outra pessoa.
+    func test_addAnotherAccountButton_namesTheKindAndNotTheAccount() {
+        let title = PreferencesView.addAnotherAccountTitle(.codex)
+        XCTAssertEqual(title, LF("Adicionar outra conta %@", "Codex"))
+        XCTAssertFalse(title.contains("·"), "o rótulo da conta vazou para o botão: \(title)")
+        for kind in AccountKind.addableKinds {
+            XCTAssertTrue(PreferencesView.addAnotherAccountTitle(kind)
+                .contains(PreferencesView.kindName(kind)), kind.rawValue)
+        }
+    }
+
     func test_baseName_unwrapsLabeledProvider() {
         let labeled = LabeledProvider(base: FakeUsageProvider(id: "a", displayName: "Base"), label: { "Base · x" })
         XCTAssertEqual(AccountLabel.baseName(of: labeled), "Base")
