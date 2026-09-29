@@ -144,6 +144,61 @@ final class MiMoUsageProviderTests: XCTestCase {
         XCTAssertEqual(snapshot.quotas[0].shape.usedPercent, 25)
     }
 
+    // MARK: - Erro bruto (não-MiMoConsoleError) escapando da web session
+
+    func test_rawNSURLErrorFromFetcher_isTranslatedToSessionRecovering_notRawText() async {
+        // O bug relatado: -999 (navegação superada) escapava intacto até o popover como
+        // "The operation couldn't be completed. (NSURLErrorDomain error -999.)". A defesa em
+        // profundidade em `fetchSnapshot` garante que QUALQUER erro que não seja do
+        // vocabulário do console vira `.sessionRecovering` antes de sair do provider.
+        let session = FakeMiMoSessionStore(); session.isLoggedIn = true
+        let fetcher = FakeMiMoUsageFetcher()
+        fetcher.errorToThrow = NSError(domain: "NSURLErrorDomain", code: -999)
+        let provider = makeProvider(session: session, fetcher: fetcher)
+
+        do {
+            _ = try await provider.fetchSnapshot()
+            XCTFail("expected sessionRecovering")
+        } catch let error as MiMoConsoleError {
+            XCTAssertEqual(error, .sessionRecovering)
+        } catch {
+            XCTFail("erro bruto vazou do provider: \(error)")
+        }
+        XCTAssertTrue(session.isLoggedIn, "erro transitório não pode apagar o flag de login")
+    }
+
+    func test_rawNSURLErrorFromFetcher_fallsBackToManualSnapshot_whenAllowanceConfigured() async throws {
+        let session = FakeMiMoSessionStore(); session.isLoggedIn = true
+        let fetcher = FakeMiMoUsageFetcher()
+        fetcher.errorToThrow = NSError(domain: "NSURLErrorDomain", code: -999)
+        let snapshot = try await makeProvider(session: session, fetcher: fetcher, allowance: 500, used: 125).fetchSnapshot()
+
+        XCTAssertEqual(snapshot.quotas.count, 1)
+        XCTAssertEqual(snapshot.quotas[0].label, "mensal")
+        XCTAssertEqual(snapshot.quotas[0].shape.usedPercent, 25)
+    }
+
+    func test_rawNSURLErrorFromFetcher_incrementsFailureStreak_likeAnyOtherFailure() async {
+        // Uma sequência de erros brutos tem de contar para o mesmo limiar de reauth que uma
+        // sequência de 401 conta — senão um provider preso em -999 nunca pede login de volta
+        // nem nunca é tratado como saudável de novo.
+        let session = FakeMiMoSessionStore(); session.isLoggedIn = true
+        let fetcher = FakeMiMoUsageFetcher()
+        fetcher.errorToThrow = NSError(domain: "NSURLErrorDomain", code: -999)
+        let provider = makeProvider(session: session, fetcher: fetcher, allowance: 500, used: 125)
+
+        for tick in 1...3 {
+            _ = try? await provider.fetchSnapshot()
+            XCTAssertEqual(fetcher.calls, tick)
+        }
+        // Erro bruto nunca é `.notLoggedIn`, então mesmo depois do limiar o provider segue
+        // tentando a web session em vez de forçar reauth por um motivo que não é logout.
+        fetcher.errorToThrow = nil
+        fetcher.json = #"{"code":0,"data":{"usage":{"percent":0.06}}}"#
+        let recovered = try? await provider.fetchSnapshot()
+        XCTAssertEqual(recovered?.quotas.first { $0.label == "plano" }?.shape.usedPercent ?? -1, 6.0, accuracy: 0.001)
+    }
+
     func test_id_and_refreshInterval() {
         let provider = makeProvider()
         XCTAssertEqual(provider.id, "mimo")
