@@ -51,11 +51,23 @@ final class MiMoWebSession: NSObject, MiMoUsageFetching {
     /// provider é de 10 min, então 20s "presos" aqui custam nada perto de declarar logout.
     private static let sessionWaitTimeout: TimeInterval = 20
     private static let probeInterval: UInt64 = 500_000_000
+    /// Teto para um único `load` do console terminar. Desde que navegações SUPERADAS (-999,
+    /// WebKitErrorDomain 102) pararam de resolver os waiters, um load pode em teoria nunca
+    /// receber um `didFinish` de verdade — este timeout é a rede de segurança para esse caso,
+    /// não o caminho comum.
+    private static let consoleLoadTimeout: TimeInterval = 30
+
+    /// Um waiter de `ensureConsoleLoaded` com identidade própria: o timeout precisa poder
+    /// remover e resolver ESTE continuation sem mexer em outros que porventura existam.
+    private struct LoadWaiter {
+        let id: UUID
+        let continuation: CheckedContinuation<Void, Error>
+    }
 
     private let webView: WKWebView
     private var loginWindow: NSWindow?
     private var onDone: (() -> Void)?
-    private var loadWaiters: [CheckedContinuation<Void, Error>] = []
+    private var loadWaiters: [LoadWaiter] = []
     private var everLoaded = false
     private var inFlight: Task<Data, Error>?
 
@@ -201,11 +213,25 @@ final class MiMoWebSession: NSObject, MiMoUsageFetching {
         }
         // A SPA pode ainda estar bootando logo depois de um load; um laço curto de acomodação.
         // Julgar o corpo (e recuperar via reload) é papel da `MiMoSessionRecovery`.
+        var interruptedByNavigation = false
         for attempt in 0..<3 {
             if attempt > 0 { try? await Task.sleep(nanoseconds: 1_500_000_000) }
-            if let body = try await probeUsage() { return body }
+            do {
+                if let body = try await probeUsage() {
+                    return body
+                }
+                interruptedByNavigation = false
+            } catch {
+                // `callAsyncJavaScript` pode ser interrompido no meio de um redirect do SSO —
+                // o contexto de JS da página é derrubado sob os pés do fetch (-999 e afins).
+                // Não é prova de sessão morta, é o mesmo tick perdido de sempre, só que vindo
+                // de dentro do JS em vez de um `didFail` da navegação da WKWebView. Deixar o
+                // NSError bruto subir é o que aparecia cru no popover.
+                MiMoLog.session.debug("fetch: probeUsage interrompido (\(String(describing: error), privacy: .public))")
+                interruptedByNavigation = true
+            }
         }
-        throw MiMoConsoleError.noData
+        throw interruptedByNavigation ? MiMoConsoleError.sessionRecovering : MiMoConsoleError.noData
     }
 
     /// Um único GET, sempre na URL ABSOLUTA do console. Relativo (`/api/v1/tokenPlan/usage`)
@@ -275,16 +301,43 @@ final class MiMoWebSession: NSObject, MiMoUsageFetching {
     private func ensureConsoleLoaded() async throws {
         attachToHostWindow()
         if everLoaded, MiMoConsoleHost.location(of: webView.url) == .console { return }
+        let id = UUID()
         try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
-            loadWaiters.append(c)
+            loadWaiters.append(LoadWaiter(id: id, continuation: c))
             MiMoLog.session.debug("load: abrindo o painel do plano")
             webView.load(URLRequest(url: MiMoConsoleHost.planManageURL))
+            scheduleLoadTimeout(for: id)
         }
+    }
+
+    /// Rede de segurança para quando navegações SUPERADAS se sucedem sem nunca produzir um
+    /// `didFinish` de verdade dentro do prazo — sem isso, `resume(_:)` não seria chamado nunca
+    /// e o fetch ficaria pendurado até o timeout de mais alto nível (se houver algum).
+    private func scheduleLoadTimeout(for id: UUID) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.consoleLoadTimeout * 1_000_000_000))
+            self?.timeoutWaiter(id: id)
+        }
+    }
+
+    /// Só resolve o waiter se ele ainda estiver pendente — `resume(_:)` de um `didFinish` ou
+    /// `didFail` de verdade já pode tê-lo removido, e um continuation nunca pode ser resumido
+    /// duas vezes.
+    private func timeoutWaiter(id: UUID) {
+        guard let index = loadWaiters.firstIndex(where: { $0.id == id }) else { return }
+        let waiter = loadWaiters.remove(at: index)
+        MiMoLog.session.error("load: \(Int(Self.consoleLoadTimeout), privacy: .public)s sem didFinish (navegações superadas em sequência?) — desistindo deste ciclo")
+        waiter.continuation.resume(throwing: MiMoConsoleError.sessionRecovering)
     }
 
     private func resume(_ result: Result<Void, Error>) {
         let ws = loadWaiters; loadWaiters = []
-        for w in ws { switch result { case .success: w.resume(); case .failure(let e): w.resume(throwing: e) } }
+        for w in ws {
+            switch result {
+            case .success: w.continuation.resume()
+            case .failure(let e): w.continuation.resume(throwing: e)
+            }
+        }
     }
 
     private static func label(_ location: MiMoConsoleLocation) -> String {
@@ -303,10 +356,22 @@ extension MiMoWebSession: WKNavigationDelegate {
         resume(.success(()))
     }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        // Uma navegação SUPERADA (outro load a atropelou, ou o próprio SSO trocou de página no
+        // meio do redirect) não é uma falha — um `didFinish` de verdade ainda está a caminho.
+        // Resolver os waiters aqui com o NSError bruto era o que vazava "NSURLErrorDomain
+        // error -999" para o popover.
+        if MiMoNavigationError.isSupersededNavigation(error) {
+            MiMoLog.session.debug("nav: didFail superada (código \((error as NSError).code, privacy: .public)) — aguardando o load seguinte")
+            return
+        }
         MiMoLog.session.error("nav: didFail código \((error as NSError).code, privacy: .public)")
         resume(.failure(error))
     }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        if MiMoNavigationError.isSupersededNavigation(error) {
+            MiMoLog.session.debug("nav: didFailProvisional superada (código \((error as NSError).code, privacy: .public)) — aguardando o load seguinte")
+            return
+        }
         MiMoLog.session.error("nav: didFailProvisional código \((error as NSError).code, privacy: .public)")
         resume(.failure(error))
     }

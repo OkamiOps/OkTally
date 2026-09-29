@@ -74,6 +74,15 @@ final class MiMoUsageProvider: UsageProvider {
             }
             if let manual = configuredManualSnapshot() { return manual }
             throw MiMoConsoleError.sessionRecovering
+        } catch {
+            // Defesa final: um NSError bruto (rede, WebKit) que tenha escapado de alguma
+            // camada abaixo — apesar da classificação de navegações superadas na web session —
+            // conta como um tropeço igual aos outros. Sem isto, o texto cru de um
+            // `NSURLErrorDomain error -999` chegava intacto ao popover do dono.
+            consecutiveLiveFailures += 1
+            MiMoLog.session.error("provider: leitura ao vivo falhou com erro bruto (\(String(describing: error), privacy: .public)), falha nº \(self.consecutiveLiveFailures, privacy: .public)")
+            if let manual = configuredManualSnapshot() { return manual }
+            throw MiMoConsoleError.sessionRecovering
         }
     }
 
