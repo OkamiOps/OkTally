@@ -174,6 +174,8 @@ struct OkTallyApp: App {
                 onNotchPreferenceChanged: { notchController.refresh() }
             )
         }
+        .defaultSize(width: 900, height: 620)
+        .windowResizability(.contentMinSize)
     }
 
     /// O rótulo da barra como VIEW, e não como `Image` solta no closure.

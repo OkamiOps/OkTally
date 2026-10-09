@@ -114,11 +114,6 @@ struct ProviderPaneScaffold<Connection: View, Details: View, Account: View>: Vie
                 //
                 // Cursor, Copilot e Antigravity não têm detalhe algum
                 // (`details: EmptyView()`); o `if` evita o rodapé vazio.
-                if Account.self != EmptyView.self {
-                    Section(L("Conta")) {
-                        account
-                    }
-                }
                 Section {
                     connection
                 } header: {
@@ -130,9 +125,18 @@ struct ProviderPaneScaffold<Connection: View, Details: View, Account: View>: Vie
                             .padding(.top, 2)
                     }
                 }
+                // Resolver a conexão vem antes de editar apelido/cota ou remover a
+                // conta. O código e o botão Concluir ficam no primeiro bloco.
+                if Account.self != EmptyView.self {
+                    Section(L("Conta")) {
+                        account
+                    }
+                }
             }
             .formStyle(.grouped)
+            .frame(minHeight: 0, maxHeight: .infinity)
         }
+        .frame(minHeight: 0, maxHeight: .infinity)
     }
 }
 

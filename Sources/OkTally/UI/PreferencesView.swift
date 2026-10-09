@@ -57,75 +57,80 @@ struct PreferencesView: View {
     private var providerIds: [String] { appModel.orderedProviders.map(\.id) }
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $pane) {
-                Label(L("Geral"), systemImage: "slider.horizontal.3")
-                    .tag(PreferencesPane.general)
-                Section {
-                    ForEach(providerIds, id: \.self) { id in
-                        sidebarRow(id)
-                            .tag(PreferencesPane.provider(id))
-                            .contentShape(Rectangle())
-                            .draggable(ProviderOrderTransfer(id: id))
-                            .dropDestination(for: ProviderOrderTransfer.self) { items, _ in
-                                guard let dragged = items.first else { return false }
-                                return appModel.moveProvider(dragging: dragged.id, onto: id)
-                            }
-                    }
-                    if let draft {
-                        ProviderSidebarRow(
-                            providerId: draft.id,
-                            name: LF("Nova conta · %@", Self.kindName(draft.kind)),
-                            statusColor: Color.secondary.opacity(0.35),
-                            statusHelp: L("Não configurado")
-                        )
-                        .tag(PreferencesPane.provider(draft.id))
-                    }
-                } header: {
-                    HStack {
-                        Text(L("Contas"))
-                        Spacer()
-                        let attention = providerIds.filter { appModel.errorKindByProvider[$0] == .needsReauth }.count
-                        if attention > 0 {
-                            Text("\(attention)")
-                                .font(.system(size: 9, weight: .bold))
-                                .monospacedDigit()
-                                .padding(.horizontal, 5).padding(.vertical, 1)
-                                .background(Capsule().fill(Theme.Brand.heatOrange.opacity(0.25)))
-                                .foregroundStyle(Theme.Brand.heatOrange)
-                                .help(L("Contas com credencial expirada"))
+        // O split view precisa receber a altura da janela, não a altura ideal do
+        // formulário. Senão o rodapé da sidebar e os controles de login escapam
+        // da janela de Ajustes quando uma seção cresce.
+        GeometryReader { geometry in
+            NavigationSplitView {
+                List(selection: $pane) {
+                    Label(L("Geral"), systemImage: "slider.horizontal.3")
+                        .tag(PreferencesPane.general)
+                    Section {
+                        ForEach(providerIds, id: \.self) { id in
+                            sidebarRow(id)
+                                .tag(PreferencesPane.provider(id))
+                                .contentShape(Rectangle())
+                                .draggable(ProviderOrderTransfer(id: id))
+                                .dropDestination(for: ProviderOrderTransfer.self) { items, _ in
+                                    guard let dragged = items.first else { return false }
+                                    return appModel.moveProvider(dragging: dragged.id, onto: id)
+                                }
                         }
-                        addAccountMenu
+                        if let draft {
+                            ProviderSidebarRow(
+                                providerId: draft.id,
+                                name: LF("Nova conta · %@", Self.kindName(draft.kind)),
+                                statusColor: Color.secondary.opacity(0.35),
+                                statusHelp: L("Não configurado")
+                            )
+                            .tag(PreferencesPane.provider(draft.id))
+                        }
+                    } header: {
+                        HStack {
+                            Text(L("Contas"))
+                            Spacer()
+                            let attention = providerIds.filter { appModel.errorKindByProvider[$0] == .needsReauth }.count
+                            if attention > 0 {
+                                Text("\(attention)")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .monospacedDigit()
+                                    .padding(.horizontal, 5).padding(.vertical, 1)
+                                    .background(Capsule().fill(Theme.Brand.heatOrange.opacity(0.25)))
+                                    .foregroundStyle(Theme.Brand.heatOrange)
+                                    .help(L("Contas com credencial expirada"))
+                            }
+                            addAccountMenu
+                        }
+                    }
+                }
+                .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 220)
+                // Rodapé sempre visível da sidebar — antes o único jeito de adicionar uma
+                // conta era o "+" minúsculo no cabeçalho da seção "Contas", que ninguém
+                // achou. `.safeAreaInset` mantém o botão colado embaixo mesmo com a lista
+                // rolando, então ele não some atrás de contas demais.
+                .safeAreaInset(edge: .bottom) {
+                    bottomAddAccountButton
+                }
+            } detail: {
+                // Cada Form tem sua própria rolagem, limitada à altura disponível.
+                if case .general = pane {
+                    GeneralPane(appModel: appModel, preferencesStore: preferencesStore,
+                                providerName: providerName,
+                                onNotchPreferenceChanged: onNotchPreferenceChanged)
+                } else {
+                    VStack(alignment: .leading, spacing: 0) {
+                        detailContent
+                        if !statusMessage.isEmpty {
+                            Text(statusMessage)
+                                .font(.caption).foregroundStyle(.secondary)
+                                .padding(.horizontal, Theme.Space.xl)
+                                .padding(.bottom, Theme.Space.md)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                 }
             }
-            .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 220)
-            // Rodapé sempre visível da sidebar — antes o único jeito de adicionar uma
-            // conta era o "+" minúsculo no cabeçalho da seção "Contas", que ninguém
-            // achou. `.safeAreaInset` mantém o botão colado embaixo mesmo com a lista
-            // rolando, então ele não some atrás de contas demais.
-            .safeAreaInset(edge: .bottom) {
-                bottomAddAccountButton
-            }
-        } detail: {
-            // Geral e os panes de provider são `Form` agrupados, que já rolam sozinhos —
-            // o `ScrollView` que os panes de provider tinham daria rolagem aninhada.
-            if case .general = pane {
-                GeneralPane(appModel: appModel, preferencesStore: preferencesStore,
-                            providerName: providerName,
-                            onNotchPreferenceChanged: onNotchPreferenceChanged)
-            } else {
-                VStack(alignment: .leading, spacing: 0) {
-                    detailContent
-                    if !statusMessage.isEmpty {
-                        Text(statusMessage)
-                            .font(.caption).foregroundStyle(.secondary)
-                            .padding(.horizontal, Theme.Space.xl)
-                            .padding(.bottom, Theme.Space.md)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .frame(minWidth: 680, idealWidth: 720, minHeight: 520, idealHeight: 560)
         .onAppear {
@@ -197,6 +202,7 @@ struct PreferencesView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.regular)
+            .accessibilityIdentifier("preferences-add-account")
             .padding(.horizontal, Theme.Space.sm)
             .padding(.vertical, Theme.Space.sm)
             .background(.bar)
@@ -411,7 +417,10 @@ struct PreferencesView: View {
     // MARK: - Provider panes
 
     private func oauthStatus(_ id: String) -> ProviderPaneStatus {
-        loggedIn.contains(id) ? .connected(L("Conectado")) : .notConfigured(L("Não conectado"))
+        if appModel.errorKindByProvider[id] == .needsReauth {
+            return .needsAttention(L("Credencial expirada — reconecte"))
+        }
+        return loggedIn.contains(id) ? .connected(L("Conectado")) : .notConfigured(L("Não conectado"))
     }
 
     private func claudePane(_ id: String) -> some View {
@@ -423,12 +432,17 @@ struct PreferencesView: View {
             status: oauthStatus(id)
         ) {
             HStack {
+                let needsReauth = appModel.errorKindByProvider[id] == .needsReauth
+                if !loggedIn.contains(id) || needsReauth {
+                    Button(needsReauth ? L("Reconectar") : L("Entrar…")) { beginClaudeLogin(id) }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(claudeSessions[id] != nil)
+                        .accessibilityIdentifier("claude-sign-in")
+                }
                 if loggedIn.contains(id) {
                     Button(L("Sair")) { logout(providerId: id); claudeSessions[id] = nil }
                         .buttonStyle(.bordered)
                 } else {
-                    Button(L("Entrar…")) { beginClaudeLogin(id) }
-                        .buttonStyle(.borderedProminent)
                     // O login do Claude Code CLI é um só na máquina: importar só faz
                     // sentido para a conta legada (é a única que ele semeia).
                     if AccountID.isLegacy(id) {
@@ -454,20 +468,11 @@ struct PreferencesView: View {
 
     @ViewBuilder private func claudeCodeEntry(_ id: String) -> some View {
         if claudeSessions[id] != nil {
-            VStack(alignment: .leading, spacing: Theme.Space.sm) {
-                Text(L("Autorize no navegador, copie o código e cole abaixo:"))
-                    .font(.caption).foregroundStyle(.secondary)
-                TextField("CÓDIGO#STATE", text: Binding(get: { pastedCodes[id] ?? "" }, set: { pastedCodes[id] = $0 }))
-                    .textFieldStyle(.roundedBorder)
-                    .labelsHidden()
-                HStack {
-                    Button(L("Concluir")) { completeClaudeLogin(id) }
-                        .buttonStyle(.borderedProminent)
-                        .disabled((pastedCodes[id] ?? "").trimmingCharacters(in: .whitespaces).isEmpty)
-                    Button(L("Cancelar")) { claudeSessions[id] = nil; pastedCodes[id] = nil; statusMessage = "" }
-                        .buttonStyle(.bordered)
-                }
-            }
+            ClaudeLoginCodeEntry(
+                code: Binding(get: { pastedCodes[id] ?? "" }, set: { pastedCodes[id] = $0 }),
+                onComplete: { completeClaudeLogin(id) },
+                onCancel: { claudeSessions[id] = nil; pastedCodes[id] = nil; statusMessage = "" }
+            )
         }
     }
 
