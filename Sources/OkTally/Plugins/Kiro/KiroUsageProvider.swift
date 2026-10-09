@@ -35,11 +35,11 @@ final class KiroSessionImporter: KiroSessionImporting {
             refreshed = true
         }
         var usage = try await KiroAPI.fetchUsage(accessToken: token.accessToken, profileArn: copied.profileArn, session: session)
-        if usage.statusCode == 401, !refreshed {
+        if usage.credentialRejected, !refreshed {
             token = try await KiroAPI.refresh(token: token, session: session, now: now)
             usage = try await KiroAPI.fetchUsage(accessToken: token.accessToken, profileArn: copied.profileArn, session: session)
         }
-        guard usage.statusCode != 401 else { throw ProviderAPIError.rejectedCredential("Kiro") }
+        guard !usage.credentialRejected else { throw ProviderAPIError.rejectedCredential("Kiro") }
         guard (200...299).contains(usage.statusCode), let response = usage.response else {
             throw ProviderAPIError.response("Kiro", usage.statusCode)
         }
@@ -114,16 +114,16 @@ final class KiroUsageProvider: UsageProvider {
         var token = try await tokenManager.accessToken(forceRefresh: false)
         var result = try await KiroAPI.fetchUsage(accessToken: token.accessToken, profileArn: token.extra["profileArn"], session: session)
 
-        // Um access token revogado antes do vencimento merece uma única renovação
-        // forçada. Se a segunda consulta continuar em 401, não entramos em loop.
-        if result.statusCode == 401 {
+        // Kiro uses 403 + "Invalid token" for expired credentials as well as 401.
+        // A genuine permission denial must not rotate a valid refresh token.
+        if result.credentialRejected {
             token = try await tokenManager.accessToken(forceRefresh: true, expectedAccessToken: token.accessToken)
             result = try await KiroAPI.fetchUsage(accessToken: token.accessToken, profileArn: token.extra["profileArn"], session: session)
         }
 
         try Task.checkCancellation()
         guard tokenStore.load(providerId: id) == token else { throw CancellationError() }
-        guard result.statusCode != 401 else { throw ProviderAPIError.rejectedCredential("Kiro") }
+        guard !result.credentialRejected else { throw ProviderAPIError.rejectedCredential("Kiro") }
         guard (200...299).contains(result.statusCode), let response = result.response else {
             throw ProviderAPIError.response("Kiro", result.statusCode)
         }
@@ -191,6 +191,11 @@ private enum KiroAPI {
     struct UsageResult {
         let statusCode: Int
         let response: KiroUsageResponse?
+        var invalidToken = false
+
+        var credentialRejected: Bool {
+            statusCode == 401 || (statusCode == 403 && invalidToken)
+        }
     }
 
     static func fetchUsage(accessToken: String, profileArn: String?, session: URLSession) async throws -> UsageResult {
@@ -205,7 +210,11 @@ private enum KiroAPI {
             throw ProviderAPIError.response("Kiro", nil)
         }
         guard (200...299).contains(http.statusCode) else {
-            return UsageResult(statusCode: http.statusCode, response: nil)
+            struct Failure: Decodable { let message: String? }
+            let failure = try? JSONDecoder().decode(Failure.self, from: data)
+            let invalidToken = failure?.message?.trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare("Invalid token") == .orderedSame
+            return UsageResult(statusCode: http.statusCode, response: nil, invalidToken: invalidToken)
         }
         guard let decoded = try? JSONDecoder().decode(KiroUsageResponse.self, from: data) else {
             throw ProviderAPIError.malformedResponse("Kiro")

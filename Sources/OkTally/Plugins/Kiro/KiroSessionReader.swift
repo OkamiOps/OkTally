@@ -149,6 +149,9 @@ final class KiroSessionReader: KiroSessionReading {
             if let seconds = value as? Int { return date(epoch: Double(seconds)) }
             if let text = value as? String {
                 if let seconds = Double(text) { return date(epoch: seconds) }
+                let fractional = ISO8601DateFormatter()
+                fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                if let date = fractional.date(from: text) { return date }
                 if let date = ISO8601DateFormatter().date(from: text) { return date }
             }
         }
@@ -156,7 +159,7 @@ final class KiroSessionReader: KiroSessionReading {
     }
 
     private static func date(epoch: Double) -> Date? {
-        guard epoch > 0 else { return nil }
+        guard epoch.isFinite, epoch > 0 else { return nil }
         let seconds = epoch > 10_000_000_000 ? epoch / 1_000 : epoch
         return Date(timeIntervalSince1970: seconds)
     }

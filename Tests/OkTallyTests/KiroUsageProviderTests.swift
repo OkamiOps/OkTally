@@ -101,6 +101,42 @@ final class KiroUsageProviderTests: XCTestCase {
         XCTAssertEqual(store.load(providerId: "kiro#abc123")?.refreshToken, "refresh")
     }
 
+    func test_invalidToken403RefreshesAndRetriesOnce() async throws {
+        let store = InMemoryTokenStore()
+        try store.save(token(), providerId: "kiro#abc123")
+        URLProtocolStub.stubResponses[oidcURL] = (Data(#"{"accessToken":"forced-fresh","expiresIn":3600}"#.utf8), 200)
+        URLProtocolStub.stubQueues[usageURL] = [(Data(#"{"message":"Invalid token","reason":null}"#.utf8), 403), (Data(validUsage.utf8), 200)]
+        let provider = KiroUsageProvider(instanceId: "kiro#abc123", tokenStore: store, session: makeSession())
+        let snapshot = try await provider.fetchSnapshot()
+        XCTAssertFalse(snapshot.quotas.isEmpty)
+        XCTAssertEqual(URLProtocolStub.requestCount(for: usageURL), 2)
+        XCTAssertEqual(URLProtocolStub.requestCount(for: oidcURL), 1)
+        XCTAssertEqual(URLProtocolStub.lastAuthorization(for: usageURL), "Bearer forced-fresh")
+    }
+
+    func test_repeatedInvalidToken403RequestsReconnectWithoutLoop() async throws {
+        let store = InMemoryTokenStore()
+        try store.save(token(), providerId: "kiro#abc123")
+        URLProtocolStub.stubResponses[oidcURL] = (Data(#"{"accessToken":"still-rejected","expiresIn":3600}"#.utf8), 200)
+        URLProtocolStub.stubResponses[usageURL] = (Data(#"{"message":"Invalid token","reason":null}"#.utf8), 403)
+        let provider = KiroUsageProvider(instanceId: "kiro#abc123", tokenStore: store, session: makeSession())
+        do { _ = try await provider.fetchSnapshot(); XCTFail("expected reconnect") }
+        catch { XCTAssertEqual(ProviderErrorPresentation.classify(error), .needsReauth) }
+        XCTAssertEqual(URLProtocolStub.requestCount(for: oidcURL), 1)
+        XCTAssertEqual(URLProtocolStub.requestCount(for: usageURL), 2)
+    }
+
+    func test_permissionDenied403DoesNotRefreshCredential() async throws {
+        let store = InMemoryTokenStore()
+        try store.save(token(), providerId: "kiro#abc123")
+        URLProtocolStub.stubResponses[usageURL] = (Data(#"{"message":"Access denied"}"#.utf8), 403)
+        let provider = KiroUsageProvider(instanceId: "kiro#abc123", tokenStore: store, session: makeSession())
+        do { _ = try await provider.fetchSnapshot(); XCTFail("expected permission error") }
+        catch { XCTAssertEqual(ProviderErrorPresentation.classify(error), .error) }
+        XCTAssertEqual(URLProtocolStub.requestCount(for: oidcURL), 0)
+        XCTAssertEqual(store.load(providerId: "kiro#abc123")?.accessToken, "active-access")
+    }
+
     func test_missingValidQuotaIsAnErrorRatherThanFabricatedPercentage() async throws {
         let store = InMemoryTokenStore()
         try store.save(token(), providerId: "kiro#abc123")

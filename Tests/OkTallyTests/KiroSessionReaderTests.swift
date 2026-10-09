@@ -9,7 +9,7 @@ final class KiroSessionReaderTests: XCTestCase {
         NSTemporaryDirectory() + "oktally-kiro-\(UUID().uuidString).sqlite3"
     }
 
-    private func makeDatabase(expired: Bool = false, includeRegistration: Bool = true) throws -> String {
+    private func makeDatabase(expired: Bool = false, includeRegistration: Bool = true, expiry: Any? = nil) throws -> String {
         let path = temporaryDB()
         let db = try DatabaseQueue(path: path)
         try db.write { db in
@@ -18,7 +18,7 @@ final class KiroSessionReaderTests: XCTestCase {
             let token: [String: Any] = [
                 "access_token": expired ? "expired-access" : "copied-access",
                 "refresh_token": "copied-refresh",
-                "expires_at": expired ? 1 : 2_000_000_000,
+                "expires_at": expiry ?? (expired ? 1 : 2_000_000_000),
                 "region": "us-east-1",
                 "start_url": "https://d-123.awsapps.com/start"
             ]
@@ -73,6 +73,38 @@ final class KiroSessionReaderTests: XCTestCase {
         XCTAssertEqual(session.clientId, "test-client")
     }
 
+    func test_readsActualCLIFractionalTimestampAsExpired() throws {
+        let path = try makeDatabase(expired: true, expiry: "2026-10-09T01:27:47.304255Z")
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let copied = try KiroSessionReader(dbPath: path).readCLISession()
+        let expiry = try XCTUnwrap(copied.expiresAt)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let base = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 10, day: 9, hour: 1, minute: 27, second: 47)))
+        // Foundation's ISO8601 formatter preserves millisecond precision.
+        XCTAssertEqual(expiry.timeIntervalSince1970, base.timeIntervalSince1970 + 0.304255, accuracy: 0.001)
+        XCTAssertLessThan(expiry, Date())
+    }
+
+    func test_importerRetriesInvalidToken403ExactlyOnce() async throws {
+        let path = try makeDatabase()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let oidcURL = URL(string: "https://oidc.us-east-1.amazonaws.com/token")!
+        let usageURL = URL(string: "https://management.us-east-1.kiro.dev/Get-Usage-Limits?profileArn=arn:aws:codewhisperer:us-east-1:123456789012:profile/work-profile&origin=KIRO_CLI&isEmailRequired=true")!
+        URLProtocolStub.stubResponses[oidcURL] = (Data(#"{"accessToken":"fresh-access","expiresIn":3600}"#.utf8), 200)
+        URLProtocolStub.stubQueues[usageURL] = [
+            (Data(#"{"message":"Invalid token","reason":null}"#.utf8), 403),
+            (Data(#"{"usageBreakdownList":[{"displayName":"Credits","currentUsageWithPrecision":1.25,"usageLimitWithPrecision":10,"nextDateReset":1798761600}],"userInfo":{"userId":"user-1","email":"me@example.test"}}"#.utf8), 200)
+        ]
+        let importer = KiroSessionImporter(reader: KiroSessionReader(dbPath: path), session: makeSession())
+        let imported = try await importer.importSession(source: .cli)
+        XCTAssertEqual(imported.accessToken, "fresh-access")
+        XCTAssertEqual(imported.extra["userId"], "user-1")
+        XCTAssertEqual(URLProtocolStub.requestCount(for: oidcURL), 1)
+        XCTAssertEqual(URLProtocolStub.requestCount(for: usageURL), 2)
+        XCTAssertEqual(try KiroSessionReader(dbPath: path).readCLISession().accessToken, "copied-access")
+    }
+
     func test_missingOIDCRegistrationExplainsUnsupportedSocialOrBuilderImport() throws {
         let path = try makeDatabase(includeRegistration: false)
         defer { try? FileManager.default.removeItem(atPath: path) }
@@ -84,7 +116,7 @@ final class KiroSessionReaderTests: XCTestCase {
     }
 
     func test_importerRefreshesOnlyCopiedExpiredSessionAndLeavesSQLiteUntouched() async throws {
-        let path = try makeDatabase(expired: true)
+        let path = try makeDatabase(expired: true, expiry: "2026-10-09T01:27:47.304255Z")
         defer { try? FileManager.default.removeItem(atPath: path) }
         let oidcURL = URL(string: "https://oidc.us-east-1.amazonaws.com/token")!
         let usageURL = URL(string: "https://management.us-east-1.kiro.dev/Get-Usage-Limits?profileArn=arn:aws:codewhisperer:us-east-1:123456789012:profile/work-profile&origin=KIRO_CLI&isEmailRequired=true")!
