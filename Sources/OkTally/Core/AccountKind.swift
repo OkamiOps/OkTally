@@ -6,12 +6,24 @@ import Foundation
 enum AccountKind: String, CaseIterable, Codable {
     case claude, codex, supergrok, cursor
     case grokbot = "cursor-grokbot"
-    case copilot, antigravity, openrouter, minimax, opencode, mimo
+    case copilot, antigravity, openrouter, minimax, opencode, mimo, kiro, deepseek
+    case metaAPI = "meta-api"
+    case kimi, zai, mistral, qwen
+    case kimiAPI = "kimi-api"
+    case zaiAPI = "zai-api"
+    case mistralAPI = "mistral-api"
 
     /// Tipos que aceitam segunda conta. OpenCode e MiMo ficam de fora por decisão do dono
     /// (a estimativa do OpenCode e a sessão web do MiMo são da máquina, não da conta);
     /// Copilot não foi pedido; o GrokBot nasce junto de cada conta do Cursor.
-    static var addableKinds: [AccountKind] { [.claude, .codex, .supergrok, .openrouter, .minimax, .antigravity, .cursor] }
+    static var addableKinds: [AccountKind] { [.claude, .codex, .kiro, .kimi, .kimiAPI, .zai, .zaiAPI, .qwen, .deepseek, .mistral, .mistralAPI, .metaAPI, .supergrok, .openrouter, .minimax, .antigravity, .cursor] }
+
+    var usesAPIKey: Bool {
+        switch self {
+        case .openrouter, .minimax, .opencode, .deepseek, .metaAPI, .kimiAPI, .zai, .zaiAPI, .mistral, .mistralAPI, .qwen: return true
+        default: return false
+        }
+    }
 
     /// Tipos cujo legado lê um app de terceiros (IDE/CLI) e por isso não podem ser removidos.
     var legacyIsMachineBound: Bool {

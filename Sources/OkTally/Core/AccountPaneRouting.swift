@@ -8,6 +8,8 @@ enum AccountPaneRoute: Equatable {
     case claude(instanceId: String)
     case codex(instanceId: String)
     case supergrok(instanceId: String)
+    case kiro(instanceId: String)
+    case kimi(instanceId: String)
     case cursor(instanceId: String)
     case grokbot(instanceId: String)
     case copilot
@@ -26,12 +28,14 @@ enum AccountPaneRouting {
         case .claude: return .claude(instanceId: id)
         case .codex: return .codex(instanceId: id)
         case .supergrok: return .supergrok(instanceId: id)
+        case .kiro: return .kiro(instanceId: id)
+        case .kimi: return .kimi(instanceId: id)
         case .cursor: return .cursor(instanceId: id)
         case .grokbot: return .grokbot(instanceId: id)
         case .copilot: return .copilot
         case .antigravity: return .antigravity(instanceId: id)
         case .minimax: return .minimax(instanceId: id)
-        case .openrouter, .opencode: return .apiKey(instanceId: id, kind: kind)
+        case .openrouter, .opencode, .deepseek, .metaAPI, .kimiAPI, .zai, .zaiAPI, .mistral, .mistralAPI, .qwen: return .apiKey(instanceId: id, kind: kind)
         case .mimo: return .mimo
         }
     }

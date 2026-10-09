@@ -200,7 +200,7 @@ struct OkTallyApp: App {
     /// Keychain sob o próprio id; as de chave de API, no Keychain de segredos.
     private static func eraseCredential(of account: AccountInstance, tokenStore: TokenStoring, preferences: PreferencesStore) throws {
         switch account.kind {
-        case .openrouter, .minimax, .opencode:
+        case .openrouter, .minimax, .opencode, .deepseek, .metaAPI, .kimiAPI, .zai, .zaiAPI, .mistral, .mistralAPI, .qwen:
             try preferences.setAPIKey(nil, instanceId: account.id)
         default:
             try tokenStore.delete(providerId: account.id)

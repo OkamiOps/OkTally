@@ -9,6 +9,62 @@ final class PreferencesLoginLayoutTests: XCTestCase {
     private let artifacts = FileManager.default.temporaryDirectory
         .appendingPathComponent("OkTally-login-layout", isDirectory: true)
 
+    func test_kimiDeviceCodeAndCancelFitAtMinimumSize() throws {
+        let authorization = KimiDeviceAuthorization(userCode: "KM-TEST", deviceCode: "synthetic",
+            verificationURL: URL(string: "https://auth.kimi.com/")!, expiresAt: .distantFuture, interval: 5)
+        let view = ProviderPaneScaffold(providerId: "kimi", name: "Kimi Code",
+                                        status: .notConfigured(L("Faça login para adicionar esta conta"))) {
+            KimiConnectionControls(isConnected: false, isBusy: true, authorization: authorization,
+                                   onLogin: {}, onCancel: {}, onDisconnect: {})
+        } details: { Text("Kimi Code") }
+        let window = host(view, size: CGSize(width: 490, height: 520))
+        defer { window.close() }
+        let text = try recognizedText(in: capture(window, name: "kimi-code-490x520"))
+        XCTAssertTrue(text.contains { $0 == "KM-TEST" })
+        XCTAssertTrue(text.contains { normalized($0) == normalized(L("Cancelar login")) })
+    }
+
+    func test_kiroImportActionsFitAtMinimumSize() throws {
+        let view = ProviderPaneScaffold(providerId: "kiro", name: "Kiro",
+                                        status: .notConfigured(L("Faça login para adicionar esta conta"))) {
+            KiroConnectionControls(isConnected: false, isBusy: false,
+                                   onImportCLI: {}, onDisconnect: {})
+        } details: {
+            Text(L("Créditos mensais, saldo restante e renovação aparecem no menu e no histórico desta conta."))
+        }
+        let window = host(view, size: CGSize(width: 490, height: 520))
+        defer { window.close() }
+        let text = try recognizedText(in: capture(window, name: "kiro-import-490x520"))
+        XCTAssertTrue(text.contains { $0 == L("Importar do Kiro CLI") })
+    }
+
+    func test_newAPIConnectionHasVisibleSaveActionAtMinimumSize() throws {
+        let tokens = InMemoryTokenStore()
+        let preferences = PreferencesStore(store: FakeKeyValueStore(), secretStore: FakeSecretStore())
+        preferences.accounts = [AccountInstance(id: "deepseek", kind: .deepseek)]
+        let registry = PluginRegistry()
+        registry.register(FakeUsageProvider(id: "deepseek", displayName: "DeepSeek API"))
+        let storage = FakeStorage()
+        let scheduler = Scheduler(registry: registry, storage: storage, alertEngine: AlertEngine(),
+                                  alertDispatcher: AlertDispatcher(sender: FakeNotificationSender()))
+        let suite = "PreferencesAPIConnectionLayoutTests"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = AppModel(registry: registry, scheduler: scheduler, storage: storage, defaults: defaults, preferences: preferences)
+        model.requestedPreferencesPane = "deepseek"
+        let oauth = FakeOAuthManaging()
+        let view = PreferencesView(preferencesStore: preferences, tokenStore: tokens,
+                                   browserFlow: BrowserOAuthFlow(manager: oauth), manualFlow: ManualCodeOAuthFlow(manager: oauth),
+                                   deviceCodeFlow: DeviceCodeFlow(tokenStore: tokens), mimoSessionStore: LoginLayoutMiMoSession(),
+                                   appModel: model, onImportClaudeLegacy: { false })
+        let window = host(view, size: CGSize(width: 680, height: 520))
+        defer { window.close() }
+        let text = try recognizedText(in: capture(window, name: "api-connection-680x520"))
+        XCTAssertTrue(text.contains { normalized($0) == normalized(L("Validar e salvar")) })
+        XCTAssertTrue(text.contains { normalized($0) == normalized(L("Adicionar conta…")) })
+    }
+
     func test_loginControlsFitAtMinimumWindowSizeAndAccountDetailsScroll() throws {
         let view = ProviderPaneScaffold(
             providerId: "claude", name: "Claude Code", status: .needsAttention(L("Reconectar"))

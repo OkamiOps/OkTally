@@ -156,7 +156,10 @@ final class AppModel: ObservableObject {
     /// Id do rascunho de conta em andamento (menu "+"), ou `nil`. Vive no modelo — e não
     /// na view — para as guardas de credencial serem testáveis: só uma conta existente
     /// ou o rascunho ATIVO podem ter credencial gravada.
-    var activeDraftId: String?
+    private(set) var activeDraftGeneration = UUID()
+    var activeDraftId: String? {
+        didSet { activeDraftGeneration = UUID() }
+    }
 
     // Ganchos de teste (internos; o app não usa).
     var preferencesForTesting: PreferencesStore { preferences }
@@ -432,7 +435,7 @@ final class AppModel: ObservableObject {
     /// Contas de chave nunca terão e-mail; uma vez com a impressão digital, não há mais
     /// o que procurar.
     private static func isAPIKeyKind(_ kind: AccountKind) -> Bool {
-        kind == .openrouter || kind == .minimax || kind == .opencode
+        kind.usesAPIKey
     }
 
     private func updateAccount(id: String, _ change: (inout AccountInstance) -> Void) {
@@ -448,6 +451,15 @@ final class AppModel: ObservableObject {
 
     func refreshNow() async {
         _ = await scheduler.fetchAll()
+    }
+
+    /// A successful read used to validate a new key is already a real snapshot.
+    /// Publish it after enrollment instead of polling every provider again.
+    func recordValidatedSnapshot(_ snapshot: ProviderSnapshot) {
+        guard accounts.contains(where: { $0.id == snapshot.providerId }),
+              registry.providers.contains(where: { $0.id == snapshot.providerId }) else { return }
+        try? storage?.save(snapshot)
+        apply(SchedulerFetchResult(providerId: snapshot.providerId, outcome: .success(snapshot)))
     }
 
     /// O único número da barra de menu — o do slot escolhido, ou o mais crítico quando

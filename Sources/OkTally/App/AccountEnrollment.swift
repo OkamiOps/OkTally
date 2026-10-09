@@ -41,19 +41,20 @@ final class AccountEnrollment {
     }
 
     /// Chamado depois que o login gravou a credencial sob `draftId`.
-    func finish(draftId: String, kind: AccountKind) async -> Result {
+    func finish(draftId: String, kind: AccountKind, draftGeneration: UUID? = nil) async -> Result {
+        let generation = draftGeneration ?? model.activeDraftGeneration
         guard !model.accounts.contains(where: { $0.id == draftId }) else { return .failed }
         var account = AccountInstance(id: draftId, kind: kind)
-        guard model.activeDraftId == draftId else {
-            try? model.credentialEraser?(account)
+        guard model.activeDraftId == draftId, model.activeDraftGeneration == generation else {
+            eraseCancelledCredential(account)
             return .cancelled
         }
         let identity = await model.identityResolver?(account) ?? AccountIdentity()
         // A descoberta da identidade é assíncrona: o dono pode ter cancelado (ou começado
         // outro rascunho) enquanto isso. `abandon` já apagou o token, mas um commit aqui
         // criaria uma conta zumbi sem credencial.
-        guard model.activeDraftId == draftId else {
-            try? model.credentialEraser?(account)
+        guard model.activeDraftId == draftId, model.activeDraftGeneration == generation else {
+            eraseCancelledCredential(account)
             return .cancelled
         }
         if AccountDedup.isDuplicate(identityKey: identity.identityKey, kind: kind,
@@ -69,6 +70,14 @@ final class AccountEnrollment {
         model.commitAccount(account)
         if model.activeDraftId == draftId { model.activeDraftId = nil }
         return .committed
+    }
+
+    private func eraseCancelledCredential(_ account: AccountInstance) {
+        // An abandoned legacy ID may already belong to a new draft or committed
+        // account. A late completion must not erase that newer credential.
+        guard model.activeDraftId != account.id,
+              !model.accounts.contains(where: { $0.id == account.id }) else { return }
+        try? model.credentialEraser?(account)
     }
 
     enum LoginCompletion: Equatable {

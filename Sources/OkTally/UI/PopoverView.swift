@@ -117,7 +117,7 @@ struct PopoverContentView: View {
                 return (provider, L("Carregando…"), nil)
             }
             if appModel.snapshotsByProvider[provider.id]?.quotas.isEmpty == true {
-                return (provider, L("Sem dados de cota"), nil)
+                return (provider, appModel.snapshotsByProvider[provider.id]?.connectionNote ?? L("Sem dados de cota"), nil)
             }
             return nil
         }

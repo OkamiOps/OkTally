@@ -2,6 +2,13 @@ import XCTest
 @testable import OkTally
 
 final class AccountPaneRoutingTests: XCTestCase {
+    func test_newAPIAccountPanesKeepTheirInstanceId() {
+        for kind in [AccountKind.deepseek, .metaAPI, .kimiAPI, .zai, .zaiAPI, .mistral, .mistralAPI, .qwen] {
+            let id = AccountID.make(kind: kind, suffix: "abc123")
+            XCTAssertEqual(AccountPaneRouting.route(for: id), .apiKey(instanceId: id, kind: kind))
+        }
+        XCTAssertEqual(AccountPaneRouting.route(for: "kimi#abc123"), .kimi(instanceId: "kimi#abc123"))
+    }
     func test_route_dispatchesByKind() {
         XCTAssertEqual(AccountPaneRouting.route(for: "claude#abc123"), .claude(instanceId: "claude#abc123"))
         XCTAssertEqual(AccountPaneRouting.route(for: "claude"), .claude(instanceId: "claude"))
@@ -9,6 +16,7 @@ final class AccountPaneRoutingTests: XCTestCase {
         XCTAssertEqual(AccountPaneRouting.route(for: "openrouter#abc123"), .apiKey(instanceId: "openrouter#abc123", kind: .openrouter))
         XCTAssertEqual(AccountPaneRouting.route(for: "opencode"), .apiKey(instanceId: "opencode", kind: .opencode))
         XCTAssertEqual(AccountPaneRouting.route(for: "minimax"), .minimax(instanceId: "minimax"))
+        XCTAssertEqual(AccountPaneRouting.route(for: "kiro#abc123"), .kiro(instanceId: "kiro#abc123"))
         XCTAssertEqual(AccountPaneRouting.route(for: "mimo"), .mimo)
         XCTAssertEqual(AccountPaneRouting.route(for: "ghost"), .unknown)
     }

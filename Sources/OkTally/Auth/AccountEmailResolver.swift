@@ -26,7 +26,13 @@ struct AccountEmailResolver {
 
     func resolve(_ account: AccountInstance) async -> AccountIdentity {
         switch account.kind {
-        case .openrouter, .minimax, .opencode:
+        case .kiro:
+            guard let token = tokenStore.load(providerId: account.id) else { return AccountIdentity() }
+            return KiroAccountImport.identity(from: token)
+        case .kimi:
+            guard let token = tokenStore.load(providerId: account.id) else { return AccountIdentity() }
+            return AccountIdentity(email: token.extra["email"], identityKey: token.extra["userId"], autoLabel: token.extra["nickname"])
+        case .openrouter, .minimax, .opencode, .deepseek, .metaAPI, .kimiAPI, .zai, .zaiAPI, .mistral, .mistralAPI, .qwen:
             // Contas de chave não têm e-mail: a identidade é a impressão digital da chave.
             guard let key = apiKey(account.id), !key.isEmpty else { return AccountIdentity() }
             let label = account.kind == .openrouter ? await openRouterKeyLabel(key) : nil
@@ -52,7 +58,7 @@ struct AccountEmailResolver {
             email = tokenStore.load(providerId: account.id).flatMap {
                 Self.codexEmail(accessToken: $0.accessToken, extra: $0.extra)
             }
-        case .supergrok:
+        case .supergrok, .kiro, .kimi:
             email = tokenStore.load(providerId: account.id)?.extra["email"]
         case .cursor:
             if AccountID.isLegacy(account.id) {
@@ -74,7 +80,7 @@ struct AccountEmailResolver {
             } else {
                 email = nil
             }
-        case .grokbot, .copilot, .mimo, .openrouter, .minimax, .opencode:
+        case .grokbot, .copilot, .mimo, .openrouter, .minimax, .opencode, .deepseek, .metaAPI, .kimiAPI, .zai, .zaiAPI, .mistral, .mistralAPI, .qwen:
             email = nil
         }
         return email

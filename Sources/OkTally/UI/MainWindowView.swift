@@ -294,6 +294,9 @@ struct ProviderDetailScreen: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.lg) {
             header
+            if let note = snapshot.connectionNote {
+                Text(note).font(.callout).foregroundStyle(.secondary)
+            }
             if let message = appModel.errorsByProvider[provider.id] {
                 Label(message, systemImage: "exclamationmark.triangle")
                     .font(.caption)

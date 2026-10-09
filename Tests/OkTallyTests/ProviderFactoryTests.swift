@@ -34,6 +34,40 @@ final class ProviderFactoryTests: XCTestCase {
         XCTAssertEqual(makeFactory().providers(for: extra, all: [extra]).map(\.id), ["claude#abc123"])
     }
 
+    func test_newAPIProvidersReadOnlyTheirOwnCredential() async throws {
+        let preferences = PreferencesStore(store: FakeKeyValueStore(), secretStore: FakeSecretStore())
+        let factory = ProviderFactory(dependencies: .testing(tokenStore: InMemoryTokenStore(), preferences: preferences))
+        for kind in [AccountKind.deepseek, .metaAPI, .kimiAPI, .zai, .zaiAPI, .mistral, .mistralAPI, .qwen] {
+            let first = AccountInstance(id: kind.rawValue, kind: kind)
+            let extra = AccountInstance(id: AccountID.make(kind: kind, suffix: "abc123"), kind: kind)
+            try preferences.setAPIKey("example-key", instanceId: extra.id)
+            let primary = factory.providers(for: first, all: [first, extra])[0]
+            let secondary = factory.providers(for: extra, all: [first, extra])[0]
+            let primaryAuthenticated = await primary.isAuthenticated()
+            let secondaryAuthenticated = await secondary.isAuthenticated()
+            XCTAssertFalse(primaryAuthenticated, kind.rawValue)
+            XCTAssertTrue(secondaryAuthenticated, kind.rawValue)
+            XCTAssertEqual(secondary.id, extra.id)
+        }
+    }
+
+    func test_kiroAccountsReadOnlyTheirOwnCredential() async throws {
+        let tokens = InMemoryTokenStore()
+        try tokens.save(OAuthToken(accessToken: "example", refreshToken: nil, expiresAt: nil, extra: [:]),
+                        providerId: "kiro#abc123")
+        let preferences = PreferencesStore(store: FakeKeyValueStore(), secretStore: FakeSecretStore())
+        let factory = ProviderFactory(dependencies: .testing(tokenStore: tokens, preferences: preferences))
+        let first = AccountInstance(id: "kiro", kind: .kiro)
+        let extra = AccountInstance(id: "kiro#abc123", kind: .kiro)
+        let primary = factory.providers(for: first, all: [first, extra])[0]
+        let secondary = factory.providers(for: extra, all: [first, extra])[0]
+        let primaryAuthenticated = await primary.isAuthenticated()
+        let secondaryAuthenticated = await secondary.isAuthenticated()
+        XCTAssertFalse(primaryAuthenticated)
+        XCTAssertTrue(secondaryAuthenticated)
+        XCTAssertEqual(secondary.id, extra.id)
+    }
+
     func test_label_followsCurrentAccountsFromPreferences() {
         var legacy = AccountInstance(id: "claude", kind: .claude)
         let extra = AccountInstance(id: "claude#abc123", kind: .claude)

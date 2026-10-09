@@ -102,6 +102,22 @@ The **Análise** tab sums all sources into one heatmap + stat chips (lifetime, d
 | **MiniMax** | API key (global or China region) | 5h + weekly, worst-model-wins | — | — |
 | **OpenCode** | API key + local database | 5h / weekly / monthly (estimated) | ✅ local | ✅ |
 | **MiMo** | In-app web session (self-recovering) or manual estimate | Monthly plan | — | — |
+| **Kiro** | Explicit Kiro CLI OIDC session import, isolated per account | Precise monthly credits + plan + renewal | — | — |
+| **Kimi Code** | Browser device-code OAuth, isolated per account | 5h, weekly/monthly windows + booster wallet when supplied | — | — |
+| **Kimi / Moonshot API** | Global API key | Available USD balance, separate from Kimi Code | — | — |
+| **GLM / Z.ai Coding Plan** | Global Coding Plan key | Coding/tool quota usage; renewal only when supplied | — | — |
+| **GLM / Z.ai API** | Global API key | Access validation; balance/spending in provider portal | — | — |
+| **Qwen / Model Studio** | Global Coding Plan or PAYG API key | Access validation; consumed quota/spending requires Console authentication | — | — |
+| **DeepSeek API** | API key | Balance per currency | — | — |
+| **Mistral Organization** | Admin API key from Backoffice | Organization monthly spending and limit (USD) | — | — |
+| **Mistral API** | Standard API key | Access validation; spending requires the Admin connection | — | — |
+| **Meta Muse / Spark API** | Meta Model API key | Access validation; total usage/balance in provider portal | — | — |
+
+Add these accounts through **Settings → Add account…**. New API connections validate a candidate key before saving it. Keys and OAuth sessions are isolated by account ID in Keychain; duplicate keys/accounts are not enrolled again. Catalog validation never produces a synthetic quota.
+
+For Kiro, sign in with `kiro-cli login`, then choose **Kiro → Import from Kiro CLI**. Switch the CLI account and repeat **Add account** for another account. The importer reads the CLI database once and does not modify it. IDE Secret Storage and Social/Builder ID sessions without the required OIDC registration are not supported by this importer.
+
+Muse Code subscription monitoring is not enrolled in this release. MSP `usage/read` returns only the last observation made by its own host, and a fresh isolated host can return no usage. The experimental reader is covered by contract tests, but this does not establish live monitoring of another CLI process. Meta Model API credentials remain separate from subscription credentials.
 
 **Self-recovering MiMo session.** The Xiaomi console session lives in a persistent in-app web view. When its short-lived STS cookie expires, OkTally transparently reloads the console and retries — you only log in again if the underlying Xiaomi SSO session actually dies.
 
@@ -111,7 +127,7 @@ The **Análise** tab sums all sources into one heatmap + stat chips (lifetime, d
 
 ```mermaid
 flowchart LR
-    subgraph Providers["11 provider plugins"]
+    subgraph Providers["Provider plugins"]
         P1["Claude · Codex · Copilot · Cursor · GrokBot<br/>Antigravity · SuperGrok · OpenRouter<br/>MiniMax · OpenCode · MiMo"]
     end
     P1 -->|"ProviderSnapshot<br/>(QuotaShape)"| S[Scheduler]
@@ -194,7 +210,7 @@ Everything runs locally on your Mac.
 - [x] Update check (daily, against GitHub Releases — auto-install waits for notarization)
 - [x] Localization (English + Portuguese, follows the system language)
 - [x] Antigravity as a zero-config provider
-- [ ] More zero-config providers (Gemini CLI, Qwen)
+- [ ] More zero-config providers (Gemini CLI)
 - [ ] Notarized builds
 
 ## License

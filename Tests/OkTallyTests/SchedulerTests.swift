@@ -85,6 +85,21 @@ final class SchedulerTests: XCTestCase {
         )
     }
 
+    func test_cancelledFetchDoesNotPublishErrorOrRestoreHistory() async {
+        let provider = FakeUsageProvider(id: "cancelled", displayName: "Cancelled")
+        provider.errorToThrow = CancellationError()
+        let registry = PluginRegistry(); registry.register(provider)
+        let storage = FakeStorage()
+        let scheduler = Scheduler(registry: registry, storage: storage, alertEngine: AlertEngine(),
+                                  alertDispatcher: AlertDispatcher(sender: FakeNotificationSender()))
+        var received: [SchedulerFetchResult] = []
+        scheduler.onResult = { received.append($0) }
+        _ = await scheduler.fetchAll()
+        XCTAssertTrue(received.isEmpty)
+        XCTAssertNil(scheduler.lastError[provider.id])
+        XCTAssertEqual(storage.saveCount, 0)
+    }
+
     func test_fetchAll_savesSnapshotsAndDispatchesAlerts() async {
         let provider = FakeUsageProvider(id: "claude", displayName: "Claude Code")
         provider.snapshotToReturn = snapshot(providerId: "claude", percent: 75)

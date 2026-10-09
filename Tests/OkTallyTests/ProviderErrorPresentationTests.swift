@@ -2,6 +2,12 @@ import XCTest
 @testable import OkTally
 
 final class ProviderErrorPresentationTests: XCTestCase {
+    func test_kimiRefreshRejectionOffersReconnection() {
+        XCTAssertEqual(ProviderErrorPresentation.classify(KimiOAuthError.noRefreshToken), .needsReauth)
+        XCTAssertEqual(ProviderErrorPresentation.classify(KimiOAuthError.requestFailed(400)), .needsReauth)
+        XCTAssertEqual(ProviderErrorPresentation.classify(KimiOAuthError.profileFailed(401)), .needsReauth)
+        XCTAssertEqual(ProviderErrorPresentation.classify(KimiOAuthError.requestFailed(503)), .error)
+    }
     func test_classify_schedulerNotConfigured_isNotConfigured() {
         XCTAssertEqual(ProviderErrorPresentation.classify(SchedulerError.notConfigured), .notConfigured)
     }

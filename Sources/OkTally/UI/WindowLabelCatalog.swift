@@ -21,10 +21,20 @@ enum WindowLabelCatalog {
         "chat": "Chat",
         "completions": "Autocomplete",
         "premium": "Premium",
+        "monthly spend": "Gasto mensal",
+        "monthly tools": "Ferramentas mensais",
+        "7d": "Semanal",
+        "Monthly total": "Total mensal",
+        "Monthly code": "Programação mensal",
+        "Booster balance": "Saldo extra",
+        "Monthly booster spend": "Gasto mensal extra",
     ]
 
     static func displayLabel(_ raw: String) -> String {
         if let mapped = table[raw] { return L(mapped) }
+        if raw.hasPrefix("coding quota ") {
+            return LF("Cota de programação %@", String(raw.dropFirst("coding quota ".count)))
+        }
         // Codex emits dynamic labels like "GPT-5.3-Codex-Spark (weekly)" — keep the model
         // name, translate only the parenthesized window kind.
         if raw.hasSuffix(")"), let open = raw.lastIndex(of: "("), open > raw.startIndex {

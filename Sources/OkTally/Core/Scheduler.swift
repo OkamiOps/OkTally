@@ -126,8 +126,10 @@ final class Scheduler {
             return result
         }
         do {
+            try Task.checkCancellation()
             let previous = try? storage.latestSnapshot(providerId: provider.id)
             let snapshot = try await provider.fetchSnapshot()
+            try Task.checkCancellation()
             setLastError(nil, for: provider.id)
             let result = SchedulerFetchResult(providerId: provider.id, outcome: .success(snapshot))
             onResult?(result)
@@ -150,6 +152,10 @@ final class Scheduler {
                 // Storage/alert-evaluation failure must not revert the successful fetch already reported to the UI.
             }
             return result
+        } catch is CancellationError {
+            // Removed/replaced accounts can finish a late refresh. An abandoned
+            // result must not replace a new account's snapshot or connection state.
+            return SchedulerFetchResult(providerId: provider.id, outcome: .failure(CancellationError()))
         } catch {
             setLastError(error, for: provider.id)
             let result = SchedulerFetchResult(providerId: provider.id, outcome: .failure(error))

@@ -132,6 +132,24 @@ final class AccountEmailResolverTests: XCTestCase {
         XCTAssertEqual(result.email, "g@x.ai")
     }
 
+    func test_resolve_kiro_distinguishesAWSProfilesWithTheSameEmail() async throws {
+        let tokens = InMemoryTokenStore()
+        try tokens.save(OAuthToken(accessToken: "example", refreshToken: nil, expiresAt: nil,
+                                   extra: ["email": " Me@Work.com ", "profileArn": "arn:aws:example:profile/work"]),
+                        providerId: "kiro#abc123")
+        let result = await makeResolver(tokens: tokens).resolve(AccountInstance(id: "kiro#abc123", kind: .kiro))
+        XCTAssertEqual(result.email, "Me@Work.com")
+        XCTAssertEqual(result.identityKey, "arn:aws:example:profile/work")
+    }
+
+    func test_resolve_kiro_withoutProfileUsesNormalizedEmail() async throws {
+        let tokens = InMemoryTokenStore()
+        try tokens.save(OAuthToken(accessToken: "example", refreshToken: nil, expiresAt: nil,
+                                   extra: ["email": "Me@Work.com"]), providerId: "kiro")
+        let result = await makeResolver(tokens: tokens).resolve(AccountInstance(id: "kiro", kind: .kiro))
+        XCTAssertEqual(result.identityKey, "me@work.com")
+    }
+
     func test_resolve_legacyIDEs_readTheirLocalEmail() async {
         let resolver = makeResolver(cursorEmail: "c@c.test", antigravityEmail: "a@a.test")
         let cursor = await resolver.resolve(AccountInstance(id: "cursor", kind: .cursor))

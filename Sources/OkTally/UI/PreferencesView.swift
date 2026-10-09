@@ -12,6 +12,7 @@ enum PreferencesPane: Hashable {
 struct AccountDraft: Equatable {
     let id: String
     let kind: AccountKind
+    let generation: UUID
 }
 
 struct PreferencesView: View {
@@ -26,6 +27,7 @@ struct PreferencesView: View {
     /// Avisa quem cuida do painel do notch que a preferência mudou. Opcional porque o
     /// harness de render monta esta tela sem app vivo — lá não há painel para reavaliar.
     var onNotchPreferenceChanged: (() -> Void)?
+    var kiroSessionImporter: KiroSessionImporting = KiroSessionImporter()
 
     @State private var pane: PreferencesPane = .general
 
@@ -46,6 +48,11 @@ struct PreferencesView: View {
     @State private var draft: AccountDraft?
     /// Logins do Cursor esperando o navegador (poll em andamento), por conta.
     @State private var cursorPolls: [String: Task<Void, Never>] = [:]
+    @State private var kiroImports: [String: UUID] = [:]
+    @State private var apiValidations: [String: UUID] = [:]
+    @State private var verifiedSnapshots: [String: ProviderSnapshot] = [:]
+    @State private var kimiLogins: [String: Task<Void, Never>] = [:]
+    @State private var kimiCodes: [String: KimiDeviceAuthorization] = [:]
 
     @State private var mimoAllowance: String = ""
     @State private var mimoUsed: String = ""
@@ -258,6 +265,16 @@ struct PreferencesView: View {
         switch kind {
         case .claude: return "Claude Code"
         case .codex: return "Codex"
+        case .kiro: return "Kiro"
+        case .kimi: return "Kimi Code"
+        case .kimiAPI: return "Kimi / Moonshot API"
+        case .zai: return "GLM / Z.ai Coding Plan"
+        case .zaiAPI: return "GLM / Z.ai API"
+        case .mistral: return L("Mistral Organização")
+        case .mistralAPI: return "Mistral API"
+        case .qwen: return "Qwen / Model Studio"
+        case .deepseek: return "DeepSeek API"
+        case .metaAPI: return "Meta Muse / Spark API"
         case .supergrok: return "SuperGrok"
         case .cursor: return "Cursor"
         case .grokbot: return "GrokBot"
@@ -272,7 +289,7 @@ struct PreferencesView: View {
 
     private func isConfigured(_ id: String) -> Bool {
         switch AccountPaneRouting.route(for: id) {
-        case .claude(let id), .codex(let id), .supergrok(let id):
+        case .claude(let id), .codex(let id), .supergrok(let id), .kiro(let id), .kimi(let id):
             return loggedIn.contains(id)
         case .cursor(let id):
             // A conta legada lê a sessão do app Cursor sozinha.
@@ -306,6 +323,8 @@ struct PreferencesView: View {
             case .claude(let id): claudePane(id)
             case .codex(let id): codexPane(id)
             case .supergrok(let id): superGrokPane(id)
+            case .kiro(let id): kiroPane(id)
+            case .kimi(let id): kimiPane(id)
             case .cursor(let id): cursorPane(id)
             case .grokbot(let id): grokBotPane(id)
             case .copilot: copilotPane
@@ -528,6 +547,25 @@ struct PreferencesView: View {
         }
     }
 
+    private func kiroPane(_ id: String) -> some View {
+        ProviderPaneScaffold(providerId: id, snapshot: appModel.snapshotsByProvider[id],
+                             problem: appModel.errorsByProvider[id], name: providerName(id), status: oauthStatus(id)) {
+            kiroConnection(id)
+            KiroCreditSummary(snapshot: appModel.snapshotsByProvider[id])
+        } details: {
+            Text(L("Créditos mensais, saldo restante e renovação aparecem no menu e no histórico desta conta."))
+                .font(.caption).foregroundStyle(.secondary)
+        } account: {
+            accountSection(id)
+        }
+    }
+
+    private func kiroConnection(_ id: String) -> some View {
+        KiroConnectionControls(isConnected: loggedIn.contains(id), isBusy: kiroImports[id] != nil,
+                               onImportCLI: { importKiro(id, source: .cli) },
+                               onDisconnect: { logout(providerId: id) })
+    }
+
     @ViewBuilder private func cursorPane(_ id: String) -> some View {
         if AccountID.isLegacy(id) {
             ProviderPaneScaffold(
@@ -675,10 +713,15 @@ struct PreferencesView: View {
             snapshot: appModel.snapshotsByProvider[id],
             problem: appModel.errorsByProvider[id],
             name: providerName(id),
-            status: hasSavedKey ? .connected(L("Chave salva")) : .notConfigured(L("Sem chave"))
+            status: appModel.errorKindByProvider[id] == .needsReauth
+                ? .needsAttention(L("Chave recusada — atualize"))
+                : (hasSavedKey ? .connected(L("Chave salva")) : .notConfigured(L("Sem chave")))
         ) {
-            AutoSaveField(placeholder: "API Key", text: apiKeyBinding(id), isSecure: true, onCommit: { saveAPIKey(id) })
+            AutoSaveField(placeholder: ProviderConnectionInfo.placeholder(for: AccountID.kind(of: id) ?? .openrouter), text: apiKeyBinding(id), isSecure: true, onCommit: { saveAPIKey(id) })
                 .frame(maxWidth: 380)
+            if APIAccountValidation.provider(kind: AccountID.kind(of: id) ?? .openrouter, instanceId: id, key: "") != nil {
+                apiValidationControls(id, isDraft: false)
+            }
             // Esvaziar o campo não apaga nada (é a regra do auto-save), então revogar a
             // credencial precisa de um gesto deliberado — sem este botão não haveria
             // nenhuma forma de desconectar o provedor pelo app.
@@ -694,8 +737,14 @@ struct PreferencesView: View {
                 }
             }
         } details: {
-            Text(L("A chave fica no Keychain desta máquina, nunca em texto puro."))
-                .font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                Text(L("A chave fica no Keychain desta máquina, nunca em texto puro."))
+                if let kind = AccountID.kind(of: id), let note = ProviderConnectionInfo.note(for: kind) { Text(note) }
+                if let note = appModel.snapshotsByProvider[id]?.connectionNote { Text(note) }
+                if let kind = AccountID.kind(of: id), let url = ProviderConnectionInfo.portal(for: kind) {
+                    Link(L("Abrir portal do provedor"), destination: url)
+                }
+            }.font(.caption).foregroundStyle(.secondary)
         } account: {
             accountSection(id)
         }
@@ -794,9 +843,9 @@ struct PreferencesView: View {
         for account in appModel.accounts {
             let id = account.id
             switch account.kind {
-            case .claude, .codex, .supergrok, .cursor, .antigravity:
+            case .claude, .codex, .supergrok, .cursor, .antigravity, .kiro, .kimi:
                 refreshLoggedIn(id)
-            case .openrouter, .opencode:
+            case .openrouter, .opencode, .deepseek, .metaAPI, .kimiAPI, .zai, .zaiAPI, .mistral, .mistralAPI, .qwen:
                 apiKeyFields[id] = savedAPIKey(id) ?? ""
             case .minimax:
                 apiKeyFields[id] = savedAPIKey(id) ?? ""
@@ -844,6 +893,12 @@ struct PreferencesView: View {
 
     /// Esquece tudo o que a tela guarda de uma conta (removida ou rascunho abandonado).
     private func clearViewState(for id: String) {
+        kiroImports[id] = nil
+        apiValidations[id] = nil
+        verifiedSnapshots[id] = nil
+        kimiLogins[id]?.cancel()
+        kimiLogins[id] = nil
+        kimiCodes[id] = nil
         apiKeyFields[id] = nil
         minimaxChina[id] = nil
         nicknameFields[id] = nil
@@ -857,18 +912,162 @@ struct PreferencesView: View {
         // Defesa em profundidade: um commit tardio (onDisappear) de uma conta que já não
         // existe não grava nada.
         guard AccountEnrollment(model: appModel).acceptsCredential(for: id) else { return }
+        if let kind = AccountID.kind(of: id),
+           APIAccountValidation.provider(kind: kind, instanceId: id, key: "") != nil {
+            validateAPIKey(id, isDraft: draft?.id == id)
+            return
+        }
         saveSecret(providerName(id), previous: savedAPIKey(id) ?? "", raw: apiKeyBinding(id)) {
             try storeAPIKey($0, id: id)
         }
     }
 
     private func removeAPIKey(_ id: String) {
+        apiValidations[id] = nil
         removeSecret(providerName(id), raw: apiKeyBinding(id)) {
             try storeAPIKey(nil, id: id)
         }
     }
 
     // MARK: - Login flows
+
+    private func apiValidationControls(_ id: String, isDraft: Bool) -> some View {
+        HStack(spacing: Theme.Space.sm) {
+            Button(L("Validar e salvar")) { validateAPIKey(id, isDraft: isDraft, force: true) }
+                .buttonStyle(.borderedProminent)
+                .disabled(apiValidations[id] != nil || (apiKeyFields[id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("api-validate-save")
+            if apiValidations[id] != nil {
+                ProgressView().controlSize(.small)
+                Text(L("Validando conexão…")).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+    }
+
+    private func validateAPIKey(_ id: String, isDraft: Bool, force: Bool = false) {
+        guard apiValidations[id] == nil,
+              AccountEnrollment(model: appModel).acceptsCredential(for: id),
+              let kind = AccountID.kind(of: id) else { return }
+        let key = (apiKeyFields[id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let original = savedAPIKey(id)
+        guard !key.isEmpty, force || key != original,
+              let provider = APIAccountValidation.provider(kind: kind, instanceId: id, key: key) else { return }
+        let requestId = UUID()
+        apiValidations[id] = requestId
+        statusMessage = L("Validando conexão…")
+        Task { @MainActor in
+            defer { if apiValidations[id] == requestId { apiValidations[id] = nil } }
+            do {
+                let snapshot = try await provider.fetchSnapshot()
+                guard apiValidations[id] == requestId,
+                      AccountEnrollment(model: appModel).acceptsCredential(for: id),
+                      savedAPIKey(id) == original,
+                      (apiKeyFields[id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines) == key else { return }
+                let fingerprint = AccountDedup.fingerprint(apiKey: key)
+                if !isDraft, appModel.accounts.contains(where: { $0.id != id && $0.kind == kind && $0.identityKey == fingerprint }) {
+                    throw AccountConnectionError.duplicateKey
+                }
+                try storeAPIKey(key, id: id)
+                if isDraft {
+                    verifiedSnapshots[id] = snapshot
+                    afterLogin(id)
+                } else {
+                    appModel.setIdentity(id: id, email: nil, identityKey: fingerprint)
+                    appModel.recordValidatedSnapshot(snapshot)
+                    statusMessage = L("Conexão validada e chave salva.")
+                }
+            } catch {
+                guard apiValidations[id] == requestId,
+                      AccountEnrollment(model: appModel).acceptsCredential(for: id) else { return }
+                statusMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func kimiPane(_ id: String) -> some View {
+        ProviderPaneScaffold(providerId: id, snapshot: appModel.snapshotsByProvider[id],
+                             problem: appModel.errorsByProvider[id], name: providerName(id),
+                             status: appModel.errorKindByProvider[id] == .needsReauth
+                                ? .needsAttention(L("Sessão expirada — entre novamente"))
+                                : (loggedIn.contains(id) ? .connected(L("Conectado")) : .notConfigured(L("Não conectado")))) {
+            kimiConnection(id)
+        } details: {
+            Text(L("Este login acompanha a assinatura Kimi Code. Para saldo por consumo, adicione Kimi / Moonshot API separadamente."))
+                .font(.caption).foregroundStyle(.secondary)
+        } account: { accountSection(id) }
+    }
+
+    private func kimiConnection(_ id: String) -> some View {
+        KimiConnectionControls(isConnected: loggedIn.contains(id), isBusy: kimiLogins[id] != nil,
+                               authorization: kimiCodes[id], onLogin: { loginKimi(id) },
+                               onCancel: { cancelKimiLogin(id) }, onDisconnect: {
+                                   cancelKimiLogin(id)
+                                   logout(providerId: id)
+                               })
+    }
+
+    private func cancelKimiLogin(_ id: String) {
+        kimiLogins[id]?.cancel()
+        kimiLogins[id] = nil
+        kimiCodes[id] = nil
+    }
+
+    private func loginKimi(_ id: String) {
+        guard kimiLogins[id] == nil else { return }
+        statusMessage = L("Solicitando código de dispositivo…")
+        kimiLogins[id] = Task { @MainActor in
+            let client = KimiOAuthClient()
+            do {
+                let authorization = try await client.beginDeviceLogin()
+                try Task.checkCancellation()
+                guard AccountEnrollment(model: appModel).acceptsCredential(for: id) else { return }
+                kimiCodes[id] = authorization
+                NSWorkspace.shared.open(authorization.verificationURL)
+                statusMessage = L("Conclua o login no navegador.")
+                let token = try await client.waitForToken(authorization: authorization)
+                try Task.checkCancellation()
+                guard AccountEnrollment(model: appModel).acceptsCredential(for: id) else { return }
+                if let existing = account(id)?.identityKey, existing != token.extra["userId"] {
+                    throw AccountConnectionError.differentAccount
+                }
+                try tokenStore.save(token, providerId: id)
+                kimiCodes[id] = nil
+                kimiLogins[id] = nil
+                afterLogin(id)
+            } catch is CancellationError {
+                // The cancelling action already clears the old attempt's state.
+            } catch {
+                guard !Task.isCancelled else { return }
+                kimiCodes[id] = nil
+                kimiLogins[id] = nil
+                statusMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func importKiro(_ id: String, source: KiroSessionSource) {
+        guard kiroImports[id] == nil else { return }
+        let requestId = UUID()
+        kiroImports[id] = requestId
+        statusMessage = L("Verificando a conta Kiro…")
+        Task { @MainActor in
+            defer { if kiroImports[id] == requestId { kiroImports[id] = nil } }
+            do {
+                let token = try await kiroSessionImporter.importSession(source: source)
+                // Cancelar/trocar o rascunho durante a consulta nunca deixa token órfão.
+                guard kiroImports[id] == requestId,
+                      AccountEnrollment(model: appModel).acceptsCredential(for: id) else { return }
+                try KiroAccountImport.validate(token, replacing: account(id))
+                try tokenStore.save(token, providerId: id)
+                afterLogin(id)
+            } catch {
+                guard kiroImports[id] == requestId,
+                      AccountEnrollment(model: appModel).acceptsCredential(for: id) else { return }
+                statusMessage = error.localizedDescription
+            }
+        }
+    }
 
     private func login(config: OAuthConfig, id: String) {
         statusMessage = L("Abrindo o navegador…")
@@ -965,10 +1164,13 @@ struct PreferencesView: View {
                     .buttonStyle(.bordered)
                 Spacer()
             }
-            if draft.kind == .openrouter || draft.kind == .minimax {
-                AutoSaveField(placeholder: "API Key", text: apiKeyBinding(id), isSecure: true,
+            if draft.kind.usesAPIKey {
+                AutoSaveField(placeholder: ProviderConnectionInfo.placeholder(for: draft.kind), text: apiKeyBinding(id), isSecure: true,
                               onCommit: { saveDraftKey(id) })
                     .frame(maxWidth: 380)
+                if APIAccountValidation.provider(kind: draft.kind, instanceId: id, key: "") != nil {
+                    apiValidationControls(id, isDraft: true)
+                }
             }
             if draft.kind == .minimax {
                 Toggle(L("Região China (minimaxi.com)"), isOn: Binding(
@@ -990,6 +1192,8 @@ struct PreferencesView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if draft.kind == .claude { claudeCodeEntry(id) }
+            if draft.kind == .kiro { kiroConnection(id) }
+            if draft.kind == .kimi { kimiConnection(id) }
             if draft.kind == .supergrok, let info = deviceCodes[id] {
                 VStack(alignment: .leading, spacing: Theme.Space.xs) {
                     Text(LF("Abra %@ e digite:", info.verificationURL.absoluteString))
@@ -1011,8 +1215,11 @@ struct PreferencesView: View {
         if kind == .cursor {
             notes.append(L("Sessão própria do OkTally — trocar de conta no Cursor não afeta esta conta."))
         }
+        if kind == .kiro {
+            notes.append(L("Cada conta guarda sua própria sessão no Keychain. Trocar de conta no Kiro não troca o histórico das contas já adicionadas."))
+        }
         switch kind {
-        case .claude, .codex, .supergrok, .antigravity, .cursor:
+        case .claude, .codex, .supergrok, .antigravity, .cursor, .kimi:
             notes.append(L("Entre com a OUTRA conta. Se o navegador já estiver logado na conta atual, troque de conta (ou use uma janela anônima) antes de autorizar."))
         default:
             break
@@ -1020,10 +1227,13 @@ struct PreferencesView: View {
         if kind == .codex {
             notes.append(L("O login do Codex usa a porta 1455 — feche o Codex CLI se ele estiver fazendo login ao mesmo tempo."))
         }
-        if kind == .openrouter || kind == .minimax {
+        if let note = ProviderConnectionInfo.note(for: kind) { notes.append(note) }
+        if kind.usesAPIKey {
             notes.append(L("Cole a chave da outra conta e tecle Enter. A chave fica no Keychain desta máquina; a mesma chave duas vezes não é adicionada."))
         }
-        notes.append(L("A conta nova aparece ao lado da atual, rotulada pelo e-mail. Se for a mesma conta, nada é adicionado."))
+        notes.append(kind.usesAPIKey
+                     ? L("Dê um apelido para distinguir as contas. Provedores de chave não fornecem o e-mail da conta.")
+                     : L("A conta nova aparece ao lado da atual. Se for a mesma conta, nada é adicionado."))
         return notes
     }
 
@@ -1049,6 +1259,11 @@ struct PreferencesView: View {
     /// Chave colada num rascunho: grava sob o id reservado e, se gravou de fato, segue o
     /// mesmo caminho de um login concluído.
     private func saveDraftKey(_ id: String) {
+        if let kind = AccountID.kind(of: id),
+           APIAccountValidation.provider(kind: kind, instanceId: id, key: "") != nil {
+            validateAPIKey(id, isDraft: true)
+            return
+        }
         let before = savedAPIKey(id) ?? ""
         saveAPIKey(id)
         let after = savedAPIKey(id) ?? ""
@@ -1058,7 +1273,8 @@ struct PreferencesView: View {
     private func beginAddAccount(_ kind: AccountKind) {
         if draft != nil { cancelDraft() }
         let enrollment = AccountEnrollment(model: appModel)
-        let next = AccountDraft(id: enrollment.beginDraft(kind: kind), kind: kind)
+        let id = enrollment.beginDraft(kind: kind)
+        let next = AccountDraft(id: id, kind: kind, generation: appModel.activeDraftGeneration)
         draft = next
         pane = .provider(next.id)
         statusMessage = ""
@@ -1086,9 +1302,14 @@ struct PreferencesView: View {
         }
         statusMessage = L("Identificando a conta…")
         Task { @MainActor in
-            let result = await AccountEnrollment(model: appModel).finish(draftId: current.id, kind: current.kind)
+            let result = await AccountEnrollment(model: appModel).finish(draftId: current.id, kind: current.kind,
+                                                                         draftGeneration: current.generation)
+            guard draft?.generation == current.generation else { return }
             switch result {
             case .committed:
+                if let snapshot = verifiedSnapshots.removeValue(forKey: current.id) {
+                    appModel.recordValidatedSnapshot(snapshot)
+                }
                 draft = nil
                 pane = .provider(current.id)
                 load()
@@ -1096,6 +1317,7 @@ struct PreferencesView: View {
                     ? L("Conta adicionada — dê um apelido para distinguir das outras.")
                     : L("Conta adicionada.")
             case .duplicate(let email):
+                verifiedSnapshots[current.id] = nil
                 // O rascunho continua aberto: o dono pode trocar de conta no navegador e
                 // tentar de novo, ou cancelar.
                 loggedIn.remove(current.id)
@@ -1103,9 +1325,11 @@ struct PreferencesView: View {
                 statusMessage = email.map { LF("%@ já está no OkTally — nada foi adicionado.", $0) }
                     ?? L("Esta conta já está no OkTally — nada foi adicionado.")
             case .cancelled:
+                verifiedSnapshots[current.id] = nil
                 // Cancelado durante a identificação: a tela já foi limpa por `cancelDraft`.
                 loggedIn.remove(current.id)
             case .failed:
+                verifiedSnapshots[current.id] = nil
                 loggedIn.remove(current.id)
                 statusMessage = L("Não foi possível adicionar a conta.")
             }
@@ -1170,9 +1394,13 @@ struct PreferencesView: View {
     }
 
     private func logout(providerId: String) {
-        try? tokenStore.delete(providerId: providerId)
-        loggedIn.remove(providerId)
-        statusMessage = L("Desconectado.")
+        kiroImports[providerId] = nil
+        do {
+            try tokenStore.delete(providerId: providerId)
+            if draft?.id == providerId { cancelDraft() }
+            loggedIn.remove(providerId)
+            statusMessage = L("Desconectado.")
+        } catch { statusMessage = error.localizedDescription }
     }
 }
 

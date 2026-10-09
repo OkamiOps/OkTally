@@ -24,6 +24,21 @@ enum ProviderErrorPresentation: Equatable {
     /// already throws a typed, `LocalizedError`-conforming error, so we don't need to
     /// pattern-match message strings.
     static func classify(_ error: Error) -> ProviderErrorPresentation {
+        if let error = error as? ProviderAPIError {
+            switch error {
+            case .missingCredential: return .notConfigured
+            case .rejectedCredential: return .needsReauth
+            case .response, .malformedResponse: return .error
+            }
+        }
+        if let error = error as? KimiOAuthError {
+            switch error {
+            case .noRefreshToken, .expired, .accessDenied: return .needsReauth
+            case .requestFailed(let status), .profileFailed(let status):
+                return [400, 401, 403].contains(status ?? 0) ? .needsReauth : .error
+            case .invalidResponse: return .error
+            }
+        }
         if let error = error as? SchedulerError {
             switch error {
             case .notConfigured: return .notConfigured

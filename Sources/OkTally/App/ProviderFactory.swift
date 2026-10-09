@@ -40,6 +40,26 @@ struct ProviderFactory {
             raw = [CodexUsageProvider(instanceId: id, oauthManager: deps.oauthManager, tokenStore: deps.tokenStore)]
         case .supergrok:
             raw = [SuperGrokUsageProvider(instanceId: id, oauthManager: deps.oauthManager, tokenStore: deps.tokenStore)]
+        case .kiro:
+            raw = [KiroUsageProvider(instanceId: id, tokenStore: deps.tokenStore)]
+        case .kimi:
+            raw = [KimiUsageProvider(instanceId: id, tokenStore: deps.tokenStore)]
+        case .kimiAPI:
+            raw = [MoonshotUsageProvider(instanceId: id, apiKeyProvider: { preferences.apiKey(instanceId: id) })]
+        case .zai:
+            raw = [ZaiUsageProvider(instanceId: id, apiKeyProvider: { preferences.apiKey(instanceId: id) })]
+        case .zaiAPI:
+            raw = [CatalogConnectionProvider(instanceId: id, service: .zai, apiKeyProvider: { preferences.apiKey(instanceId: id) })]
+        case .mistral:
+            raw = [MistralUsageProvider(instanceId: id, apiKeyProvider: { preferences.apiKey(instanceId: id) })]
+        case .mistralAPI:
+            raw = [CatalogConnectionProvider(instanceId: id, service: .mistral, apiKeyProvider: { preferences.apiKey(instanceId: id) })]
+        case .qwen:
+            raw = [QwenUsageProvider(instanceId: id, apiKeyProvider: { preferences.apiKey(instanceId: id) })]
+        case .deepseek:
+            raw = [DeepSeekUsageProvider(instanceId: id, apiKeyProvider: { preferences.apiKey(instanceId: id) })]
+        case .metaAPI:
+            raw = [MetaAPIUsageProvider(instanceId: id, apiKeyProvider: { preferences.apiKey(instanceId: id) })]
         case .openrouter:
             raw = [OpenRouterUsageProvider(instanceId: id, apiKeyProvider: { preferences.apiKey(instanceId: id) })]
         case .minimax:

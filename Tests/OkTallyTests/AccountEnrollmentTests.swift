@@ -170,6 +170,35 @@ final class AccountEnrollmentTests: XCTestCase {
         XCTAssertNil(env.tokens.load(providerId: draft))
     }
 
+    func test_finish_cancelledThenReopenedSameLegacyIdCannotCommitOrEraseNewCredential() async throws {
+        let env = EnrollmentEnv(existing: [])
+        let id = env.enrollment.beginDraft(kind: .kiro)
+        let generation = env.model.activeDraftGeneration
+        let replacement = OAuthToken(accessToken: "new-session", refreshToken: nil, expiresAt: nil, extra: [:])
+        env.resolver.next = AccountIdentity(identityKey: "old-profile")
+        env.resolver.onResolve = {
+            env.enrollment.abandon(draftId: id, kind: .kiro)
+            XCTAssertEqual(env.enrollment.beginDraft(kind: .kiro), id)
+            try? env.tokens.save(replacement, providerId: id)
+        }
+        let result = await env.enrollment.finish(draftId: id, kind: .kiro, draftGeneration: generation)
+        XCTAssertEqual(result, .cancelled)
+        XCTAssertFalse(env.model.accounts.contains { $0.id == id })
+        XCTAssertEqual(env.model.activeDraftId, id)
+        XCTAssertEqual(env.tokens.load(providerId: id), replacement)
+    }
+
+    func test_finish_capturedGenerationCannotStartInReopenedDraft() async {
+        let env = EnrollmentEnv(existing: [])
+        let id = env.enrollment.beginDraft(kind: .kiro)
+        let generation = env.model.activeDraftGeneration
+        env.enrollment.abandon(draftId: id, kind: .kiro)
+        XCTAssertEqual(env.enrollment.beginDraft(kind: .kiro), id)
+        let result = await env.enrollment.finish(draftId: id, kind: .kiro, draftGeneration: generation)
+        XCTAssertEqual(result, .cancelled)
+        XCTAssertFalse(env.model.accounts.contains { $0.id == id })
+    }
+
     func test_finish_notTheActiveDraft_isCancelled() async {
         let env = EnrollmentEnv(existing: [])
         env.resolver.next = AccountIdentity(email: "n@x.com", identityKey: "n@x.com")

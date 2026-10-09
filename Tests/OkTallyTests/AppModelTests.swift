@@ -581,6 +581,22 @@ final class AppModelTests: XCTestCase {
     }
     // MARK: - Contas
 
+    func test_verifiedSnapshotAppearsImmediatelyAndRemovedAccountCannotReturn() throws {
+        let storage = FakeStorage()
+        let account = AccountInstance(id: "deepseek#abc123", kind: .deepseek)
+        let model = makeAccountsModel(extra: [account], storage: storage)
+        let snapshot = ProviderSnapshot(providerId: account.id, fetchedAt: Date(),
+                                        quotas: [QuotaWindow(label: "balance", shape: .creditBalance(remaining: 10, currency: "USD"))],
+                                        usageDetail: nil)
+        model.recordValidatedSnapshot(snapshot)
+        XCTAssertEqual(model.snapshotsByProvider[account.id], snapshot)
+        XCTAssertEqual(try storage.latestSnapshot(providerId: account.id), snapshot)
+        try model.removeAccount(id: account.id)
+        model.recordValidatedSnapshot(snapshot)
+        XCTAssertNil(model.snapshotsByProvider[account.id])
+        XCTAssertNil(try storage.latestSnapshot(providerId: account.id))
+    }
+
     /// Registry montado como o app monta (uma conta legada por tipo), com provedores
     /// falsos rotulados pela mesma regra do `ProviderFactory`.
     private func makeAccountsModel(

@@ -10,19 +10,24 @@ struct ProviderSnapshot: Codable, Equatable {
     /// Opcional e com default para manter compatibilidade com snapshots persistidos
     /// antes do campo existir.
     let planLabel: String?
+    /// Uma conexão pode ser válida sem o serviço expor cotas consultáveis.
+    /// Ausente nos snapshots antigos e nos provedores com monitoramento completo.
+    let connectionNote: String?
 
     init(
         providerId: String,
         fetchedAt: Date,
         quotas: [QuotaWindow],
         usageDetail: [UsageDetail]?,
-        planLabel: String? = nil
+        planLabel: String? = nil,
+        connectionNote: String? = nil
     ) {
         self.providerId = providerId
         self.fetchedAt = fetchedAt
         self.quotas = quotas
         self.usageDetail = usageDetail
         self.planLabel = planLabel
+        self.connectionNote = connectionNote
     }
 }
 

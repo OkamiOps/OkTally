@@ -22,6 +22,13 @@ enum ProviderPalette {
         case "antigravity": return Color(hex: 0x3D8BFF) // azul
         case "copilot":     return Color(hex: 0x5B7CFA) // índigo
         case "supergrok":   return Color(hex: 0x9B5CF6) // violeta-azulado
+        case "kiro":        return Color(hex: 0x9D8CFF)
+        case "deepseek":    return Color(hex: 0x536DFE)
+        case "meta-api":    return Color(hex: 0x528BFF)
+        case "kimi", "kimi-api": return Color(hex: 0x76A9FF)
+        case "zai", "zai-api": return Color(hex: 0x56CBC1)
+        case "mistral", "mistral-api": return Color(hex: 0xFFAC49)
+        case "qwen": return Color(hex: 0xB286FF)
         case "opencode":    return Color(hex: 0xC94DFF) // violeta
         case "minimax":     return Color(hex: 0xFF3D8F) // vizinho do Neon Magenta
         // Cursor era o neutro grafite da roda. Só que ele é justamente quem costuma estar
@@ -52,6 +59,13 @@ enum ProviderPalette {
         case "claude": return "C"
         case "codex": return "X"
         case "supergrok": return "G"
+        case "kiro": return "Ki"
+        case "deepseek": return "D"
+        case "meta-api": return "Me"
+        case "kimi", "kimi-api": return "Km"
+        case "zai", "zai-api": return "Z"
+        case "mistral", "mistral-api": return "Mi"
+        case "qwen": return "Q"
         case "cursor": return "▹"
         case "cursor-grokbot": return "GB"
         case "openrouter": return "O"
