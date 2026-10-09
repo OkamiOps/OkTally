@@ -139,15 +139,15 @@ final class AccountEmailResolverTests: XCTestCase {
                         providerId: "kiro#abc123")
         let result = await makeResolver(tokens: tokens).resolve(AccountInstance(id: "kiro#abc123", kind: .kiro))
         XCTAssertEqual(result.email, "Me@Work.com")
-        XCTAssertEqual(result.identityKey, "arn:aws:example:profile/work")
+        XCTAssertEqual(result.identityKey, "arn:aws:example:profile/work|email:me@work.com")
     }
 
-    func test_resolve_kiro_withoutProfileUsesNormalizedEmail() async throws {
+    func test_resolve_kiro_withoutProfileKeepsEmailButCannotIdentifyQuotaScope() async throws {
         let tokens = InMemoryTokenStore()
         try tokens.save(OAuthToken(accessToken: "example", refreshToken: nil, expiresAt: nil,
                                    extra: ["email": "Me@Work.com"]), providerId: "kiro")
         let result = await makeResolver(tokens: tokens).resolve(AccountInstance(id: "kiro", kind: .kiro))
-        XCTAssertEqual(result.identityKey, "me@work.com")
+        XCTAssertNil(result.identityKey)
     }
 
     func test_resolve_legacyIDEs_readTheirLocalEmail() async {

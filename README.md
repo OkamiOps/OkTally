@@ -115,7 +115,7 @@ The **Análise** tab sums all sources into one heatmap + stat chips (lifetime, d
 
 Add these accounts through **Settings → Add account…**. New API connections validate a candidate key before saving it. Keys and OAuth sessions are isolated by account ID in Keychain; duplicate keys/accounts are not enrolled again. Catalog validation never produces a synthetic quota.
 
-For Kiro, sign in with `kiro-cli login`, then choose **Kiro → Import from Kiro CLI**. Switch the CLI account and repeat **Add account** for another account. The importer reads the CLI database once and does not modify it. IDE Secret Storage and Social/Builder ID sessions without the required OIDC registration are not supported by this importer.
+For Kiro, sign in with `kiro-cli login`, then choose **Kiro → Import from Kiro CLI**. Switch the CLI account and repeat **Add account** for another account. The importer reads the CLI database once and does not modify it. Account identity includes the authenticated user and quota profile, so users sharing an organization profile remain separate. IDE Secret Storage and Social/Builder ID sessions without the required OIDC registration are not supported by this importer.
 
 Muse Code subscription monitoring is not enrolled in this release. MSP `usage/read` returns only the last observation made by its own host, and a fresh isolated host can return no usage. The experimental reader is covered by contract tests, but this does not establish live monitoring of another CLI process. Meta Model API credentials remain separate from subscription credentials.
 

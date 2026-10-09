@@ -3,7 +3,7 @@ import XCTest
 
 final class KiroUsageProviderTests: XCTestCase {
     private let profileArn = "arn:aws:codewhisperer:us-east-1:123456789012:profile/work-profile"
-    private let usageURL = URL(string: "https://management.us-east-1.kiro.dev/Get-Usage-Limits?profileArn=arn:aws:codewhisperer:us-east-1:123456789012:profile/work-profile&origin=KIRO_CLI")!
+    private let usageURL = URL(string: "https://management.us-east-1.kiro.dev/Get-Usage-Limits?profileArn=arn:aws:codewhisperer:us-east-1:123456789012:profile/work-profile&origin=KIRO_CLI&isEmailRequired=true")!
     private let oidcURL = URL(string: "https://oidc.us-east-1.amazonaws.com/token")!
 
     private func makeSession() -> URLSession {

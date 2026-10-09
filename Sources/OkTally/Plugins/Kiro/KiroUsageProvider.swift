@@ -49,8 +49,10 @@ final class KiroSessionImporter: KiroSessionImporting {
 
         var extra = token.extra
         if let email = response.userInfo?.email?.nonEmpty { extra["email"] = email }
+        if let userId = response.userInfo?.userId?.nonEmpty { extra["userId"] = userId }
         // O perfil local é a fonte do nome. Não trocamos por um valor inferido da API.
         token = OAuthToken(accessToken: token.accessToken, refreshToken: token.refreshToken, expiresAt: token.expiresAt, extra: extra)
+        try KiroAccountImport.validate(token, replacing: nil)
         return token
     }
 
@@ -119,6 +121,8 @@ final class KiroUsageProvider: UsageProvider {
             result = try await KiroAPI.fetchUsage(accessToken: token.accessToken, profileArn: token.extra["profileArn"], session: session)
         }
 
+        try Task.checkCancellation()
+        guard tokenStore.load(providerId: id) == token else { throw CancellationError() }
         guard result.statusCode != 401 else { throw ProviderAPIError.rejectedCredential("Kiro") }
         guard (200...299).contains(result.statusCode), let response = result.response else {
             throw ProviderAPIError.response("Kiro", result.statusCode)
@@ -257,7 +261,8 @@ private enum KiroAPI {
         components.path = "/Get-Usage-Limits"
         components.queryItems = [
             URLQueryItem(name: "profileArn", value: profileArn),
-            URLQueryItem(name: "origin", value: "KIRO_CLI")
+            URLQueryItem(name: "origin", value: "KIRO_CLI"),
+            URLQueryItem(name: "isEmailRequired", value: "true")
         ]
         return components.url
     }

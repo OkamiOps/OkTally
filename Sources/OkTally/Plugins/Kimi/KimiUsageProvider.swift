@@ -37,6 +37,8 @@ final class KimiUsageProvider: UsageProvider {
             result = try await KimiUsageAPI.fetch(accessToken: token.accessToken, session: session)
         }
 
+        try Task.checkCancellation()
+        guard tokenStore.load(providerId: id) == token else { throw CancellationError() }
         guard result.statusCode != 401 else { throw ProviderAPIError.rejectedCredential("Kimi Code") }
         guard (200...299).contains(result.statusCode) else {
             throw ProviderAPIError.response("Kimi Code", result.statusCode)

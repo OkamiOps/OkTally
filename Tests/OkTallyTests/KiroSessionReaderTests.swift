@@ -87,7 +87,7 @@ final class KiroSessionReaderTests: XCTestCase {
         let path = try makeDatabase(expired: true)
         defer { try? FileManager.default.removeItem(atPath: path) }
         let oidcURL = URL(string: "https://oidc.us-east-1.amazonaws.com/token")!
-        let usageURL = URL(string: "https://management.us-east-1.kiro.dev/Get-Usage-Limits?profileArn=arn:aws:codewhisperer:us-east-1:123456789012:profile/work-profile&origin=KIRO_CLI")!
+        let usageURL = URL(string: "https://management.us-east-1.kiro.dev/Get-Usage-Limits?profileArn=arn:aws:codewhisperer:us-east-1:123456789012:profile/work-profile&origin=KIRO_CLI&isEmailRequired=true")!
         URLProtocolStub.stubResponses[oidcURL] = (Data(#"{"accessToken":"fresh-access","refreshToken":"rotated-refresh","expiresIn":3600}"#.utf8), 200)
         URLProtocolStub.stubResponses[usageURL] = (Data(#"{"usageBreakdownList":[{"displayName":"Credits","currentUsageWithPrecision":1.25,"usageLimitWithPrecision":10,"nextDateReset":1798761600}],"userInfo":{"email":"me@example.test"}}"#.utf8), 200)
 
