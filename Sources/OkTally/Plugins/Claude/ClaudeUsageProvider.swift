@@ -35,12 +35,12 @@ final class ClaudeUsageProvider: UsageProvider {
     }
 
     @discardableResult
-    func importLegacyCredentialsIfAvailable() -> Bool {
+    func importLegacyCredentialsIfAvailable(credentialProvider: ClaudeCredentialProvider? = nil) -> Bool {
         // O login do Claude Code CLI é UM só na máquina: ele semeia apenas a conta
         // legada, nunca uma extra (senão as duas seriam a mesma conta).
         guard id == AccountKind.claude.rawValue,
               tokenStore.load(providerId: id) == nil,
-              let credentials = try? legacyCredentialProvider?.loadCredentials() else { return false }
+              let credentials = try? (credentialProvider ?? legacyCredentialProvider)?.loadCredentials() else { return false }
         let token = OAuthToken(
             accessToken: credentials.accessToken,
             refreshToken: credentials.refreshToken,

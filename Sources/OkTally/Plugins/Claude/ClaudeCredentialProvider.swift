@@ -22,14 +22,25 @@ protocol CredentialStoreReading {
 }
 
 final class KeychainCredentialReader: CredentialStoreReading {
+    private let allowInteraction: Bool
+
+    init(allowInteraction: Bool = true) {
+        self.allowInteraction = allowInteraction
+    }
+
     func readClaudeCredentialsJSON() -> Data? {
-        let query: [String: Any] = [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "Claude Code-credentials",
             kSecAttrAccount as String: NSUserName(),
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
+        // A importação automática acontece antes de a interface existir. Uma ACL
+        // do Claude CLI que exige confirmação não pode bloquear a abertura do app.
+        if !allowInteraction {
+            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        }
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         guard status == errSecSuccess, let data = item as? Data else { return nil }

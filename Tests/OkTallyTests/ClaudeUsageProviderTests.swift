@@ -117,6 +117,22 @@ final class ClaudeUsageProviderTests: XCTestCase {
         XCTAssertFalse(provider.importLegacyCredentialsIfAvailable())
     }
 
+    func test_startupImportDoesNotFallBackToInteractiveSourceWhenSilentSourceIsUnavailable() {
+        let interactive = FakeCredentialStoreReading()
+        interactive.dataToReturn = "{\"accessToken\":\"interactive-only\"}".data(using: .utf8)
+        let missingFile = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let interactiveProvider = ClaudeCredentialProvider(keychainReader: interactive, fileURL: missingFile)
+        let silentProvider = ClaudeCredentialProvider(keychainReader: FakeCredentialStoreReading(), fileURL: missingFile)
+        let store = InMemoryTokenStore()
+        let provider = ClaudeUsageProvider(oauthManager: FakeOAuthManaging(), tokenStore: store,
+                                          legacyCredentialProvider: interactiveProvider)
+
+        XCTAssertFalse(provider.importLegacyCredentialsIfAvailable(credentialProvider: silentProvider))
+        XCTAssertNil(store.load(providerId: "claude"))
+        XCTAssertTrue(provider.importLegacyCredentialsIfAvailable(), "Explicit import can still use the interactive source")
+        XCTAssertEqual(store.load(providerId: "claude")?.accessToken, "interactive-only")
+    }
+
     func test_importLegacyCredentials_skipsWhenTokenAlreadyPresent() throws {
         let store = InMemoryTokenStore()
         try store.save(OAuthToken(accessToken: "already", refreshToken: nil, expiresAt: nil, extra: [:]), providerId: "claude")

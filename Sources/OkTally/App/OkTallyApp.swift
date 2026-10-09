@@ -68,7 +68,9 @@ struct OkTallyApp: App {
         let claudeProvider = registry.providers
             .first { $0.id == AccountKind.claude.rawValue }
             .flatMap { ($0 as? LabeledProvider)?.base as? ClaudeUsageProvider }
-        claudeProvider?.importLegacyCredentialsIfAvailable()
+        claudeProvider?.importLegacyCredentialsIfAvailable(credentialProvider: ClaudeCredentialProvider(
+            keychainReader: KeychainCredentialReader(allowInteraction: false)
+        ))
         self.claudeProvider = claudeProvider
 
         let pricingEngine = PricingEngine(source: OpenRouterPricingSource())
