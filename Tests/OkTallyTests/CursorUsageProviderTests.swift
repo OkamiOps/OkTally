@@ -48,6 +48,46 @@ final class CursorTokenReaderTests: XCTestCase {
         }
         XCTAssertEqual(CursorTokenReader(dbPath: path).readAccessToken(), "blob-token-456")
     }
+
+    // Cursor 3.27+ cifra o token em repouso com o safeStorage do Electron. Vetor gerado
+    // com openssl: PBKDF2-SHA1("test-password", "saltysalt", 1003) → AES-128-CBC, IV de
+    // 16 espaços, prefixo "v10".
+    private let encryptedToken = "cursor-safe-storage:v1:djEwaTKn8QSpJ4aIH7pIsFHxMWdeVpGH4Q7X7hMfDsr+cpE="
+
+    func test_readAccessToken_decryptsSafeStorageToken() throws {
+        let path = try makeFixtureDB(withToken: encryptedToken)
+        let reader = CursorTokenReader(dbPath: path, safeStoragePassword: { "test-password" })
+        XCTAssertEqual(reader.readAccessToken(), "header.payload.signature")
+    }
+
+    func test_readAccessToken_nilWhenSafeStoragePasswordUnavailable() throws {
+        let path = try makeFixtureDB(withToken: encryptedToken)
+        let reader = CursorTokenReader(dbPath: path, safeStoragePassword: { nil })
+        XCTAssertNil(reader.readAccessToken())
+    }
+
+    func test_readAccessToken_nilWhenSafeStoragePasswordWrong() throws {
+        let path = try makeFixtureDB(withToken: encryptedToken)
+        let reader = CursorTokenReader(dbPath: path, safeStoragePassword: { "wrong" })
+        XCTAssertNil(reader.readAccessToken())
+    }
+
+    func test_hasCredential_doesNotTouchKeychainForEncryptedToken() throws {
+        let path = try makeFixtureDB(withToken: encryptedToken)
+        var keychainReads = 0
+        let reader = CursorTokenReader(dbPath: path, safeStoragePassword: { keychainReads += 1; return nil })
+        XCTAssertTrue(reader.hasCredential())
+        XCTAssertEqual(keychainReads, 0)
+    }
+
+    func test_readAccessToken_cachesSafeStoragePassword() throws {
+        let path = try makeFixtureDB(withToken: encryptedToken)
+        var keychainReads = 0
+        let reader = CursorTokenReader(dbPath: path, safeStoragePassword: { keychainReads += 1; return "test-password" })
+        _ = reader.readAccessToken()
+        _ = reader.readAccessToken()
+        XCTAssertEqual(keychainReads, 1)
+    }
 }
 
 final class FakeCursorTokenReading: CursorTokenReading {
