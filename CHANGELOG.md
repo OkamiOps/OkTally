@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.10.0-beta] — 2026-10-26
+
 ### Added
 
 - **Extra Cursor accounts (with their GrokBot)**: an extra Cursor account signs in
@@ -35,6 +37,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   nickname. A nickname shows everywhere the account does ("Claude Code · Work") —
   sidebar, popover, notch, pins and notifications. Accounts that aren't tied to an
   app installed on this Mac can be removed, together with their history and pins.
+- **New providers — Kiro, Kimi Code, Kimi/Moonshot API, GLM/Z.ai, Qwen, DeepSeek,
+  Mistral, Meta Muse/Spark API**: add them through **Settings → Add account…**. Kiro
+  imports the `kiro-cli` OIDC session (precise monthly credits, plan and renewal) and
+  renews it when it expires; Kimi Code signs in with a browser device code. API-key
+  connections validate the key before saving it and never show a made-up quota when the
+  provider only confirms access.
+- **Primary quota per account**: Preferences → Account has a "Primary quota" picker
+  (automatic or any window from the last snapshot). In automatic, Codex now promotes the
+  tightest general window (5h or weekly) instead of always the weekly one. Secondary
+  windows get their own bar, coloured by usage, instead of a footnote.
+- **Hover on every Analytics chart**: one shared tooltip shows the exact numbers under
+  the cursor.
+- **Hide accounts from the popover**: a per-account choice that only affects the popover;
+  pins, notch and alerts keep tracking it.
+
+### Fixed
+
+- **Cursor and GrokBot stuck on "error (code 401)"**: Cursor 3.27 encrypts its saved
+  session token. OkTally now decrypts it with the key Cursor keeps in the Keychain. The
+  first time, macOS asks whether OkTally may read "Cursor Safe Storage". Choose
+  **Always Allow**.
+- **MiMo no longer disconnects on its own**: one failed session recovery used to log the
+  account out for good; it now retries and only asks to sign in after repeated failures.
+- **Opening OkTally no longer waits on the Claude CLI Keychain prompt**.
+- **Claude login and reconnect controls stay reachable in Settings**.
+- **Notch panel shows up to 8 entries** (was 5).
+- **Account removal is clean**: removing an account no longer leaves its key, region,
+  interval or a half-identified "zombie" account behind, and an account removed during a
+  refresh doesn't save or alert afterwards.
 
 ## [0.9.6-beta] — 2026-08-29
 
@@ -260,6 +291,7 @@ First public release. Everything below is new.
 - Secrets in the macOS Keychain only (with silent migration from legacy plaintext locations); usage data stays local; no telemetry.
 - Tri-state provider status (connected / needs reauth / not configured) so an expired login is never painted as "broken" or hidden as "fine".
 
+[0.10.0-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.10.0-beta
 [0.9.6-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.6-beta
 [0.9.5-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.5-beta
 [0.9.4-beta]: https://github.com/OkamiOps/OkTally/releases/tag/v0.9.4-beta
