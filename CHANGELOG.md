@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.10.1-beta] — 2026-10-31
+
+### Fixed
+
+- **Claude usage stops updating even after reconnecting**: the usage API can return
+  `five_hour: null` while still reporting valid weekly usage. OkTally now accepts
+  missing or null usage windows independently, so an unavailable window no longer
+  prevents the others from updating. It only shows windows actually reported by the
+  API; missing data is never shown as zero usage. If no supported window is available,
+  the last successful snapshot is preserved and the fetch is reported as a failure.
+
 ## [0.10.0-beta] — 2026-10-26
 
 ### Added

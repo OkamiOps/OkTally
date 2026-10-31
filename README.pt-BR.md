@@ -120,7 +120,7 @@ Cada provedor é um plugin que implementa um único protocolo `UsageProvider` e 
 
 Requer macOS 26 (Tahoe) ou mais recente. Versões anteriores do macOS não são mais suportadas e não recebem atualizações.
 
-1. Baixe `OkTally-0.10.0.dmg` na [página de Releases](https://github.com/OkamiOps/OkTally/releases).
+1. Baixe `OkTally-0.10.1.dmg` na [página de Releases](https://github.com/OkamiOps/OkTally/releases).
 2. Abra e arraste **OkTally** para Aplicativos.
 3. O app não é notarizado: no primeiro uso, clique com o botão direito (Ctrl-clique) em `OkTally.app` → **Abrir** → **Abrir**.
 
