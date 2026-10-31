@@ -15,8 +15,10 @@ struct ClaudeUsageWindow: Codable, Equatable {
 }
 
 struct ClaudeUsageResponse: Codable, Equatable {
-    let fiveHour: ClaudeUsageWindow
-    let sevenDay: ClaudeUsageWindow
+    // Entire windows can be null or absent, independently of an idle window's
+    // resets_at. Observed on 2026-10-31: five_hour null with valid weekly usage.
+    let fiveHour: ClaudeUsageWindow?
+    let sevenDay: ClaudeUsageWindow?
     let sevenDayOpus: ClaudeUsageWindow?
 
     enum CodingKeys: String, CodingKey {

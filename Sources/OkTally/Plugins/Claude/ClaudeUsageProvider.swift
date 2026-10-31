@@ -55,14 +55,17 @@ final class ClaudeUsageProvider: UsageProvider {
         let usage = try await apiClient.fetchUsage(accessToken: accessToken)
 
         let now = Date()
-        var quotas = [
-            QuotaWindow(label: "5h", shape: Self.shape(for: usage.fiveHour, windowLength: 5 * 3600, now: now)),
-            QuotaWindow(
+        var quotas: [QuotaWindow] = []
+        if let fiveHour = usage.fiveHour {
+            quotas.append(QuotaWindow(label: "5h", shape: Self.shape(for: fiveHour, windowLength: 5 * 3600, now: now)))
+        }
+        if let sevenDay = usage.sevenDay {
+            quotas.append(QuotaWindow(
                 label: "weekly",
-                shape: Self.shape(for: usage.sevenDay, windowLength: 7 * 24 * 3600, now: now),
+                shape: Self.shape(for: sevenDay, windowLength: 7 * 24 * 3600, now: now),
                 renewalCadence: .weekly
-            )
-        ]
+            ))
+        }
         if let opus = usage.sevenDayOpus {
             quotas.append(QuotaWindow(
                 label: "weekly-opus",
@@ -70,6 +73,9 @@ final class ClaudeUsageProvider: UsageProvider {
                 renewalCadence: .weekly
             ))
         }
+        // An unavailable response must not replace the last good snapshot or
+        // clear its error state. Missing windows never mean zero usage.
+        guard !quotas.isEmpty else { throw ProviderAPIError.malformedResponse("Claude") }
         let planLabel = await profileClient?.fetchPlanLabel(accessToken: accessToken)
         return ProviderSnapshot(providerId: id, fetchedAt: now, quotas: quotas, usageDetail: nil, planLabel: planLabel)
     }

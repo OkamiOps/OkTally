@@ -7,6 +7,61 @@ final class FakeClaudeUsageFetching: ClaudeUsageFetching {
 }
 
 final class ClaudeUsageProviderTests: XCTestCase {
+    private func snapshot(from json: Data) async throws -> ProviderSnapshot {
+        let url = URL(string: "https://api.anthropic.com/api/oauth/usage")!
+        URLProtocolStub.stubResponses[url] = (json, 200)
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [URLProtocolStub.self]
+        let provider = ClaudeUsageProvider(
+            oauthManager: FakeOAuthManaging(), tokenStore: InMemoryTokenStore(),
+            apiClient: ClaudeUsageAPIClient(session: URLSession(configuration: config)),
+            profileClient: nil, legacyCredentialProvider: nil
+        )
+        return try await provider.fetchSnapshot()
+    }
+
+    func test_fetchSnapshot_weeklyOnlyLiveResponse_keepsWeeklyWithoutInventingFiveHour() async throws {
+        // Reduced, credential-free response observed on 2026-10-31: five_hour is null.
+        let url = Bundle.module.url(forResource: "claude_usage_weekly_only_response", withExtension: "json", subdirectory: "Fixtures")!
+        let result = try await snapshot(from: Data(contentsOf: url))
+
+        XCTAssertEqual(result.quotas.map(\.label), ["weekly"])
+        let weekly = try XCTUnwrap(result.quotas.first)
+        XCTAssertEqual(weekly.shape.usedPercent, 52)
+        XCTAssertEqual(weekly.renewalCadence, .weekly)
+        guard case .rollingWindow(_, _, _, let resetAt) = weekly.shape else {
+            return XCTFail("Expected rolling weekly window")
+        }
+        XCTAssertEqual(resetAt.timeIntervalSince1970, 1793779199.888072, accuracy: 0.001)
+    }
+
+    func test_fetchSnapshot_missingFiveHour_keepsWeekly() async throws {
+        let result = try await snapshot(from: Data(#"{"seven_day":{"utilization":52,"resets_at":"2026-11-04T07:59:59Z"}}"#.utf8))
+
+        XCTAssertEqual(result.quotas.map(\.label), ["weekly"])
+        XCTAssertEqual(result.quotas.first?.shape.usedPercent, 52)
+    }
+
+    func test_fetchSnapshot_nullWeekly_keepsFiveHour() async throws {
+        let result = try await snapshot(from: Data(#"{"five_hour":{"utilization":4,"resets_at":null},"seven_day":null}"#.utf8))
+
+        XCTAssertEqual(result.quotas.map(\.label), ["5h"])
+        XCTAssertEqual(result.quotas.first?.shape.usedPercent, 4)
+    }
+
+    func test_fetchSnapshot_noReportedWindows_rejectsUnavailableUsage() async throws {
+        for json in [#"{"five_hour":null,"seven_day":null,"seven_day_opus":null}"#, "{}"] {
+            do {
+                _ = try await snapshot(from: Data(json.utf8))
+                XCTFail("Unavailable usage must not become a successful empty snapshot")
+            } catch ProviderAPIError.malformedResponse(let name) {
+                XCTAssertEqual(name, "Claude")
+            } catch {
+                XCTFail("Expected a provider data error, got \(error)")
+            }
+        }
+    }
+
     private func makeProvider(fetcher: FakeClaudeUsageFetching, tokenInStore: Bool = true) throws -> ClaudeUsageProvider {
         let store = InMemoryTokenStore()
         if tokenInStore {
@@ -72,7 +127,7 @@ final class ClaudeUsageProviderTests: XCTestCase {
         let client = ClaudeUsageAPIClient(session: session)
         let response = try await client.fetchUsage(accessToken: "tok")
 
-        XCTAssertEqual(response.fiveHour.utilization, 42.5)
+        XCTAssertEqual(response.fiveHour?.utilization, 42.5)
         // Idle window: the live API reports `resets_at: null` — must decode, not fail.
         XCTAssertEqual(response.sevenDayOpus?.utilization, 15.0)
         XCTAssertNil(response.sevenDayOpus?.resetsAt)
