@@ -44,6 +44,12 @@ enum ProviderErrorPresentation: Equatable {
             case .notConfigured: return .notConfigured
             }
         }
+        if let error = error as? CodexUsageError {
+            if case .badResponse(let code) = error, code == 401 || code == 403 {
+                return .needsReauth
+            }
+            return .error
+        }
         if let error = error as? OAuthError {
             switch error {
             case .noRefreshToken, .refreshFailed:

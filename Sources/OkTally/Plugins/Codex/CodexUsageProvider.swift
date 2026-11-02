@@ -10,17 +10,21 @@ final class CodexUsageProvider: UsageProvider {
     private let oauthManager: OAuthManaging
     private let tokenStore: TokenStoring
     private let apiClient: CodexUsageFetching
+    /// `nil` in tests. Production reads `~/.codex/auth.json` only after the stored session fails.
+    private let cliAuthFile: URL?
 
     init(
         instanceId: String = AccountKind.codex.rawValue,
         oauthManager: OAuthManaging,
         tokenStore: TokenStoring,
-        apiClient: CodexUsageFetching = CodexUsageAPIClient()
+        apiClient: CodexUsageFetching = CodexUsageAPIClient(),
+        cliAuthFile: URL? = CodexCLIAuth.defaultURL
     ) {
         self.id = instanceId
         self.oauthManager = oauthManager
         self.tokenStore = tokenStore
         self.apiClient = apiClient
+        self.cliAuthFile = cliAuthFile
     }
 
     func isAuthenticated() async -> Bool {
@@ -28,9 +32,22 @@ final class CodexUsageProvider: UsageProvider {
     }
 
     func fetchSnapshot() async throws -> ProviderSnapshot {
-        let accessToken = try await oauthManager.validAccessToken(providerId: id, config: CodexOAuth.config.forInstance(id))
-        let accountId = tokenStore.load(providerId: id)?.extra["account_id"]
-        let usage = try await apiClient.fetchUsage(accessToken: accessToken, accountId: accountId)
+        let stored = tokenStore.load(providerId: id)
+        let accountId = stored?.extra["account_id"] ?? CodexCLIAuth.accountId(from: stored?.accessToken)
+        let email = stored.map { AccountEmailResolver.codexEmail(accessToken: $0.accessToken, extra: $0.extra) } ?? nil
+        let usage: CodexUsageResponse
+        do {
+            usage = try await fetchUsingStoredSession(accountId: accountId)
+        } catch {
+            // The stored ChatGPT session can die (expired access token the refresh
+            // endpoint rejects, or a 401 that never rotates it) while the Codex CLI on
+            // this Mac still holds a working login for the same account. Without this,
+            // the menu bar keeps the last good percent for hours and looks frozen.
+            guard let fallback = await usageFromMatchingCLI(accountId: accountId, email: email) else {
+                throw error
+            }
+            usage = fallback
+        }
 
         var quotas: [QuotaWindow] = []
         // General plan limits (each window labelled by its real duration, not assumed).
@@ -48,6 +65,28 @@ final class CodexUsageProvider: UsageProvider {
             usageDetail: nil,
             planLabel: usage.planType.map(Self.planDisplayName)
         )
+    }
+
+    /// Stored-session read. A 401/403 retries once after a refresh: the access token can
+    /// be rejected before `expiresAt`, and the scheduler would otherwise repeat the dead
+    /// token until that date.
+    private func fetchUsingStoredSession(accountId: String?) async throws -> CodexUsageResponse {
+        let config = CodexOAuth.config.forInstance(id)
+        let accessToken = try await oauthManager.validAccessToken(providerId: id, config: config)
+        do {
+            return try await apiClient.fetchUsage(accessToken: accessToken, accountId: accountId)
+        } catch CodexUsageError.badResponse(let code) where code == 401 || code == 403 {
+            let refreshed = try await oauthManager.refresh(providerId: id, config: config)
+            let refreshedAccount = refreshed.extra["account_id"] ?? accountId
+            return try await apiClient.fetchUsage(accessToken: refreshed.accessToken, accountId: refreshedAccount)
+        }
+    }
+
+    private func usageFromMatchingCLI(accountId: String?, email: String?) async -> CodexUsageResponse? {
+        guard let cliAuthFile, let cli = CodexCLIAuth.load(from: cliAuthFile),
+              CodexCLIAuth.matches(cli, accountId: accountId, email: email)
+        else { return nil }
+        return try? await apiClient.fetchUsage(accessToken: cli.accessToken, accountId: cli.accountId ?? accountId)
     }
 
     /// "pro" → "Pro", "plus" → "Plus"; valores compostos ("chatgpt_team") viram a última

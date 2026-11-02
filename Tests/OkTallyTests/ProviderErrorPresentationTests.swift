@@ -37,6 +37,8 @@ final class ProviderErrorPresentationTests: XCTestCase {
         XCTAssertEqual(ProviderErrorPresentation.classify(OAuthError.tokenExchangeFailed(400)), .error)
         XCTAssertEqual(ProviderErrorPresentation.classify(OAuthError.portInUse(1455)), .error)
         XCTAssertEqual(ProviderErrorPresentation.classify(CursorUsageError.badResponse(500)), .error)
+        XCTAssertEqual(ProviderErrorPresentation.classify(CodexUsageError.badResponse(401)), .needsReauth)
+        XCTAssertEqual(ProviderErrorPresentation.classify(CodexUsageError.badResponse(500)), .error)
     }
 
     func test_mimoNotLoggedIn_isNeedsReauth_andOffersReconnect() {
