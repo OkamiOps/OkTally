@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.10.2-beta] — 2026-11-02
+
+### Fixed
+
+- **Codex usage stays frozen after the stored session stops working**: a 401 or 403
+  from the usage API now refreshes the OkTally login once and retries. If that
+  still fails and `~/.codex/auth.json` belongs to the same account (same account id
+  or e-mail), OkTally reads usage with the CLI access token only. It never uses or
+  rotates the CLI refresh token, and a different account's CLI login is ignored.
+  A 401 or 403 that both paths fail is shown as needing reconnect, instead of
+  leaving the last snapshot on screen looking healthy.
+
 ## [0.10.1-beta] — 2026-10-31
 
 ### Fixed
