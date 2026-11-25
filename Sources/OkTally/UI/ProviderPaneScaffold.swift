@@ -64,80 +64,102 @@ struct ProviderPaneScaffold<Connection: View, Details: View, Account: View>: Vie
 
     var body: some View {
         VStack(spacing: 0) {
-            PaneHero(tint: identity) {
-                HStack(spacing: Theme.Space.md) {
-                    // Chip em off-white com o glifo na cor do provedor: chip colorido
-                    // sobre gradiente da mesma cor vira mancha (mesma regra do herói do
-                    // popover).
-                    Text(ProviderPalette.glyph(forId: providerId))
-                        .font(.system(size: 18, weight: .heavy, design: .rounded))
-                        .foregroundStyle(identity)
-                        .frame(width: 38, height: 38)
-                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Theme.onHero))
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(name)
-                            .font(.system(size: 19, weight: .bold))
-                            .foregroundStyle(Theme.onHero)
-                        HeroStatusPill(text: status.text, dot: status.tint)
-                        if let problem {
-                            Label(problem, systemImage: "exclamationmark.triangle.fill")
-                                .font(.system(size: 11))
-                                .foregroundStyle(Theme.onHero.opacity(0.92))
-                                .fixedSize(horizontal: false, vertical: true)
+            hero
+            ScrollView {
+                VStack(spacing: Theme.Space.lg) {
+                    PreferencePanel(title: L("Conexão"), systemImage: "link", tint: identity) {
+                        connection
+                    } footer: {
+                        if Details.self != EmptyView.self {
+                            details
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    if Account.self != EmptyView.self {
+                        PreferencePanel(title: L("Conta"), systemImage: "person.crop.circle", tint: identity) {
+                            account
+                        } footer: {
+                            EmptyView()
                         }
                     }
                 }
-            } trailing: {
-                if let window = tightest {
-                    VStack(alignment: .trailing, spacing: 1) {
-                        SectionHeader(WindowLabelCatalog.displayLabel(window.label), onHero: true)
-                        Text(QuotaPresentation.remainingValueText(window.shape))
-                            .font(.system(size: 26, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(Theme.onHero)
-                            .lineLimit(1)
-                        if QuotaPresentation.remainingFraction(window.shape) != nil {
-                            Text(L("restante"))
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(Theme.onHero.opacity(0.8))
-                        }
-                    }
-                }
+                .padding(Theme.Space.xl)
+                .frame(maxWidth: 780)
+                .frame(maxWidth: .infinity)
             }
-            Form {
-                // O detalhe virou RODAPÉ da seção de conexão, não uma segunda seção. Como
-                // seção ele era um cartão cinza do mesmo tamanho e da mesma cor do de
-                // cima, contendo uma frase de legenda — dois objetos idênticos onde há um
-                // assunto só. Como rodapé ele é texto secundário sob o card, que é o
-                // idioma nativo de Ajustes do macOS para exatamente este papel.
-                //
-                // Cursor, Copilot e Antigravity não têm detalhe algum
-                // (`details: EmptyView()`); o `if` evita o rodapé vazio.
-                Section {
-                    connection
-                } header: {
-                    Text(L("Conexão"))
-                } footer: {
-                    if Details.self != EmptyView.self {
-                        details
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 2)
-                    }
-                }
-                // Resolver a conexão vem antes de editar apelido/cota ou remover a
-                // conta. O código e o botão Concluir ficam no primeiro bloco.
-                if Account.self != EmptyView.self {
-                    Section(L("Conta")) {
-                        account
-                    }
-                }
-            }
-            .formStyle(.grouped)
-            .frame(minHeight: 0, maxHeight: .infinity)
+            .background(Theme.pageBackground)
         }
         .frame(minHeight: 0, maxHeight: .infinity)
     }
+
+    /// Hero de assinatura. Não é só uma faixa colorida: mostra identidade, estado e a
+    /// quota mais apertada num anel, então a tela de configuração responde de cara
+    /// "esta conta está conectada e quanto ainda resta".
+    private var hero: some View {
+        HStack(spacing: Theme.Space.lg) {
+            Text(ProviderPalette.glyph(forId: providerId))
+                .font(.system(size: 21, weight: .heavy, design: .rounded))
+                .foregroundStyle(identity)
+                .frame(width: 46, height: 46)
+                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.onHero))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.black.opacity(0.12)))
+            VStack(alignment: .leading, spacing: 6) {
+                Text(name)
+                    .font(.system(size: 21, weight: .bold))
+                    .foregroundStyle(Theme.onHero)
+                    .lineLimit(1)
+                HStack(spacing: Theme.Space.sm) {
+                    HeroStatusPill(text: status.text, dot: status.tint)
+                    if let problem {
+                        Label(problem, systemImage: "exclamationmark.triangle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.onHero.opacity(0.92))
+                            .lineLimit(1)
+                    }
+                }
+            }
+            Spacer(minLength: Theme.Space.lg)
+            if let window = tightest {
+                HStack(spacing: Theme.Space.md) {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        SectionHeader(WindowLabelCatalog.displayLabel(window.label), onHero: true)
+                        Text(QuotaPresentation.remainingValueText(window.shape))
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.onHero)
+                        if let reset = QuotaPresentation.resetCompactText(window.shape) {
+                            Text(reset)
+                                .font(.system(size: 9, weight: .medium))
+                                .monospacedDigit()
+                                .foregroundStyle(Theme.onHero.opacity(0.72))
+                        }
+                    }
+                    quotaRing(window)
+                }
+            }
+        }
+        .padding(.horizontal, Theme.Space.xl)
+        .padding(.vertical, Theme.Space.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.heroFill(identity))
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Color.black.opacity(0.28)).frame(height: 1)
+        }
+    }
+
+    private func quotaRing(_ window: QuotaWindow) -> some View {
+        let fraction = QuotaPresentation.remainingFraction(window.shape) ?? 0
+        return ZStack {
+            Circle()
+                .stroke(Color.black.opacity(0.24), lineWidth: 5)
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(Theme.onHero, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: 46, height: 46)
+    }
+
 }
 
 extension ProviderPaneScaffold where Account == EmptyView {
@@ -146,6 +168,43 @@ extension ProviderPaneScaffold where Account == EmptyView {
          @ViewBuilder connection: () -> Connection, @ViewBuilder details: () -> Details) {
         self.init(providerId: providerId, snapshot: snapshot, problem: problem, name: name, status: status,
                   connection: connection, details: details, account: { EmptyView() })
+    }
+}
+
+/// Painel de configuração usado pelos providers. Substitui o `Form` nativo empilhado:
+/// os controles continuam nativos, mas ganham um container com título, ícone e hierarquia
+/// clara em vez de blocos cinzas indistintos.
+private struct PreferencePanel<Content: View, Footer: View>: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
+    @ViewBuilder var content: Content
+    @ViewBuilder var footer: Footer
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.md) {
+            HStack(spacing: Theme.Space.sm) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.onHero)
+                    .frame(width: 24, height: 24)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(tint))
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer()
+            }
+            VStack(alignment: .leading, spacing: Theme.Space.md) {
+                content
+            }
+            if Footer.self != EmptyView.self {
+                footer
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(Theme.Space.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface()
     }
 }
 

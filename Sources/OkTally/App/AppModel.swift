@@ -42,9 +42,19 @@ final class AppModel: ObservableObject {
 
     /// Estatísticas de uso em tokens por provider (heatmap/streaks), carregadas sob
     /// demanda quando as páginas de análise abrem. Fontes registradas em
-    /// `analyticsLoaders` pelo app (Codex via OAuth; Claude/OpenCode lendo disco local).
+    /// `analyticsLoaders` pelo app (Codex/Cursor via API; Claude/OpenCode/Devin lendo artefatos locais).
     @Published private(set) var analyticsByProvider: [String: TokenAnalytics] = [:]
+    /// Estados separados porque `nil` sozinho é ambíguo: pode significar "ainda não
+    /// carregou", "está carregando" ou "a fonte existe, mas não retornou contadores".
+    /// Sem essa distinção a página de detalhe ficava com spinner eterno num provider
+    /// simplesmente sem dados utilizáveis.
+    @Published private(set) var analyticsLoadingProviderIds: Set<String> = []
+    @Published private(set) var analyticsUnavailableProviderIds: Set<String> = []
     private var analyticsLoadedAt: [String: Date] = [:]
+    /// Scan em voo por provider. A aba agregada e a página de detalhe podem abrir ao
+    /// mesmo tempo; sem este dedupe, duas varreduras do corpus de vários GB do Claude
+    /// corriam em paralelo e pareciam um app travado.
+    private var analyticsTasks: [String: Task<TokenAnalytics?, Never>] = [:]
     var analyticsLoaders: [String: () async -> TokenAnalytics?] = [:]
     /// Fonte de analytics de uma conta nova (ou `nil` quando o tipo não tem, ou quando a
     /// fonte é local e já pertence à conta legada). Injetado pelo app.
@@ -59,19 +69,71 @@ final class AppModel: ObservableObject {
         TokenAnalytics.aggregate(analyticsProviderIds.compactMap { analyticsByProvider[$0] })
     }
 
+    /// Melhor custo disponível para uma conta. O custo do analytics é preferido porque
+    /// carrega origem/período (ex.: custo medido do OpenCode ou ciclo do Cursor); a
+    /// estimativa antiga por `usageDetail` fica como fallback para fontes ainda sem
+    /// analytics carregado. Assim uma conta nunca é somada duas vezes pelos dois caminhos.
+    func costSummary(for providerId: String) -> AnalyticsCostSummary? {
+        if let cost = analyticsByProvider[providerId]?.cost { return cost }
+        guard let amount = estimatedCostByProvider[providerId] else { return nil }
+        return AnalyticsCostSummary(amountUSD: amount, kind: .apiEquivalent, period: .last30Days)
+    }
+
     func loadAnalyticsIfStale(providerId: String, maxAge: TimeInterval = 300) async {
         if let loadedAt = analyticsLoadedAt[providerId], Date().timeIntervalSince(loadedAt) < maxAge { return }
-        guard let loader = analyticsLoaders[providerId] else { return }
-        if let analytics = await loader() {
+
+        let task: Task<TokenAnalytics?, Never>
+        if let inFlight = analyticsTasks[providerId] {
+            task = inFlight
+        } else {
+            guard let loader = analyticsLoaders[providerId] else { return }
+            // Detached de propósito: scanners locais não podem herdar o MainActor só
+            // porque a chamada nasceu nele. O estado volta a ser publicado aqui, no actor.
+            let newTask = Task.detached(priority: .utility) { await loader() }
+            analyticsTasks[providerId] = newTask
+            analyticsLoadingProviderIds.insert(providerId)
+            analyticsUnavailableProviderIds.remove(providerId)
+            task = newTask
+        }
+
+        let analytics = await task.value
+        if analyticsTasks[providerId] == task {
+            analyticsTasks[providerId] = nil
+        }
+        analyticsLoadingProviderIds.remove(providerId)
+        if let analytics {
             analyticsByProvider[providerId] = analytics
-            analyticsLoadedAt[providerId] = Date()
+            analyticsUnavailableProviderIds.remove(providerId)
+        } else if analyticsByProvider[providerId] == nil {
+            analyticsUnavailableProviderIds.insert(providerId)
+        }
+        // Também marcamos tentativa sem dados: scanners locais são pesados demais para
+        // recomeçar a cada abertura de tela só porque o corpus está ausente/vazio. Uma
+        // falha transitória ainda é repetida depois de `maxAge`.
+        analyticsLoadedAt[providerId] = Date()
+    }
+
+    func loadAllAnalyticsIfStale(maxAge: TimeInterval = 300) async {
+        let providerIds = analyticsProviderIds
+        guard !providerIds.isEmpty else { return }
+
+        // Cada provider continua em paralelo, mas através do caminho deduplicado acima:
+        // abrir a Análise enquanto o detalhe do Claude já está carregando reutiliza a
+        // mesma task em vez de iniciar uma segunda varredura do mesmo corpus.
+        await withTaskGroup(of: Void.self) { group in
+            for providerId in providerIds {
+                group.addTask { await self.loadAnalyticsIfStale(providerId: providerId, maxAge: maxAge) }
+            }
         }
     }
 
-    func loadAllAnalyticsIfStale() async {
-        for providerId in analyticsProviderIds {
-            await loadAnalyticsIfStale(providerId: providerId)
-        }
+    /// Lê o histórico persistido da conta e deriva consumo de quota sem sair do MainActor
+    /// por muito tempo: são poucos snapshots por provider, ao contrário do corpus do Claude.
+    func quotaUsageStatistics(providerId: String, windowLabel: String, days: Int = 7) -> QuotaUsageStatistics? {
+        guard let storage else { return nil }
+        let since = Date().addingTimeInterval(-Double(days + 1) * 24 * 3600)
+        guard let snapshots = try? storage.snapshots(providerId: providerId, since: since) else { return nil }
+        return QuotaUsageStatistics.derive(snapshots: snapshots, windowLabel: windowLabel, days: days)
     }
 
     /// The quota windows shown in the menu bar, in the order they were pinned. Empty =

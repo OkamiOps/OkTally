@@ -13,6 +13,16 @@ private struct OpenRouterModelsResponse: Codable {
         struct Pricing: Codable {
             let prompt: String
             let completion: String
+            let inputCacheRead: String?
+            let inputCacheWrite: String?
+            let inputCacheWrite1h: String?
+
+            enum CodingKeys: String, CodingKey {
+                case prompt, completion
+                case inputCacheRead = "input_cache_read"
+                case inputCacheWrite = "input_cache_write"
+                case inputCacheWrite1h = "input_cache_write_1h"
+            }
         }
         let id: String
         let pricing: Pricing
@@ -31,10 +41,17 @@ final class OpenRouterPricingSource: PricingSource {
             throw PricingSourceError.badResponse((response as? HTTPURLResponse)?.statusCode)
         }
         let decoded = try JSONDecoder().decode(OpenRouterModelsResponse.self, from: data)
-        return decoded.data.compactMap { model in
+        return decoded.data.compactMap { model -> ModelPricing? in
             guard let prompt = Decimal(string: model.pricing.prompt),
                   let completion = Decimal(string: model.pricing.completion) else { return nil }
-            return ModelPricing(modelId: model.id, promptPricePerToken: prompt, completionPricePerToken: completion)
+            return ModelPricing(
+                modelId: model.id,
+                promptPricePerToken: prompt,
+                completionPricePerToken: completion,
+                cacheReadPricePerToken: model.pricing.inputCacheRead.flatMap { Decimal(string: $0) },
+                cacheWritePricePerToken: model.pricing.inputCacheWrite.flatMap { Decimal(string: $0) },
+                cacheWrite1hPricePerToken: model.pricing.inputCacheWrite1h.flatMap { Decimal(string: $0) }
+            )
         }
     }
 }

@@ -82,3 +82,22 @@ final class TokenAnalyticsTests: XCTestCase {
         XCTAssertNil(TokenAnalytics.aggregate([analytics([])]))
     }
 }
+
+extension TokenAnalyticsTests {
+    func test_aggregate_sumsCostAndMarksMixedKindAndPeriod() {
+        let measured = TokenAnalytics(
+            cost: AnalyticsCostSummary(amountUSD: 10, kind: .metered, period: .billingCycle),
+            dailyBuckets: [DailyTokens(day: "2026-01-01", tokens: 100)]
+        )
+        let estimated = TokenAnalytics(
+            cost: AnalyticsCostSummary(amountUSD: 2.5, kind: .apiEquivalent, period: .last30Days),
+            dailyBuckets: [DailyTokens(day: "2026-01-01", tokens: 50)]
+        )
+
+        let aggregate = TokenAnalytics.aggregate([measured, estimated])
+
+        XCTAssertEqual(aggregate?.cost?.amountUSD, Decimal(12.5))
+        XCTAssertEqual(aggregate?.cost?.kind, .mixed)
+        XCTAssertEqual(aggregate?.cost?.period, .mixed)
+    }
+}

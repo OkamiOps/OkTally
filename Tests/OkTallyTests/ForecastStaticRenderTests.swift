@@ -124,7 +124,9 @@ final class ForecastStaticRenderTests: XCTestCase {
         let bitmap = try renderView(
             ProviderDetailScreen(appModel: model, provider: provider, snapshot: snapshot),
             scheme: .dark,
-            size: CGSize(width: 760, height: 640),
+            // O detalhe real é rolável e agora inclui analytics explícito + estatísticas
+            // derivadas de quota com heatmap; o bitmap precisa cobrir a página inteira.
+            size: CGSize(width: 760, height: 1_200),
             artifactName: "OkTally-CodexWeeklyPriority-dark.png"
         )
         assertViewIsVisibleAndUnclipped(bitmap, named: "codex-weekly-priority")

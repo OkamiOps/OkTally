@@ -31,11 +31,29 @@ struct AnalyticsDashboardView: View {
                 quotaStrip()
                 footnote
             } else if appModel.analyticsProviderIds.isEmpty {
-                Text(L("Nenhuma fonte de análise disponível — conecte Codex, Claude Code ou OpenCode."))
+                Text(L("Nenhuma fonte de análise disponível — conecte Cursor, Devin, Codex, Claude Code ou OpenCode."))
                     .foregroundStyle(.secondary)
+            } else if Set(appModel.analyticsProviderIds).isSubset(of: appModel.analyticsUnavailableProviderIds) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(L("Dados de token indisponíveis"), systemImage: "chart.xyaxis.line")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text(L("As fontes conhecidas foram consultadas, mas nenhuma retornou contadores utilizáveis no momento. O OkTally não inventa tokens a partir de cotas."))
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else {
-                Text(L("Carregando estatísticas de uso…"))
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: Theme.Space.sm) {
+                        ProgressView().controlSize(.small)
+                        Text(L("Carregando estatísticas de uso…"))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(L("O primeiro scan local pode levar alguns segundos; depois o cache incremental é usado."))
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
         .task { await appModel.loadAllAnalyticsIfStale() }
@@ -62,6 +80,7 @@ struct AnalyticsDashboardView: View {
         let hasVolume = totals.contains { $0.tokens > 0 }
         let streak = analytics.effectiveCurrentStreakDays() ?? 0
         let longest = analytics.effectiveLongestStreakDays ?? max(streak, 1)
+        let periodSummary = TrendSeries.summary(analytics, lastDays: window.rawValue)
         return HStack(alignment: .top, spacing: Theme.Space.md) {
             // Ambas as colunas esticam até a altura da linha: quem for mais alta manda, e
             // nenhuma das duas precisa de altura fixa.
@@ -130,7 +149,7 @@ struct AnalyticsDashboardView: View {
                 }
                 StatTile(
                     title: L("Pico diário"),
-                    value: analytics.effectivePeakDailyTokens.map(TokenAnalytics.compactTokens) ?? "—",
+                    value: TokenAnalytics.compactTokens(periodSummary.peakDailyTokens),
                     caption: analytics.longestRunningTurnSeconds.map { LF("tarefa mais longa: %@", TokenAnalytics.durationLabel($0)) }
                 )
                 // Terceiro tile: antes a coluna tinha dois cards magros e o "Pico diário"
@@ -138,11 +157,19 @@ struct AnalyticsDashboardView: View {
                 // dele saía vazia. Com um número a mais a coluna se preenche de conteúdo
                 // real, e só o último tile absorve a sobra de altura.
                 StatTile(
-                    title: L("Últimos 30 dias"),
-                    value: TokenAnalytics.compactTokens(analytics.tokensLast30Days),
+                    title: window.totalTitle,
+                    value: TokenAnalytics.compactTokens(periodSummary.totalTokens),
                     caption: analytics.effectiveLifetimeTokens.map { LF("total: %@", TokenAnalytics.compactTokens($0)) },
-                    fillsHeight: true
+                    fillsHeight: analytics.cost == nil
                 )
+                if let cost = analytics.cost {
+                    StatTile(
+                        title: L("Custo conhecido"),
+                        value: TokenAnalytics.costLabel(cost),
+                        caption: costCaption(cost),
+                        fillsHeight: true
+                    )
+                }
             }
             .frame(width: 230)
         }
@@ -222,22 +249,29 @@ struct AnalyticsDashboardView: View {
     // MARK: - Linha 3: por provedor
 
     private func providerRow() -> some View {
-        let share = TrendSeries.share(byProvider: byProvider, lastDays: 30)
+        let share = TrendSeries.share(byProvider: byProvider, lastDays: window.rawValue)
         let total = share.reduce(0) { $0 + $1.tokens }
+        // A lista não é apenas participação em tokens: uma fonte pode ter custo conhecido
+        // mesmo quando o endpoint diário falhar ou quando não houve tokens nos últimos 30
+        // dias. Omiti-la faria o painel parecer mais vazio do que a evidência real.
+        var rows = share
+        for providerId in byProvider.keys.sorted() where !rows.contains(where: { $0.providerId == providerId }) {
+            rows.append((providerId: providerId, tokens: 0))
+        }
         return HStack(alignment: .top, spacing: Theme.Space.md) {
             DashboardCard {
                 VStack(alignment: .leading, spacing: Theme.Space.md) {
                     SectionHeader(L("Por provedor"))
-                    if share.isEmpty {
+                    if rows.isEmpty {
                         emptyPeriod
                     } else {
-                        ForEach(share, id: \.providerId) { entry in
+                        ForEach(rows, id: \.providerId) { entry in
                             ProviderTrendRow(
                                 providerId: entry.providerId,
                                 name: providerName(entry.providerId),
                                 tokens: entry.tokens,
                                 total: total,
-                                cost: appModel.estimatedCostByProvider[entry.providerId],
+                                cost: byProvider[entry.providerId]?.cost,
                                 analytics: byProvider[entry.providerId]
                             )
                         }
@@ -308,8 +342,24 @@ struct AnalyticsDashboardView: View {
         }
     }
 
+    private func costCaption(_ cost: AnalyticsCostSummary) -> String {
+        let period: String
+        switch cost.period {
+        case .last30Days: period = L("30 dias")
+        case .billingCycle: period = L("ciclo de billing")
+        case .mixed: period = L("períodos mistos")
+        }
+        let basis: String
+        switch cost.kind {
+        case .metered: basis = L("medido pelos provedores")
+        case .apiEquivalent: basis = L("equivalente de API")
+        case .mixed: basis = L("origens mistas")
+        }
+        return period + " · " + basis
+    }
+
     private var footnote: some View {
-        Text(L("Codex: estatísticas da conta (API). Claude Code e OpenCode: estimativa local dos transcritos/banco desta máquina, incluindo tokens de cache."))
+        Text(L("Tokens medidos: Cursor (API; inclui categorias GrokBot), Devin (sessions.db local), Codex (API), Claude Code e OpenCode (artefatos locais). Custo é medido onde existe ou equivalência de API marcada com ≈; não é fatura da assinatura e soma só fontes com custo conhecido. Providers fora dessa lista não expõem contadores de token utilizáveis. O detalhe diário do Cursor cobre aproximadamente os últimos 30 dias; o custo usa o ciclo de billing."))
             .font(.system(size: 9))
             .foregroundStyle(.tertiary)
     }
@@ -323,7 +373,7 @@ private struct ProviderTrendRow: View {
     let name: String
     let tokens: Int
     let total: Int
-    let cost: Decimal?
+    let cost: AnalyticsCostSummary?
     let analytics: TokenAnalytics?
 
     @State private var isHovered = false
@@ -353,7 +403,7 @@ private struct ProviderTrendRow: View {
                 }
                 Spacer(minLength: Theme.Space.sm)
                 if let cost {
-                    Text("$" + String(format: "%.2f", (cost as NSDecimalNumber).doubleValue))
+                    Text(TokenAnalytics.costLabel(cost))
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                         .monospacedDigit()

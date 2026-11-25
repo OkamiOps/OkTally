@@ -74,4 +74,55 @@ final class ClaudeLocalUsageScannerTests: XCTestCase {
         let scanner = ClaudeLocalUsageScanner(projectsDir: "/nonexistent/claude/projects", cachePath: nil)
         XCTAssertNil(scanner.analytics())
     }
+    func test_parseFileDetailed_preservesModelAndCacheBreakdown() throws {
+        let dir = try makeTempDir()
+        let path = dir + "/projeto-a/s1.jsonl"
+        let line = """
+        {"type":"assistant","timestamp":"2026-08-10T15:00:00.000Z","requestId":"r1","message":{"id":"m1","model":"claude-opus-5","usage":{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":100,"cache_read_input_tokens":200}}}
+        """
+        try line.write(toFile: path, atomically: true, encoding: .utf8)
+
+        let parsed = ClaudeLocalUsageScanner.parseFileDetailed(atPath: path)
+
+        let breakdown = try XCTUnwrap(parsed.modelDays["2026-08-10"]?["claude-opus-5"])
+        XCTAssertEqual(breakdown.inputTokens, 10)
+        XCTAssertEqual(breakdown.outputTokens, 20)
+        XCTAssertEqual(breakdown.cacheWriteTokens, 100)
+        XCTAssertEqual(breakdown.cacheReadTokens, 200)
+    }
+
+    func test_analytics_exposesLast30DayUsageDetailsForPricing() throws {
+        let dir = try makeTempDir()
+        let line = """
+        {"type":"assistant","timestamp":"2026-08-10T15:00:00.000Z","requestId":"r1","message":{"id":"m1","model":"claude-opus-5","usage":{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":100,"cache_read_input_tokens":200}}}
+        """
+        try line.write(toFile: dir + "/projeto-a/s1.jsonl", atomically: true, encoding: .utf8)
+        let now = TokenAnalytics.date(fromDay: "2026-08-12")!
+
+        let analytics = try XCTUnwrap(ClaudeLocalUsageScanner(projectsDir: dir, cachePath: nil).analytics(now: now))
+        let detail = try XCTUnwrap(analytics.usageDetails?.first)
+
+        XCTAssertEqual(detail.modelId, "claude-opus-5")
+        XCTAssertEqual(detail.promptTokens, 10)
+        XCTAssertEqual(detail.completionTokens, 20)
+        XCTAssertEqual(detail.cacheWriteTokens, 100)
+        XCTAssertEqual(detail.cacheReadTokens, 200)
+    }
+
+    func test_parseFileDetailed_splitsCacheWriteByTTL() throws {
+        let dir = try makeTempDir()
+        let path = dir + "/projeto-a/s1.jsonl"
+        let line = """
+        {"type":"assistant","timestamp":"2026-08-10T15:00:00.000Z","requestId":"r1","message":{"id":"m1","model":"claude-opus-5","usage":{"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":100,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":25,"ephemeral_1h_input_tokens":75}}}}
+        """
+        try line.write(toFile: path, atomically: true, encoding: .utf8)
+
+        let parsed = ClaudeLocalUsageScanner.parseFileDetailed(atPath: path)
+        let breakdown = try XCTUnwrap(parsed.modelDays["2026-08-10"]?["claude-opus-5"])
+
+        XCTAssertEqual(breakdown.cacheWriteTokens, 25)
+        XCTAssertEqual(breakdown.cacheWrite1hTokens, 75)
+        XCTAssertEqual(parsed.days["2026-08-10"], 100)
+    }
+
 }

@@ -54,6 +54,9 @@ struct AnalyticsSection: View {
         if analytics.tokensLast30Days > 0 {
             chips.append((TokenAnalytics.compactTokens(analytics.tokensLast30Days), L("Últimos 30 dias")))
         }
+        if let cost = analytics.cost {
+            chips.append((TokenAnalytics.costLabel(cost), costCaption(cost)))
+        }
         // UM objeto, não oito. A versão anterior era uma `LazyVGrid` de oito
         // `StatTile` idênticos: oito retângulos com borda, oito superfícies, nenhum
         // dominando — a crítica exata que o dono fez desta tela. Agora as estatísticas
@@ -78,6 +81,14 @@ struct AnalyticsSection: View {
                     }
                 }
             }
+        }
+    }
+
+    private func costCaption(_ cost: AnalyticsCostSummary) -> String {
+        switch cost.period {
+        case .last30Days: return L("Custo 30d")
+        case .billingCycle: return L("Custo do ciclo")
+        case .mixed: return L("Custo conhecido")
         }
     }
 

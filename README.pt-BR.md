@@ -45,9 +45,9 @@ O OkTally é um app **nativo de barra de menu do macOS** que mantém todas essas
 | 🎯 | **Popover gargalo-primeiro** | A cota com maior risco ganha uma previsão expandida; as linhas densas de provedor/modelo mantêm seu próprio pace compacto abaixo |
 | 📈 | **Previsão de pace em 24h** | Limites semanais e mensais comparam seu ritmo recente com a renovação e dizem se é preciso reduzir, manter ou usar mais |
 | 🪟 | **Janela Visão geral** | Sidebar, KPIs (provedores · gargalo · custo estimado), barras em cápsula por janela, tendência de 7 dias por provedor |
-| 📊 | **Aba Análise** | Estatísticas de tokens + heatmap estilo GitHub, agregando Codex, Claude Code e OpenCode — streaks, pico diário, hoje/ontem/30 dias |
+| 📊 | **Aba Análise** | Estatísticas de tokens + heatmap estilo GitHub, agregando Cursor, Devin, Codex, Claude Code e OpenCode — streaks, pico diário, hoje/ontem/30 dias e custo conhecido |
 | 🔔 | **Alertas configuráveis** | Notificações do macOS em 70/90/100% (você escolhe) e limite de saldo baixo em USD — uma vez por cruzamento, não por poll |
-| 💰 | **Custo estimado** | Tokens locais × tabela pública de preços do OpenRouter → "Custo est. (30d)" no card |
+| 💰 | **Custo estimado** | Custo medido pelo provedor/local onde existe, mais equivalência de API claramente marcada pela tabela pública do OpenRouter |
 | 🧲 | **Detecção zero-config** | Cursor, GrokBot, GitHub Copilot, Antigravity e Devin são detectados dos logins que já existem no seu Mac — nada para colar |
 | 🔐 | **Segredos só no Keychain** | Tokens OAuth e chaves de API nunca ficam em texto puro; tudo roda localmente |
 
@@ -57,7 +57,7 @@ O OkTally é um app **nativo de barra de menu do macOS** que mantém todas essas
 <img src="docs/assets/overview.png" width="640" alt="Janela Visão geral com KPIs e cards gargalo-primeiro" />
 </div>
 
-Abra pelo popover ("Visão geral"). A sidebar lista cada provedor com um dot de status ao vivo; a grade principal coloca a **janela mais apertada de cada provedor em primeiro** — bloco-herói tingido, barra em cápsula, contagem para o reset — com as demais janelas em linhas compactas e um sparkline de 7 dias abaixo.
+Abra pelo popover ("Visão geral"). A sidebar lista cada provedor com um dot de status ao vivo; a área principal começa pelo gargalo atual e pela saúde da frota, depois transforma cada janela de cota em um cartão colorido por pressão, agrupado entre observação, confortáveis e saldos. Em janelas largas vira uma grade compacta de cartões, não uma tabela longa.
 
 ## A aba Análise
 
@@ -70,22 +70,26 @@ Um painel que responde *"quanto eu realmente uso?"* em todas as fontes que expõ
 | Fonte | De onde vêm os números | Observações |
 | --- | --- | --- |
 | **Codex** | API de estatísticas da conta (ChatGPT) | Tokens lifetime reais, tarefa mais longa, streaks |
-| **Claude Code** | Transcritos locais (`~/.claude/projects`) | Cache incremental por arquivo — o 1º scan de um corpus grande demora um pouco; depois <0,1s |
-| **OpenCode** | Banco local de sessões | Tokens por dia incluindo cache/reasoning |
+| **Claude Code** | Transcritos locais (`~/.claude/projects`) | Cache incremental; breakdown por modelo/cache alimenta custo equivalente de API |
+| **OpenCode** | Banco local de sessões | Tokens por dia incluindo cache/reasoning, mais o custo que o próprio OpenCode registrou |
+| **Cursor** | API de dashboard do Cursor | Tokens diários da janela detalhada recente (inclui categorias GrokBot) e custo de uso do ciclo |
+| **Devin** | Métricas de geração do `sessions.db` local | Tokens medidos de input/output/cache sem somar total de contexto duas vezes |
 
-A aba **Análise** soma todas as fontes num único heatmap + chips (total, pico diário, streak atual/maior, hoje, ontem, 30 dias), com recorte por provedor abaixo. Números locais são estimativas honestas do que está na sua máquina — não uma fatura.
+A aba **Análise** soma todas as fontes de tokens num único heatmap + chips (total, pico diário, streak atual/maior, hoje, ontem, 30 dias), com recorte por provedor abaixo. Números locais e reportados são fatos medidos onde existem; equivalência de API é marcada como estimativa — nada é apresentado como fatura da assinatura.
+
+A página do provedor também não fica vazia quando não há tokens. Se só existirem snapshots de cota, o OkTally deriva uma tendência honesta de consumo em pontos percentuais a partir do histórico gravado na máquina e mostra um heatmap de oito semanas. Cota nunca vira token falso.
 
 ## Provedores
 
 | Provedor | Autenticação | Janelas de cota | Análise | Custo |
 | --- | --- | --- | :-: | :-: |
-| **Claude Code** | OAuth, ou importação em um clique do login do CLI | Sessão 5h + semanal (+ Opus semanal) | ✅ local | — |
+| **Claude Code** | OAuth, ou importação em um clique do login do CLI | Sessão 5h + semanal (+ Opus semanal) | ✅ local | ✅ equivalente API |
 | **Codex** | OAuth | Semanal + janelas por recurso (ex.: Spark) | ✅ conta | — |
 | **GitHub Copilot** | **Zero-config** — lê o login do Copilot/gh CLI | Chat, autocomplete, premium | — | — |
-| **Cursor** | **Zero-config** — lê a sessão local do Cursor | Saldo + % do ciclo | — | — |
-| **GrokBot** | **Zero-config** — reutiliza a sessão local do Cursor | Cota semanal separada do GrokBot | — | — |
+| **Cursor** | **Zero-config** — lê a sessão local do Cursor | Saldo + % do ciclo | ✅ conta | ✅ custo reportado |
+| **GrokBot** | **Zero-config** — reutiliza a sessão local do Cursor | Cota semanal separada do GrokBot | incluído no Cursor | — |
 | **Antigravity** | **Zero-config** — lê o login do IDE Antigravity | Grupos Gemini e Claude/GPT, 5h + semanal | — | — |
-| **Devin** | **Zero-config** — lê as credenciais locais do Devin | Janelas diária (quando exposta pelo plano) + semanal de ACU | — | — |
+| **Devin** | **Zero-config** — lê as credenciais locais do Devin | Janelas diária (quando exposta pelo plano) + semanal de ACU | ✅ local | — |
 | **SuperGrok** | OAuth device code | Janela semanal | — | — |
 | **OpenRouter** | Chave de API | Saldo de créditos | — | fonte da tabela |
 | **MiniMax** | Chave de API (global ou China) | 5h + semanal, pior-modelo-vence | — | — |
@@ -121,7 +125,7 @@ Cada provedor é um plugin que implementa um único protocolo `UsageProvider` e 
 
 Requer macOS 26 (Tahoe) ou mais recente. Versões anteriores do macOS não são mais suportadas e não recebem atualizações.
 
-1. Baixe `OkTally-0.11.0.dmg` na [página de Releases](https://github.com/OkamiOps/OkTally/releases).
+1. Baixe `OkTally-0.12.0.dmg` na [página de Releases](https://github.com/OkamiOps/OkTally/releases).
 2. Abra e arraste **OkTally** para Aplicativos.
 3. O app não é notarizado: no primeiro uso, clique com o botão direito (Ctrl-clique) em `OkTally.app` → **Abrir** → **Abrir**.
 

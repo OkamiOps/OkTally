@@ -55,4 +55,26 @@ struct UsageDetail: Codable, Equatable {
     let modelId: String
     let promptTokens: Int
     let completionTokens: Int
+    /// Opcionais para preservar snapshots persistidos antes do detalhamento de cache.
+    /// Quando presentes, `promptTokens` representa somente o input não-cacheado.
+    let cacheReadTokens: Int?
+    let cacheWriteTokens: Int?
+    /// Anthropic cobra escrita de cache com TTL de 1h mais caro que a de 5min.
+    let cacheWrite1hTokens: Int?
+
+    init(
+        modelId: String,
+        promptTokens: Int,
+        completionTokens: Int,
+        cacheReadTokens: Int? = nil,
+        cacheWriteTokens: Int? = nil,
+        cacheWrite1hTokens: Int? = nil
+    ) {
+        self.modelId = modelId
+        self.promptTokens = promptTokens
+        self.completionTokens = completionTokens
+        self.cacheReadTokens = cacheReadTokens
+        self.cacheWriteTokens = cacheWriteTokens
+        self.cacheWrite1hTokens = cacheWrite1hTokens
+    }
 }

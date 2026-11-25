@@ -270,7 +270,7 @@ struct PopoverContentView: View {
                         ProviderQuotaRow(
                             provider: entry.provider,
                             snapshot: entry.snapshot,
-                            estimatedCost: appModel.estimatedCostByProvider[entry.provider.id],
+                            estimatedCost: appModel.costSummary(for: entry.provider.id),
                             preferredLabel: appModel.primaryWindowLabel(forProviderId: entry.provider.id),
                             isPinned: { appModel.isPinned(providerId: entry.provider.id, windowLabel: $0) },
                             onPin: { appModel.togglePin(providerId: entry.provider.id, windowLabel: $0) },
@@ -589,7 +589,7 @@ private struct HeroBlock: View {
 private struct ProviderQuotaRow: View {
     let provider: UsageProvider
     let snapshot: ProviderSnapshot
-    let estimatedCost: Decimal?
+    let estimatedCost: AnalyticsCostSummary?
     /// A cota principal escolhida para esta conta, ou `nil` = automático.
     let preferredLabel: String?
     let isPinned: (String) -> Bool
@@ -721,7 +721,7 @@ private struct ProviderQuotaRow: View {
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .padding(.top, 4)
-                    .help(L("Estimativa: tokens locais × tabela de preços do OpenRouter"))
+                    .help(metaHelp)
             }
         }
         .help(snapshot.quotas.contains(where: \.shape.isEstimated)
@@ -742,7 +742,14 @@ private struct ProviderQuotaRow: View {
     private var metaText: String? {
         var parts: [String] = []
         if let estimatedCost {
-            parts.append(LF("Custo est.: $%@ (30d)", Self.costText(estimatedCost)))
+            let period: String
+            switch estimatedCost.period {
+            case .last30Days: period = L("30d")
+            case .billingCycle: period = L("ciclo")
+            case .mixed: period = L("períodos mistos")
+            }
+            let label = estimatedCost.kind == .metered ? L("Custo") : L("Custo est.")
+            parts.append(LF("%@: %@ (%@)", label, TokenAnalytics.costLabel(estimatedCost), period))
         }
         if let staleness = Self.stalenessText(fetchedAt: snapshot.fetchedAt) {
             parts.append(staleness)
@@ -750,13 +757,19 @@ private struct ProviderQuotaRow: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    static func costText(_ value: Decimal) -> String {
-        String(format: "%.2f", (value as NSDecimalNumber).doubleValue)
-    }
 
     /// "Atualizado há 25min" once the snapshot is older than any provider's normal poll
     /// cadence — i.e. only when the data on screen is genuinely a survivor (app just
     /// relaunched, or refreshes have been failing). Fresh rows stay caption-free.
+    private var metaHelp: String {
+        guard let estimatedCost else { return "" }
+        switch estimatedCost.kind {
+        case .metered: return L("Custo medido/reportado pelo provedor ou pelo banco local oficial")
+        case .apiEquivalent: return L("Estimativa: tokens locais × tabela de preços do OpenRouter")
+        case .mixed: return L("Combina custos medidos e equivalência de API; não é uma fatura")
+        }
+    }
+
     static func stalenessText(fetchedAt: Date, now: Date = Date()) -> String? {
         let age = now.timeIntervalSince(fetchedAt)
         guard age > 15 * 60 else { return nil }

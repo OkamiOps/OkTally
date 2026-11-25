@@ -382,6 +382,7 @@ struct PreferencesView: View {
                 HStack {
                     Button(L("Remover conta…"), role: .destructive) { pendingRemoval = id }
                         .buttonStyle(.bordered)
+                        .tint(Theme.Brand.neonMagenta)
                     Spacer()
                 }
             }
@@ -1452,8 +1453,45 @@ private struct GeneralPane: View {
     /// (o "8" sozinho já a mandaria para o começo). O rascunho segura o texto até o
     /// Enter ou a perda de foco, que é a mesma regra de auto-save do resto da tela.
     @State private var percentDrafts: [UUID: String] = [:]
+    @State private var settingsTab: GeneralSettingsTab = .appearance
     @FocusState private var lowBalanceFocused: Bool
     @FocusState private var focusedStop: UUID?
+
+    /// Assuntos do painel Geral. A rolagem única misturava cor, menu, alertas e
+    /// atualização — o usuário precisava caçar um controle no meio de seis cartões.
+    /// As abas mantêm tudo no mesmo painel, mas expõem um assunto por vez.
+    private enum GeneralSettingsTab: String, CaseIterable, Identifiable {
+        case appearance, menu, alerts, system
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .appearance: return L("Aparência")
+            case .menu: return L("Menu")
+            case .alerts: return L("Alertas")
+            case .system: return L("Sistema")
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .appearance: return "paintpalette"
+            case .menu: return "menubar.rectangle"
+            case .alerts: return "bell.badge"
+            case .system: return "arrow.triangle.2.circlepath"
+            }
+        }
+
+        var subtitle: String {
+            switch self {
+            case .appearance: return L("Cores da escala de uso")
+            case .menu: return L("Pinos, slots e contas visíveis")
+            case .alerts: return L("Notificações e limiares")
+            case .system: return L("Versão e atualizações")
+            }
+        }
+    }
 
     /// 50/70/80/90/100 — nenhuma migração necessária: `alertPercentThresholds` já persiste
     /// uma lista arbitrária de frações e o `AlertEngine` mapeia qualquer lista, então quem
@@ -1467,10 +1505,12 @@ private struct GeneralPane: View {
     var body: some View {
         VStack(spacing: 0) {
             brandHero
+            settingsTabBar
             Form {
                 // Primeira seção da tela de propósito: é a única cujo efeito se vê na
                 // hora, e o dono é visual — a barra de preview logo abaixo do herói é o
                 // que faz a escala ser entendida sem ler uma linha de texto.
+                if settingsTab == .appearance {
                 Section(L("Escala de cores")) {
                     VStack(alignment: .leading, spacing: Theme.Space.sm) {
                         UsageScalePreviewBar(scale: appModel.usageColorScale)
@@ -1494,6 +1534,8 @@ private struct GeneralPane: View {
                     }
                 }
 
+                }
+                if settingsTab == .menu {
                 Section(L("Barra de menu")) {
                     if appModel.menuBarPins.isEmpty {
                         Text(L("Nada fixado — a barra mostra automaticamente a janela mais próxima do limite."))
@@ -1561,6 +1603,8 @@ private struct GeneralPane: View {
                 // nenhum filho pode revertê-lo. Quando o toggle dividia a seção com os
                 // detalhes, desligar as notificações apagava o próprio switch e não havia como
                 // religá-las pela UI — só por `defaults write`.
+                }
+                if settingsTab == .alerts {
                 Section(L("Alertas")) {
                     Toggle(L("Notificações de cota"), isOn: $alertsEnabled)
                         .toggleStyle(.switch)
@@ -1604,6 +1648,8 @@ private struct GeneralPane: View {
                     .opacity(alertsEnabled ? 1 : 0.5)
                 }
 
+                }
+                if settingsTab == .system {
                 Section(L("Atualizações")) {
                     if let update = appModel.availableUpdate {
                         HStack(spacing: Theme.Space.sm) {
@@ -1620,6 +1666,7 @@ private struct GeneralPane: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
+                }
             }
             .formStyle(.grouped)
         }
@@ -1629,6 +1676,59 @@ private struct GeneralPane: View {
             percentSteps = Set(preferencesStore.alertPercentThresholds)
             lowBalanceText = String(format: "%.2f", preferencesStore.alertLowBalanceThreshold)
         }
+    }
+
+    /// Navegação local do painel Geral. É uma tab bar visual, não quatro botões soltos:
+    /// o controle inteiro lê como "escolha o assunto", e o subtítulo diz o que há dentro
+    /// antes do clique — importante porque "Menu" e "Aparência" poderiam ser ambíguos.
+    private var settingsTabBar: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 2) {
+                ForEach(GeneralSettingsTab.allCases) { tab in
+                    let selected = settingsTab == tab
+                    Button {
+                        settingsTab = tab
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: tab.icon)
+                                .font(.system(size: 10, weight: .semibold))
+                            Text(tab.title)
+                                .font(.system(size: 11, weight: .semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                        }
+                        .foregroundStyle(selected ? Theme.onHero : Color.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background {
+                            if selected {
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(Theme.heroFill(Theme.accent))
+                            }
+                        }
+                        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }
+            .padding(3)
+            .background {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(Theme.surface())
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .strokeBorder(Theme.border(), lineWidth: 1)
+                    }
+            }
+            Text(settingsTab.subtitle)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .padding(.leading, 3)
+        }
+        .padding(.horizontal, Theme.Space.lg)
+        .padding(.vertical, Theme.Space.sm)
+        .background(Theme.pageBackground)
     }
 
     /// A faixa de destaque do painel Geral — e o único lugar do app onde a MARCA aparece

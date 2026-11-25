@@ -100,11 +100,15 @@ struct QuotaLedgerCard: View {
                     if groups.count > 1 {
                         GroupBanner(pressure: group.pressure, count: group.rows.count)
                     }
-                    ForEach(group.rows) { entry in
-                        QuotaLedgerRow(entry: entry)
-                            .contentShape(Rectangle())
-                            .onTapGesture { onSelect?(entry.providerId) }
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: Theme.Space.sm)],
+                              spacing: Theme.Space.sm) {
+                        ForEach(group.rows) { entry in
+                            QuotaLedgerTile(entry: entry)
+                                .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous))
+                                .onTapGesture { onSelect?(entry.providerId) }
+                        }
                     }
+                    .padding(.horizontal, Theme.Space.sm)
                 }
             }
         }
@@ -136,6 +140,77 @@ private struct GroupBanner: View {
     }
 }
 
+/// Cartão de quota usado na Overview larga. A linha de tabela era correta, mas visualmente
+/// ainda era uma planilha: aqui cada janela vira um objeto com hierarquia própria —
+/// quem/qual, número grande, barra e renovação — e os cartões têm altura uniforme porque
+/// todos carregam exatamente os mesmos campos.
+private struct QuotaLedgerTile: View {
+    let entry: QuotaLedgerEntry
+    @State private var isHovered = false
+
+    private var identity: Color { ProviderPalette.color(for: entry.providerId) }
+    private var pressureColor: Color { QuotaPresentation.color(remaining: entry.remaining) }
+    private var borderStyle: AnyShapeStyle {
+        isHovered ? AnyShapeStyle(pressureColor.opacity(0.38)) : AnyShapeStyle(Theme.border())
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.sm) {
+            HStack(spacing: Theme.Space.sm) {
+                IconChip(glyph: ProviderPalette.glyph(forId: entry.providerId), color: identity, size: 22)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(entry.providerName)
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                    Text(WindowLabelCatalog.displayLabel(entry.window.label))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: Theme.Space.sm)
+                if let reset = QuotaPresentation.resetCompactText(entry.window.shape) {
+                    Text(reset)
+                        .font(.system(size: 9, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+            }
+            HStack(alignment: .firstTextBaseline, spacing: Theme.Space.sm) {
+                Text(QuotaPresentation.remainingValueText(entry.window.shape))
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(QuotaPresentation.valueStyle(remaining: entry.remaining))
+                    .lineLimit(1)
+                Text(entry.remaining == nil ? "" : L("restante"))
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                Spacer(minLength: 0)
+            }
+            if let remaining = entry.remaining {
+                QuotaCapsuleBar(remaining: remaining, color: pressureColor, height: 7)
+            } else {
+                Color.clear.frame(height: 7)
+            }
+        }
+        .padding(Theme.Space.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
+                .fill(isHovered ? AnyShapeStyle(Theme.surfaceRaised()) : AnyShapeStyle(Theme.surfaceRaised().opacity(0.48)))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
+                .strokeBorder(borderStyle, lineWidth: 1)
+        }
+        .onContinuousHover { phase in
+            if case .active = phase { isHovered = true } else { isHovered = false }
+        }
+        .animation(Theme.hoverTransition, value: isHovered)
+        .help(entry.window.shape.isEstimated ? L("Estimativa local, não confirmada pelo provedor") : "")
+    }
+}
+
 /// A linha da tabela. Ordem de leitura fixa da esquerda para a direita — identidade,
 /// quem, qual janela, quanto falta (barra), quando volta, o número — para o olho descer
 /// uma coluna só de percentuais.
@@ -145,6 +220,7 @@ private struct GroupBanner: View {
 /// ela vira a coluna que dá escala à tabela inteira e a linha passa a ter uma altura só.
 struct QuotaLedgerRow: View {
     let entry: QuotaLedgerEntry
+    @State private var isHovered = false
     /// Mesma linha desenhada DENTRO do bloco-herói: off-white no lugar da hierarquia
     /// semântica do sistema (que sobre gradiente saturado some), sem o chip de
     /// identidade (o bloco inteiro já é da cor do provedor) e sem o nome (é o dele).
@@ -153,7 +229,12 @@ struct QuotaLedgerRow: View {
     private var identity: Color { ProviderPalette.color(for: entry.providerId) }
     /// Off-white REBAIXADO dentro do herói: a 100% a barra secundária ficava idêntica à
     /// barra principal logo acima e as duas se liam como uma repetição.
-    private var barColor: Color { onHero ? Theme.onHero.opacity(0.55) : identity }
+    // Fora do herói a cor da barra é PRESSÃO, não identidade: o chip já carrega a
+    // identidade do provider; repetir magenta/roxo em quotas 100% folgadas fazia a
+    // tabela parecer mais crítica do que os números diziam.
+    private var barColor: Color {
+        onHero ? Theme.onHero.opacity(0.55) : QuotaPresentation.color(remaining: entry.remaining)
+    }
 
     var body: some View {
         // Orçamento de largura pensado para o MENOR tamanho possível da janela (700pt
@@ -166,7 +247,7 @@ struct QuotaLedgerRow: View {
                 Text(entry.providerName)
                     .font(.system(size: 12, weight: .semibold))
                     .lineLimit(1)
-                    .frame(width: 110, alignment: .leading)
+                    .frame(minWidth: 110, maxWidth: 150, alignment: .leading)
             }
             Text(WindowLabelCatalog.displayLabel(entry.window.label))
                 .font(.system(size: 11))
@@ -176,7 +257,7 @@ struct QuotaLedgerRow: View {
                 // duas células flexíveis dividiam a sobra meio a meio e o rótulo caía
                 // para "5h ses…" enquanto a barra ficava com espaço de sobra. Com o piso,
                 // quem encolhe primeiro é a barra, que continua legível como stub.
-                .frame(minWidth: 96, maxWidth: .infinity, alignment: .leading)
+                .frame(minWidth: 96, maxWidth: 170, alignment: .leading)
             // Cota sem percentual (saldo puro) não tem barra: um trilho vazio mentiria
             // dizendo "zero restante". A célula continua ocupando a coluna para as
             // linhas não se desalinharem.
@@ -208,6 +289,14 @@ struct QuotaLedgerRow: View {
         }
         .padding(.horizontal, Theme.Space.sm)
         .padding(.vertical, 7)
+        .background {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isHovered && !onHero ? Color.primary.opacity(0.045) : Color.clear)
+        }
+        .onContinuousHover { phase in
+            if case .active = phase { isHovered = true } else { isHovered = false }
+        }
+        .animation(Theme.hoverTransition, value: isHovered)
         .help(entry.window.shape.isEstimated
               ? L("Estimativa local, não confirmada pelo provedor") : "")
     }

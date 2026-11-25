@@ -92,6 +92,8 @@ struct OkTallyApp: App {
         model.identityResolver = { account in await emailResolver.resolve(account) }
         model.updateFetcher = GitHubLatestReleaseFetcher()
         let codexAnalyticsFetcher = CodexAnalyticsFetcher()
+        let cursorAnalyticsFetcher = CursorAnalyticsFetcher()
+        let devinScanner = DevinLocalUsageScanner()
         // Fontes locais: leitura de disco potencialmente pesada (o corpus do Claude Code
         // passa de centenas de MB no primeiro parse) — sempre fora da main thread.
         let claudeScanner = ClaudeLocalUsageScanner()
@@ -110,14 +112,38 @@ struct OkTallyApp: App {
                     let accountId = tokenStore.load(providerId: id)?.extra["account_id"]
                     return try? await codexAnalyticsFetcher.fetch(accessToken: accessToken, accountId: accountId)
                 }
+            case .cursor:
+                let source: CursorTokenReading = AccountID.isLegacy(id)
+                    ? CursorTokenReader()
+                    : KeychainCursorTokenSource(instanceId: id, tokenStore: tokenStore)
+                return {
+                    guard let accessToken = source.readAccessToken() else { return nil }
+                    return await cursorAnalyticsFetcher.fetch(accessToken: accessToken)
+                }
             case .claude where AccountID.isLegacy(id):
-                return { await Task.detached(priority: .utility) { claudeScanner.analytics() }.value }
+                return {
+                    guard let analytics = await Task.detached(priority: .utility) { claudeScanner.analytics() }.value else { return nil }
+                    guard let details = analytics.usageDetails, !details.isEmpty else { return analytics }
+                    // Claude não informa custo de assinatura. Quando a tabela pública
+                    // conhece o modelo, calculamos equivalência de API e marcamos como tal.
+                    try? await pricingEngine.refreshIfStale()
+                    guard let amount = await pricingEngine.estimatedCost(for: details), amount > 0 else { return analytics }
+                    return analytics.withCost(AnalyticsCostSummary(amountUSD: amount, kind: .apiEquivalent, period: .last30Days))
+                }
+            case .devin where AccountID.isLegacy(id):
+                return { await Task.detached(priority: .utility) { devinScanner.analytics() }.value }
             case .opencode where AccountID.isLegacy(id):
                 return {
                     await Task.detached(priority: .utility) {
-                        openCodeAnalyticsEstimator.dailyTokens(windowDays: 365, now: Date()).flatMap { buckets in
-                            buckets.isEmpty ? nil : TokenAnalytics(dailyBuckets: buckets)
-                        }
+                        let buckets = openCodeAnalyticsEstimator.dailyTokens(windowDays: 365, now: Date()) ?? []
+                        // O banco oficial do OpenCode já acumula custo real por sessão.
+                        // Usar esse número corrige a estimativa anterior, que precificava
+                        // tokens de novo pela tabela pública mesmo quando o custo medido existia.
+                        let measured = openCodeAnalyticsEstimator.spentInCurrentWindow(windowHours: 720, now: Date())
+                        // `session` existe mesmo quando não há linhas na janela; zero nesse
+                        // caso significa ausência de evidência, não custo medido.
+                        let cost = measured.flatMap { $0 > 0 ? AnalyticsCostSummary(amountUSD: $0, kind: .metered, period: .last30Days) : nil }
+                        return buckets.isEmpty && cost == nil ? nil : TokenAnalytics(cost: cost, dailyBuckets: buckets)
                     }.value
                 }
             default:

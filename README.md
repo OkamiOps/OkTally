@@ -57,9 +57,9 @@ OkTally is a **native macOS menu bar app** that keeps every one of those quotas 
 | 🎯 | **Bottleneck-first popover** | The highest-risk quota gets one expanded forecast; dense provider/model rows keep their own compact pace bars below |
 | 📈 | **24h pace forecasts** | Weekly and monthly limits compare your recent burn rate with the renewal date and say whether to slow down, hold pace, or use more |
 | 🪟 | **Overview window** | Sidebar navigation, KPI row (providers · bottleneck · estimated cost), capsule bars per window, 7-day trends per provider |
-| 📊 | **Analytics tab** | Token stats + GitHub-style usage heatmap, aggregated across Codex, Claude Code and OpenCode — streaks, daily peak, today/yesterday/30 days |
+| 📊 | **Analytics tab** | Token stats + GitHub-style usage heatmap across Cursor, Devin, Codex, Claude Code and OpenCode — streaks, daily peak, today/yesterday/30 days and known cost |
 | 🔔 | **Configurable alerts** | Edge-triggered macOS notifications at 70/90/100% (your pick) and a low-balance USD threshold — once per crossing, not once per poll |
-| 💰 | **Cost estimates** | Local token counts × OpenRouter's public price table → "est. cost (30d)" on the card |
+| 💰 | **Cost estimates** | Measured provider/local cost where available, plus clearly marked API-equivalent estimates from OpenRouter's public price table |
 | 🧲 | **Zero-config detection** | Cursor, GrokBot, GitHub Copilot, Antigravity and Devin are picked up from the logins already on your Mac — nothing to paste |
 | 🔐 | **Keychain-only secrets** | OAuth tokens and API keys never touch plaintext; everything runs locally |
 
@@ -69,7 +69,7 @@ OkTally is a **native macOS menu bar app** that keeps every one of those quotas 
 <img src="docs/assets/overview.png" width="640" alt="Overview window with KPI cards and bottleneck-first provider cards" />
 </div>
 
-Open it from the popover ("Visão geral"). The sidebar lists every provider with a live status dot; the main grid puts each provider's **most constrained window first** — tinted hero block, capsule bar, reset countdown — with the remaining windows collapsed into compact rows and a 7-day sparkline underneath.
+Open it from the popover ("Visão geral"). The sidebar lists every provider with a live status dot; the main area starts with the current bottleneck and fleet health, then turns every quota window into a pressure-colored card grouped by watch list, comfortable quotas and balances. Wide windows use a compact card grid instead of a long table.
 
 ## The analytics tab
 
@@ -82,22 +82,26 @@ One panel that answers *"how much am I actually using?"* across every source tha
 | Source | Where the numbers come from | Notes |
 | --- | --- | --- |
 | **Codex** | ChatGPT account stats API | True lifetime tokens, longest task, streaks |
-| **Claude Code** | Local session transcripts (`~/.claude/projects`) | Incremental per-file cache — first scan of a large corpus takes a moment, afterwards <0.1s |
-| **OpenCode** | Local session database | Tokens per day including cache/reasoning |
+| **Claude Code** | Local session transcripts (`~/.claude/projects`) | Incremental per-file cache; model/cache breakdown powers API-equivalent cost |
+| **OpenCode** | Local session database | Tokens per day including cache/reasoning plus the cost OpenCode recorded locally |
+| **Cursor** | Cursor dashboard API | Daily tokens for the recent detailed window (GrokBot categories included) plus billing-cycle usage cost |
+| **Devin** | Local `sessions.db` generation metrics | Measured input/output/cache tokens without summing context totals twice |
 
-The **Análise** tab sums all sources into one heatmap + stat chips (lifetime, daily peak, current/longest streak, today, yesterday, last 30 days), with a per-provider breakdown below. Local numbers are honest estimates of what's on your machine — not a bill.
+The **Análise** tab sums all token sources into one heatmap + stat chips (lifetime, daily peak, current/longest streak, today, yesterday, last 30 days), with a per-provider breakdown below. Local and provider-reported numbers are measured facts where available; API-equivalent prices are marked as estimates — neither is presented as a subscription invoice.
+
+Provider detail pages do not stay empty when tokens are unavailable. If OkTally only has quota snapshots, it derives an honest consumption trend in percentage-point units from the history already recorded on the machine and renders it as an eight-week heatmap. Quota is never converted into fake token counts.
 
 ## Providers
 
 | Provider | Auth | Quota windows | Analytics | Cost est. |
 | --- | --- | --- | :-: | :-: |
-| **Claude Code** | OAuth, or one-click import of your existing CLI login | 5h session + weekly (+ Opus weekly) | ✅ local | — |
+| **Claude Code** | OAuth, or one-click import of your existing CLI login | 5h session + weekly (+ Opus weekly) | ✅ local | ✅ API-equivalent |
 | **Codex** | OAuth | Weekly + per-feature windows (e.g. Spark) | ✅ account | — |
 | **GitHub Copilot** | **Zero-config** — reads your Copilot/gh CLI login | Chat, completions, premium | — | — |
-| **Cursor** | **Zero-config** — reads your local Cursor session | Balance + billing-cycle % | — | — |
-| **GrokBot** | **Zero-config** — reuses your local Cursor session | Separate weekly GrokBot quota | — | — |
+| **Cursor** | **Zero-config** — reads your local Cursor session | Balance + billing-cycle % | ✅ account | ✅ reported usage cost |
+| **GrokBot** | **Zero-config** — reuses your local Cursor session | Separate weekly GrokBot quota | included in Cursor | — |
 | **Antigravity** | **Zero-config** — reads your Antigravity IDE login | Gemini + Claude/GPT groups, 5h + weekly | — | — |
-| **Devin** | **Zero-config** — reads your local Devin credentials | Daily (when exposed by the plan) + weekly ACU windows | — | — |
+| **Devin** | **Zero-config** — reads your local Devin credentials | Daily (when exposed by the plan) + weekly ACU windows | ✅ local | — |
 | **SuperGrok** | OAuth device code | Weekly window | — | — |
 | **OpenRouter** | API key | Credit balance | — | price table source |
 | **MiniMax** | API key (global or China region) | 5h + weekly, worst-model-wins | — | — |
@@ -149,7 +153,7 @@ Every provider is a plugin conforming to a single `UsageProvider` protocol and n
 
 Requires macOS 26 (Tahoe) or later. Older macOS versions are no longer supported and will not receive updates.
 
-1. Download `OkTally-0.11.0.dmg` from the [Releases page](https://github.com/OkamiOps/OkTally/releases).
+1. Download `OkTally-0.12.0.dmg` from the [Releases page](https://github.com/OkamiOps/OkTally/releases).
 2. Open it and drag **OkTally** to Applications.
 3. The app is not notarized: on first launch, right-click (Ctrl-click) `OkTally.app` → **Open** → **Open**.
 

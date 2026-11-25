@@ -246,7 +246,8 @@ final class ReadmeAssetRenderer: XCTestCase {
         peakDailyTokens: Int = 385_400_000,
         currentStreakDays: Int = 6,
         longestStreakDays: Int = 8,
-        longestRunningTurnSeconds: Int = 2673
+        longestRunningTurnSeconds: Int = 2673,
+        cost: AnalyticsCostSummary? = nil
     ) -> TokenAnalytics {
         var state: UInt64 = seed
         func next() -> UInt64 {
@@ -266,6 +267,7 @@ final class ReadmeAssetRenderer: XCTestCase {
             currentStreakDays: currentStreakDays,
             longestStreakDays: longestStreakDays,
             longestRunningTurnSeconds: longestRunningTurnSeconds,
+            cost: cost,
             dailyBuckets: buckets
         )
     }
@@ -288,6 +290,9 @@ final class ReadmeAssetRenderer: XCTestCase {
             ("codex", "Codex", [
                 QuotaWindow(label: "semanal", shape: rolling(14, hours: 126), renewalCadence: .weekly),
                 QuotaWindow(label: "GPT-5.3-Codex-Spark (semanal)", shape: rolling(0, hours: 168), renewalCadence: .weekly)
+            ]),
+            ("devin", "Devin", [
+                QuotaWindow(label: "weekly", shape: rolling(48, hours: 82), renewalCadence: .weekly)
             ]),
             ("openrouter", "OpenRouter", [
                 QuotaWindow(label: "balance", shape: .creditBalance(remaining: Decimal(19.82), currency: "USD"))
@@ -366,13 +371,15 @@ final class ReadmeAssetRenderer: XCTestCase {
         for (id, _, _) in entries {
             await model.recomputeForecasts(providerId: id, now: now)
         }
-        // As três fontes de analytics reais do app (Codex, Claude Code, OpenCode). Sem
-        // loaders, a aba Análise renderiza só o estado vazio.
+        // As cinco fontes de analytics reais do app. Sem loaders, a aba Análise renderiza
+        // só o estado vazio; com custo em três delas o screenshot também exercita o total
+        // agregado misto sem transformar estimativa em fatura.
         model.analyticsLoaders["claude"] = { [self] in
             demoAnalytics(seed: 0x5DEECE66D, scale: 1.0,
                           lifetimeTokens: 2_200_000_000, peakDailyTokens: 385_400_000,
                           currentStreakDays: 6, longestStreakDays: 8,
-                          longestRunningTurnSeconds: 2673)
+                          longestRunningTurnSeconds: 2673,
+                          cost: AnalyticsCostSummary(amountUSD: Decimal(string: "118.42")!, kind: .apiEquivalent, period: .last30Days))
         }
         model.analyticsLoaders["codex"] = { [self] in
             demoAnalytics(seed: 0x1B0CA55E7, scale: 0.55, idleOdds: 3,
@@ -384,7 +391,21 @@ final class ReadmeAssetRenderer: XCTestCase {
             demoAnalytics(seed: 0x7F4A7C15, scale: 0.22, idleOdds: 6,
                           lifetimeTokens: 310_000_000, peakDailyTokens: 46_800_000,
                           currentStreakDays: 2, longestStreakDays: 5,
-                          longestRunningTurnSeconds: 604)
+                          longestRunningTurnSeconds: 604,
+                          cost: AnalyticsCostSummary(amountUSD: Decimal(string: "12.37")!, kind: .metered, period: .last30Days))
+        }
+        model.analyticsLoaders["cursor"] = { [self] in
+            demoAnalytics(seed: 0xC0FFEE11, scale: 0.34, idleOdds: 2,
+                          lifetimeTokens: 520_000_000, peakDailyTokens: 72_400_000,
+                          currentStreakDays: 9, longestStreakDays: 14,
+                          longestRunningTurnSeconds: 921,
+                          cost: AnalyticsCostSummary(amountUSD: Decimal(string: "86.19")!, kind: .metered, period: .billingCycle))
+        }
+        model.analyticsLoaders["devin"] = { [self] in
+            demoAnalytics(seed: 0xDE91A11, scale: 0.18, idleOdds: 4,
+                          lifetimeTokens: 210_000_000, peakDailyTokens: 31_200_000,
+                          currentStreakDays: 4, longestStreakDays: 7,
+                          longestRunningTurnSeconds: 1188)
         }
         await model.loadAllAnalyticsIfStale()
         model.menuBarPins = [

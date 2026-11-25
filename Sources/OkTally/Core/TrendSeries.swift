@@ -14,6 +14,16 @@ enum TrendWindow: Int, CaseIterable {
         case .days365: return L("12 m")
         }
     }
+
+    /// Rótulo substantivo para métricas agregadas. O seletor usa siglas compactas, mas
+    /// um tile chamado só "12 m" seria críptico demais.
+    var totalTitle: String {
+        switch self {
+        case .days30: return L("Últimos 30 dias")
+        case .days90: return L("Últimos 90 dias")
+        case .days365: return L("Últimos 12 meses")
+        }
+    }
 }
 
 /// Um ponto do gráfico empilhado: um dia, de um provider.
@@ -21,6 +31,14 @@ struct TrendPoint: Equatable {
     let day: String
     let providerId: String
     let tokens: Int
+}
+
+/// Indicadores derivados da MESMA janela do gráfico. Existir como objeto impede o bug
+/// clássico de dashboard: o usuário troca 30/90/12m e só as barras mudam, enquanto os
+/// números continuam descrevendo outro período.
+struct TrendSummary: Equatable {
+    let totalTokens: Int
+    let peakDailyTokens: Int
 }
 
 /// Transformações puras entre `TokenAnalytics` e o que os gráficos consomem. Fora das
@@ -52,6 +70,16 @@ enum TrendSeries {
     static func delta(current: Int, previous: Int) -> Double? {
         guard previous > 0 else { return nil }
         return (Double(current) - Double(previous)) / Double(previous)
+    }
+
+    /// Total e pico dentro da janela, preenchendo dias ausentes com zero. O resultado é
+    /// independente de vida útil/streak: esses continuam globais de propósito.
+    static func summary(_ analytics: TokenAnalytics, lastDays: Int, now: Date = Date()) -> TrendSummary {
+        let points = dailyTotals(analytics, lastDays: lastDays, now: now)
+        return TrendSummary(
+            totalTokens: points.reduce(0) { $0 + $1.tokens },
+            peakDailyTokens: points.map(\.tokens).max() ?? 0
+        )
     }
 
     /// Total por provider na janela, do maior para o menor, sem os zerados.

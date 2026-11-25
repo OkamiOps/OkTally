@@ -45,7 +45,7 @@ OkTally ist eine **native macOS-Menüleisten-App**, die all diese Kontingente au
 | 🎯 | **Engpass-zuerst-Popover** | Das riskanteste Limit erhält eine erweiterte Prognose; dichte Provider-/Modellzeilen behalten darunter ihre eigenen kompakten Pace-Balken |
 | 📈 | **24h-Pace-Prognosen** | Wochen- und Monatslimits vergleichen den jüngsten Verbrauch mit der Erneuerung und empfehlen langsamer, gleich schnell oder schneller zu nutzen |
 | 🪟 | **Übersichtsfenster** | Sidebar, KPI-Zeile (Provider · Engpass · geschätzte Kosten), Kapselbalken pro Fenster, 7-Tage-Trends |
-| 📊 | **Analyse-Tab** | Token-Statistiken + GitHub-artige Heatmap, aggregiert über Codex, Claude Code und OpenCode — Streaks, Tagesspitze, heute/gestern/30 Tage |
+| 📊 | **Analyse-Tab** | Token-Statistiken + GitHub-artige Heatmap über Cursor, Devin, Codex, Claude Code und OpenCode — Streaks, Tagesspitze, heute/gestern/30 Tage und bekannte Kosten |
 | 🔔 | **Konfigurierbare Alarme** | macOS-Benachrichtigungen bei 70/90/100 % (deine Wahl) plus USD-Schwelle für niedriges Guthaben — einmal pro Überschreitung |
 | 💰 | **Kostenschätzung** | Lokale Token-Zahlen × öffentliche OpenRouter-Preistabelle → „geschätzte Kosten (30d)" auf der Karte |
 | 🧲 | **Zero-Config-Erkennung** | Cursor, GrokBot, GitHub Copilot, Antigravity und Devin werden aus vorhandenen Logins erkannt |
@@ -57,7 +57,7 @@ OkTally ist eine **native macOS-Menüleisten-App**, die all diese Kontingente au
 <img src="docs/assets/overview.png" width="640" alt="Übersichtsfenster mit KPI-Karten und Engpass-zuerst-Provider-Karten" />
 </div>
 
-Über das Popover öffnen („Visão geral"). Die Sidebar listet jeden Provider mit Live-Status-Punkt; das Raster stellt das **knappste Fenster jedes Providers zuerst** dar — getönter Hero-Block, Kapselbalken, Reset-Countdown — die übrigen Fenster als kompakte Zeilen mit 7-Tage-Sparkline darunter.
+Über das Popover öffnen („Visão geral"). Die Sidebar listet jeden Provider mit Live-Status-Punkt; der Hauptbereich beginnt mit aktuellem Engpass und Flottenzustand und verwandelt dann jedes Kontingentfenster in eine druckfarben codierte Karte, gruppiert nach Beobachtung, komfortabel und Guthaben. In breiten Fenstern entsteht so ein kompaktes Kartenraster statt einer langen Tabelle.
 
 ## Der Analyse-Tab
 
@@ -69,21 +69,25 @@ OkTally ist eine **native macOS-Menüleisten-App**, die all diese Kontingente au
 | --- | --- | --- |
 | **Codex** | Konto-Statistik-API (ChatGPT) | Echte Lifetime-Tokens, längste Aufgabe, Streaks |
 | **Claude Code** | Lokale Transkripte (`~/.claude/projects`) | Inkrementeller Datei-Cache — erster Scan dauert etwas, danach <0,1s |
-| **OpenCode** | Lokale Sitzungsdatenbank | Tokens pro Tag inkl. Cache/Reasoning |
+| **OpenCode** | Lokale Sitzungsdatenbank | Tokens pro Tag inkl. Cache/Reasoning plus lokal gespeicherte Kosten |
+| **Cursor** | Cursor-Dashboard-API | Tägliche Tokens des aktuellen Detailfensters (inkl. GrokBot-Kategorien) plus Nutzungskosten des Billing-Zyklus |
+| **Devin** | Generierungsmetriken der lokalen `sessions.db` | Gemessene Input/Output/Cache-Tokens ohne doppelte Kontextsumme |
 
-Der **Analyse**-Tab summiert alle Quellen in eine Heatmap + Chips (Gesamt, Tagesspitze, aktueller/längster Streak, heute, gestern, 30 Tage), mit Aufschlüsselung pro Provider. Lokale Zahlen sind ehrliche Schätzungen — keine Rechnung.
+Der **Analyse**-Tab summiert alle Tokenquellen in eine Heatmap + Chips (Gesamt, Tagesspitze, aktueller/längster Streak, heute, gestern, 30 Tage), mit Aufschlüsselung pro Provider. Lokale und provider-gemeldete Zahlen sind gemessene Fakten, wo verfügbar; API-äquivalente Preise sind als Schätzung markiert — nichts wird als Abo-Rechnung dargestellt.
+
+Provider-Detailseiten bleiben nicht leer, wenn keine Tokens verfügbar sind. Hat OkTally nur Kontingent-Snapshots, leitet es daraus einen ehrlichen Verbrauchstrend in Prozentpunkten ab und zeigt ihn als Heatmap über acht Wochen. Kontingent wird nie in falsche Tokenzahlen umgerechnet.
 
 ## Provider
 
 | Provider | Auth | Kontingentfenster | Analyse | Kosten |
 | --- | --- | --- | :-: | :-: |
-| **Claude Code** | OAuth oder Ein-Klick-Import des CLI-Logins | 5h-Session + wöchentlich (+ Opus) | ✅ lokal | — |
+| **Claude Code** | OAuth oder Ein-Klick-Import des CLI-Logins | 5h-Session + wöchentlich (+ Opus) | ✅ lokal | ✅ API-äquivalent |
 | **Codex** | OAuth | Wöchentlich + Feature-Fenster (z. B. Spark) | ✅ Konto | — |
 | **GitHub Copilot** | **Zero-Config** — liest Copilot/gh-CLI-Login | Chat, Completions, Premium | — | — |
-| **Cursor** | **Zero-Config** — liest lokale Cursor-Session | Guthaben + Zyklus-% | — | — |
-| **GrokBot** | **Zero-Config** — nutzt die lokale Cursor-Session mit | Separates wöchentliches GrokBot-Kontingent | — | — |
+| **Cursor** | **Zero-Config** — liest lokale Cursor-Session | Guthaben + Zyklus-% | ✅ Konto | ✅ gemeldete Nutzungskosten |
+| **GrokBot** | **Zero-Config** — nutzt die lokale Cursor-Session mit | Separates wöchentliches GrokBot-Kontingent | in Cursor enthalten | — |
 | **Antigravity** | **Zero-Config** — liest den Antigravity-IDE-Login | Gemini- und Claude/GPT-Gruppen, 5h + wöchentlich | — | — |
-| **Devin** | **Zero-Config** — liest lokale Devin-Credentials | Täglich (falls der Plan es anzeigt) + wöchentliche ACU-Fenster | — | — |
+| **Devin** | **Zero-Config** — liest lokale Devin-Credentials | Täglich (falls der Plan es anzeigt) + wöchentliche ACU-Fenster | ✅ lokal | — |
 | **SuperGrok** | OAuth Device Code | Wochenfenster | — | — |
 | **OpenRouter** | API-Key | Guthaben | — | Preisquelle |
 | **MiniMax** | API-Key (global oder China) | 5h + wöchentlich | — | — |
@@ -98,7 +102,7 @@ Der **Analyse**-Tab summiert alle Quellen in eine Heatmap + Chips (Gesamt, Tages
 
 Erfordert macOS 26 (Tahoe) oder neuer. Ältere macOS-Versionen werden nicht mehr unterstützt und erhalten keine Updates mehr.
 
-1. `OkTally-0.11.0.dmg` von der [Releases-Seite](https://github.com/OkamiOps/OkTally/releases) laden.
+1. `OkTally-0.12.0.dmg` von der [Releases-Seite](https://github.com/OkamiOps/OkTally/releases) laden.
 2. Öffnen und **OkTally** nach Programme ziehen.
 3. Die App ist nicht notarisiert: beim ersten Start Rechtsklick (Ctrl-Klick) auf `OkTally.app` → **Öffnen** → **Öffnen**.
 

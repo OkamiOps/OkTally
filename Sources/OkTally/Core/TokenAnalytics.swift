@@ -7,6 +7,42 @@ struct DailyTokens: Equatable {
     let tokens: Int
 }
 
+enum AnalyticsCostKind: Equatable {
+    /// Valor informado pelo próprio provedor ou lido do banco oficial local.
+    case metered
+    /// Estimativa de equivalência de API calculada por tabela pública de preços.
+    case apiEquivalent
+    /// Agregação misturando origens diferentes.
+    case mixed
+}
+
+enum AnalyticsCostPeriod: Equatable {
+    case last30Days
+    case billingCycle
+    case mixed
+}
+
+/// Custo associado ao analytics de uma fonte. Não é fatura: quota de assinatura,
+/// valor medido pelo provedor e equivalência de API são grandezas diferentes. O `kind`
+/// acompanha o número justamente para a UI não vender estimativa como cobrança.
+struct AnalyticsCostSummary: Equatable {
+    let amountUSD: Decimal
+    let kind: AnalyticsCostKind
+    let period: AnalyticsCostPeriod
+
+    static func aggregate(_ costs: [AnalyticsCostSummary]) -> AnalyticsCostSummary? {
+        guard !costs.isEmpty else { return nil }
+        let amount = costs.reduce(Decimal(0)) { $0 + $1.amountUSD }
+        let kinds = Set(costs.map { $0.kind })
+        let periods = Set(costs.map { $0.period })
+        return AnalyticsCostSummary(
+            amountUSD: amount,
+            kind: kinds.count == 1 ? costs[0].kind : .mixed,
+            period: periods.count == 1 ? costs[0].period : .mixed
+        )
+    }
+}
+
 /// Estatísticas de uso em tokens de uma fonte qualquer (API do Codex, JSONL local do
 /// Claude Code, banco do OpenCode…). Campos armazenados são opcionais porque só algumas
 /// fontes os fornecem prontos; os `effective*` caem para derivações dos próprios baldes,
@@ -17,6 +53,12 @@ struct TokenAnalytics: Equatable {
     let currentStreakDays: Int?
     let longestStreakDays: Int?
     let longestRunningTurnSeconds: Int?
+    /// Custo conhecido da fonte, com origem e período explícitos. Ausente quando o
+    /// provedor não expõe custo e não há base honesta para estimá-lo.
+    let cost: AnalyticsCostSummary?
+    /// Breakdown por modelo usado para precificar equivalência de API. Os tokens já estão
+    /// incluídos nos baldes diários; este campo só adiciona composição.
+    let usageDetails: [UsageDetail]?
     /// Ordenado por dia ascendente.
     let dailyBuckets: [DailyTokens]
 
@@ -26,6 +68,8 @@ struct TokenAnalytics: Equatable {
         currentStreakDays: Int? = nil,
         longestStreakDays: Int? = nil,
         longestRunningTurnSeconds: Int? = nil,
+        cost: AnalyticsCostSummary? = nil,
+        usageDetails: [UsageDetail]? = nil,
         dailyBuckets: [DailyTokens]
     ) {
         self.lifetimeTokens = lifetimeTokens
@@ -33,6 +77,8 @@ struct TokenAnalytics: Equatable {
         self.currentStreakDays = currentStreakDays
         self.longestStreakDays = longestStreakDays
         self.longestRunningTurnSeconds = longestRunningTurnSeconds
+        self.cost = cost
+        self.usageDetails = usageDetails
         self.dailyBuckets = dailyBuckets.sorted { $0.day < $1.day }
     }
 
@@ -89,6 +135,19 @@ struct TokenAnalytics: Equatable {
 
     // MARK: - Consultas
 
+    func withCost(_ cost: AnalyticsCostSummary) -> TokenAnalytics {
+        TokenAnalytics(
+            lifetimeTokens: lifetimeTokens,
+            peakDailyTokens: peakDailyTokens,
+            currentStreakDays: currentStreakDays,
+            longestStreakDays: longestStreakDays,
+            longestRunningTurnSeconds: longestRunningTurnSeconds,
+            cost: cost,
+            usageDetails: usageDetails,
+            dailyBuckets: dailyBuckets
+        )
+    }
+
     func tokens(onDay day: String) -> Int? {
         dailyBuckets.first { $0.day == day }?.tokens
     }
@@ -131,12 +190,15 @@ struct TokenAnalytics: Equatable {
         }
         let buckets = byDay.map { DailyTokens(day: $0.key, tokens: $0.value) }.sorted { $0.day < $1.day }
         let lifetimes = nonEmpty.compactMap(\.effectiveLifetimeTokens)
+        let usageDetails = nonEmpty.flatMap { $0.usageDetails ?? [] }
         return TokenAnalytics(
             lifetimeTokens: lifetimes.isEmpty ? nil : lifetimes.reduce(0, +),
             peakDailyTokens: nil,
             currentStreakDays: nil,
             longestStreakDays: nil,
             longestRunningTurnSeconds: nonEmpty.compactMap(\.longestRunningTurnSeconds).max(),
+            cost: AnalyticsCostSummary.aggregate(nonEmpty.compactMap(\.cost)),
+            usageDetails: usageDetails.isEmpty ? nil : usageDetails,
             dailyBuckets: buckets
         )
     }
@@ -156,6 +218,18 @@ struct TokenAnalytics: Equatable {
         if absV >= 1_000_000 { return trim(String(format: "%.1fM", v / 1_000_000)) }
         if absV >= 1_000 { return trim(String(format: "%.1fK", v / 1_000)) }
         return "\(value)"
+    }
+
+    /// Valores de uso medidos pelos provedores podem passar de centenas de dólares;
+    /// compactar a fração evita que o chip domine a linha sem esconder a ordem de grandeza.
+    static func costLabel(_ cost: AnalyticsCostSummary) -> String {
+        let amount = (cost.amountUSD as NSDecimalNumber).doubleValue
+        let digits = abs(amount) >= 100 ? 0 : 2
+        let number = "$" + String(format: "%.\(digits)f", amount)
+        switch cost.kind {
+        case .metered: return number
+        case .apiEquivalent, .mixed: return "≈" + number
+        }
     }
 
     static func durationLabel(_ seconds: Int) -> String {

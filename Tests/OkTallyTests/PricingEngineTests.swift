@@ -108,3 +108,63 @@ final class PricingEngineTests: XCTestCase {
         XCTAssertEqual(pricing.first?.modelId, "anthropic/claude-3.5-sonnet")
     }
 }
+
+extension PricingEngineTests {
+    func test_estimatedCost_usesSeparateCachePrices() async throws {
+        let source = FakePricingSource()
+        source.pricingToReturn = [ModelPricing(
+            modelId: "anthropic/claude-opus-5",
+            promptPricePerToken: Decimal(string: "0.000005")!,
+            completionPricePerToken: Decimal(string: "0.000025")!,
+            cacheReadPricePerToken: Decimal(string: "0.0000005")!,
+            cacheWritePricePerToken: Decimal(string: "0.00000625")!
+        )]
+        let engine = PricingEngine(source: source)
+        try await engine.refreshIfStale()
+
+        let usage = UsageDetail(
+            modelId: "claude-opus-5",
+            promptTokens: 1000,
+            completionTokens: 100,
+            cacheReadTokens: 10_000,
+            cacheWriteTokens: 2_000
+        )
+        let cost = await engine.estimatedCost(for: usage)
+
+        XCTAssertEqual(cost, Decimal(string: "0.005")! + Decimal(string: "0.0025")! + Decimal(string: "0.005")! + Decimal(string: "0.0125")!)
+    }
+}
+
+extension PricingEngineTests {
+    func test_estimatedCost_matchesVersionPunctuationDrift() async throws {
+        let source = FakePricingSource()
+        source.pricingToReturn = [ModelPricing(
+            modelId: "anthropic/claude-opus-4.8",
+            promptPricePerToken: 0.000001,
+            completionPricePerToken: 0.000002
+        )]
+        let engine = PricingEngine(source: source)
+        try await engine.refreshIfStale()
+
+        let cost = await engine.estimatedCost(for: UsageDetail(modelId: "claude-opus-4-8", promptTokens: 1000, completionTokens: 1000))
+
+        XCTAssertEqual(cost, Decimal(string: "0.003"))
+    }
+}
+
+extension PricingEngineTests {
+    func test_estimatedCost_ignoresLocalDateSnapshotSuffix() async throws {
+        let source = FakePricingSource()
+        source.pricingToReturn = [ModelPricing(
+            modelId: "anthropic/claude-haiku-4.5",
+            promptPricePerToken: 0.000001,
+            completionPricePerToken: 0.000002
+        )]
+        let engine = PricingEngine(source: source)
+        try await engine.refreshIfStale()
+
+        let cost = await engine.estimatedCost(for: UsageDetail(modelId: "claude-haiku-4-5-20251001", promptTokens: 1000, completionTokens: 1000))
+
+        XCTAssertEqual(cost, Decimal(string: "0.003"))
+    }
+}

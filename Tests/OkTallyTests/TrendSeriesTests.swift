@@ -54,6 +54,14 @@ final class TrendSeriesTests: XCTestCase {
         XCTAssertNil(TrendSeries.delta(current: 10, previous: 0))
     }
 
+    func test_summary_recomputesTotalAndPeakForTheSelectedWindow() {
+        let analytics = analytics([(0, 100), (1, 250), (45, 900)])
+        let thirty = TrendSeries.summary(analytics, lastDays: 30, now: now)
+        let ninety = TrendSeries.summary(analytics, lastDays: 90, now: now)
+        XCTAssertEqual(thirty, TrendSummary(totalTokens: 350, peakDailyTokens: 250))
+        XCTAssertEqual(ninety, TrendSummary(totalTokens: 1250, peakDailyTokens: 900))
+    }
+
     func test_share_sumsTokensPerProviderDescending() {
         let source = [
             "codex": analytics([(0, 300), (1, 100)]),

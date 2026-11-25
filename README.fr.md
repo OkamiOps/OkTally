@@ -45,7 +45,7 @@ OkTally est une **app native de barre de menus macOS** qui garde tous ces quotas
 | 🎯 | **Popover goulot-d'abord** | Le quota le plus risqué reçoit une prévision détaillée ; les lignes fournisseur/modèle gardent chacune leurs barres de rythme compactes |
 | 📈 | **Prévisions de rythme sur 24h** | Les limites hebdomadaires et mensuelles comparent le rythme récent au renouvellement et indiquent s'il faut ralentir, maintenir ou accélérer |
 | 🪟 | **Fenêtre Vue d'ensemble** | Sidebar, ligne de KPI (fournisseurs · goulot · coût estimé), barres capsules par fenêtre, tendances 7 jours |
-| 📊 | **Onglet Analyse** | Statistiques de tokens + heatmap façon GitHub, agrégées sur Codex, Claude Code et OpenCode — streaks, pic quotidien, aujourd'hui/hier/30 jours |
+| 📊 | **Onglet Analyse** | Statistiques de tokens + heatmap façon GitHub, agrégées sur Cursor, Devin, Codex, Claude Code et OpenCode — streaks, pic quotidien, aujourd'hui/hier/30 jours et coût connu |
 | 🔔 | **Alertes configurables** | Notifications macOS à 70/90/100 % (au choix) et seuil de solde bas en USD — une fois par franchissement |
 | 💰 | **Coût estimé** | Tokens locaux × table de prix publique d'OpenRouter → « coût est. (30j) » sur la carte |
 | 🧲 | **Détection zéro-config** | Cursor, GrokBot, GitHub Copilot, Antigravity et Devin utilisent les connexions déjà présentes sur votre Mac |
@@ -57,7 +57,7 @@ OkTally est une **app native de barre de menus macOS** qui garde tous ces quotas
 <img src="docs/assets/overview.png" width="640" alt="Fenêtre Vue d'ensemble avec KPI et cartes goulot-d'abord" />
 </div>
 
-Ouvrez-la depuis le popover (« Visão geral »). La sidebar liste chaque fournisseur avec un point de statut en direct ; la grille met la **fenêtre la plus contrainte de chaque fournisseur en premier** — bloc-héros teinté, barre capsule, compte à rebours — les autres fenêtres en lignes compactes avec un sparkline 7 jours dessous.
+Ouvrez-la depuis le popover (« Visão geral »). La sidebar liste chaque fournisseur avec un point de statut en direct ; la zone principale commence par le goulot actuel et la santé de la flotte, puis transforme chaque fenêtre de quota en carte colorée selon la pression, groupée entre surveillance, confortables et soldes. En fenêtre large, cela devient une grille compacte de cartes plutôt qu'un long tableau.
 
 ## L'onglet Analyse
 
@@ -69,21 +69,25 @@ Ouvrez-la depuis le popover (« Visão geral »). La sidebar liste chaque fourni
 | --- | --- | --- |
 | **Codex** | API de statistiques du compte (ChatGPT) | Vrais tokens lifetime, tâche la plus longue, streaks |
 | **Claude Code** | Transcriptions locales (`~/.claude/projects`) | Cache incrémental par fichier — premier scan un peu long, ensuite <0,1s |
-| **OpenCode** | Base de sessions locale | Tokens par jour, cache/reasoning inclus |
+| **OpenCode** | Base de sessions locale | Tokens par jour, cache/reasoning inclus, plus le coût enregistré localement |
+| **Cursor** | API du dashboard Cursor | Tokens quotidiens de la fenêtre détaillée récente (catégories GrokBot incluses) et coût d'usage du cycle |
+| **Devin** | Métriques de génération du `sessions.db` local | Tokens input/output/cache mesurés sans double comptage du contexte |
 
-L'onglet **Análise** somme toutes les sources dans une heatmap + chips (total, pic quotidien, streak actuel/record, aujourd'hui, hier, 30 jours), avec la ventilation par fournisseur en dessous. Les chiffres locaux sont des estimations honnêtes — pas une facture.
+L'onglet **Análise** somme toutes les sources de tokens dans une heatmap + chips (total, pic quotidien, streak actuel/record, aujourd'hui, hier, 30 jours), avec la ventilation par fournisseur en dessous. Les chiffres locaux et rapportés sont des faits mesurés lorsqu'ils existent ; l'équivalence API est marquée comme estimation — rien n'est présenté comme une facture d'abonnement.
+
+Les pages de détail ne restent pas vides quand les tokens sont indisponibles. Si OkTally n'a que des snapshots de quota, il en dérive une tendance de consommation honnête en points de pourcentage à partir de l'historique enregistré sur la machine et l'affiche en heatmap sur huit semaines. Le quota n'est jamais converti en faux tokens.
 
 ## Fournisseurs
 
 | Fournisseur | Auth | Fenêtres de quota | Analyse | Coût |
 | --- | --- | --- | :-: | :-: |
-| **Claude Code** | OAuth, ou import en un clic de la session CLI | Session 5h + hebdo (+ Opus) | ✅ local | — |
+| **Claude Code** | OAuth, ou import en un clic de la session CLI | Session 5h + hebdo (+ Opus) | ✅ local | ✅ équivalent API |
 | **Codex** | OAuth | Hebdo + fenêtres par fonctionnalité (ex. Spark) | ✅ compte | — |
 | **GitHub Copilot** | **Zéro-config** — lit la session Copilot/gh CLI | Chat, complétions, premium | — | — |
-| **Cursor** | **Zéro-config** — lit la session locale de Cursor | Solde + % du cycle | — | — |
-| **GrokBot** | **Zéro-config** — réutilise la session locale de Cursor | Quota hebdomadaire GrokBot séparé | — | — |
+| **Cursor** | **Zéro-config** — lit la session locale de Cursor | Solde + % du cycle | ✅ compte | ✅ coût d'usage rapporté |
+| **GrokBot** | **Zéro-config** — réutilise la session locale de Cursor | Quota hebdomadaire GrokBot séparé | inclus dans Cursor | — |
 | **Antigravity** | **Zéro-config** — lit la session de l'IDE Antigravity | Groupes Gemini et Claude/GPT, 5h + hebdo | — | — |
-| **Devin** | **Zéro-config** — lit les identifiants Devin locaux | Fenêtres quotidienne (si exposée par le plan) + ACU hebdo | — | — |
+| **Devin** | **Zéro-config** — lit les identifiants Devin locaux | Fenêtres quotidienne (si exposée par le plan) + ACU hebdo | ✅ local | — |
 | **SuperGrok** | OAuth device code | Fenêtre hebdo | — | — |
 | **OpenRouter** | Clé d'API | Solde de crédits | — | source des prix |
 | **MiniMax** | Clé d'API (globale ou Chine) | 5h + hebdo | — | — |
@@ -98,7 +102,7 @@ L'onglet **Análise** somme toutes les sources dans une heatmap + chips (total, 
 
 Nécessite macOS 26 (Tahoe) ou ultérieur. Les versions antérieures de macOS ne sont plus prises en charge et ne recevront plus de mises à jour.
 
-1. Téléchargez `OkTally-0.11.0.dmg` depuis la [page Releases](https://github.com/OkamiOps/OkTally/releases).
+1. Téléchargez `OkTally-0.12.0.dmg` depuis la [page Releases](https://github.com/OkamiOps/OkTally/releases).
 2. Ouvrez-le et glissez **OkTally** dans Applications.
 3. L'app n'est pas notariée : au premier lancement, clic droit (Ctrl-clic) sur `OkTally.app` → **Ouvrir** → **Ouvrir**.
 

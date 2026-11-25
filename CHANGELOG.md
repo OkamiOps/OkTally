@@ -6,6 +6,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.12.0-beta] — 2026-11-25
+
+### Added
+
+- **Measured token analytics for Cursor and Devin**: the Analytics tab now reads
+  Cursor dashboard usage (including GrokBot categories, with billing-cycle cost)
+  and Devin generation metrics from the local `sessions.db`. Cursor daily detail
+  uses the recent window its API reliably exposes instead of pretending to have
+  unsupported annual history.
+- **Cost-aware analytics aggregation**: measured/reported costs and API-equivalent
+  estimates are labelled separately and summed only as a clearly marked known-cost
+  total, never as an invoice.
+- **Quota-derived usage statistics**: providers without token counters no longer
+  have empty detail pages. OkTally derives consumption from its own persisted quota
+  snapshots in percentage points, shows current usage plus 24-hour/7-day consumption,
+  and renders an eight-week consumption heatmap. Reset drops are never counted as
+  negative consumption and quota is never converted into fake token counts.
+- **Claude API-equivalent cost**: per-model input, output, cache-read and cache-write
+  tokens (including separate 5-minute/1-hour cache write TTLs) are preserved from
+  local transcripts and priced through the current OpenRouter table with resilient
+  model alias matching.
+
+### Changed
+
+- **Overview redesign**: the bottleneck hero carries provider identity, reset state
+  and seven-day history, followed by a compact fleet-health summary. The quota list
+  is now a visual grid of pressure-colored cards rather than a long table, grouped
+  by watch/comfortable/balance state.
+- **Preferences redesign**: General is split into focused Appearance, Menu, Alerts
+  and System sections. Provider/subscription panes now use a richer connection hero
+  with quota ring plus separate Connection and Account cards instead of an undifferentiated
+  native form stack.
+
+### Fixed
+
+- **Analytics period filters only changing the chart**: the 30d/90d/12mo selection now
+  recomputes the visible period total, daily peak and provider share, so the indicators
+  describe the same window as the graph.
+- **Claude analytics appearing permanently stuck**: local transcript scanning now uses
+  memory-mapped binary filtering, skips repeated streaming rows before JSON parsing and
+  parses files in parallel. Concurrent dashboard/detail openings also share one scan
+  instead of starting duplicate multi-GB scans. The first scan is still a real local
+  scan, but it now completes in seconds rather than looking like a frozen loader.
+- **Analytics absence looking like a loading failure**: providers without usable token
+  counters now say so explicitly in their detail page, and a source that returns no data
+  is marked unavailable instead of spinning forever.
+- **Overview readability at wide sizes**: quota bars now use the pressure color rather
+  than provider identity (which made comfortable quotas look critical), rows/cards have
+  hover feedback, and flat seven-day histories no longer draw a large empty chart.
+- **OpenCode analytics cost double-estimation**: the Analytics tab now uses the
+  cost already recorded in OpenCode's local database instead of pricing the same
+  tokens again through the public table.
+
 ## [0.11.0-beta] — 2026-11-25
 
 ### Added

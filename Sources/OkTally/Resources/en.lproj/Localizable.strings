@@ -62,8 +62,14 @@
 "Custo estimado" = "Estimated cost";
 "últimos 30 dias" = "last 30 days";
 "Uso nos últimos 7 dias" = "Usage over the last 7 days";
+"janela sob pressão" = "window under pressure";
+"limite praticamente alcançado" = "limit nearly reached";
+"menor folga da frota" = "tightest fleet headroom";
+"folga média" = "average headroom";
+"O histórico local desta janela aparece aqui depois das próximas atualizações." = "This window's local history will appear here after the next updates.";
 "Nenhuma fonte de análise disponível — conecte Codex, Claude Code ou OpenCode." = "No analytics source available — connect Codex, Claude Code, or OpenCode.";
 "Carregando estatísticas de uso…" = "Loading usage statistics…";
+"O primeiro scan local pode levar alguns segundos; depois o cache incremental é usado." = "The first local scan can take a few seconds; the incremental cache is used afterwards.";
 "Sem dados" = "No data";
 "Codex: estatísticas da conta (API). Claude Code e OpenCode: estimativa local dos transcritos/banco desta máquina, incluindo tokens de cache." = "Codex: account statistics (API). Claude Code and OpenCode: local estimate from this machine's transcripts/database, including cache tokens.";
 "Atualizado %@" = "Updated %@";
@@ -85,6 +91,8 @@
 "Hoje" = "Today";
 "Ontem" = "Yesterday";
 "Últimos 30 dias" = "Last 30 days";
+"Últimos 90 dias" = "Last 90 days";
+"Últimos 12 meses" = "Last 12 months";
 "%@: sem uso" = "%@: no usage";
 "%@: %@ tokens" = "%@: %@ tokens";
 "menos" = "less";
@@ -216,6 +224,13 @@
 "Versão %@ disponível" = "Version %@ available";
 "Abrir no GitHub" = "Open on GitHub";
 "Você está na versão mais recente." = "You are on the latest version.";
+"Aparência" = "Appearance";
+"Menu" = "Menu";
+"Sistema" = "System";
+"Cores da escala de uso" = "Usage scale colors";
+"Pinos, slots e contas visíveis" = "Pins, slots and visible accounts";
+"Notificações e limiares" = "Notifications and thresholds";
+"Versão e atualizações" = "Version and updates";
 
 /* Notifications */
 "%d%% da janela %@" = "%d%% of the %@ window";
@@ -452,3 +467,51 @@
 "O Kimi Code não forneceu cotas utilizáveis da assinatura ou carteira para esta conta." = "Kimi Code did not provide usable subscription or wallet quotas for this account.";
 
 "Esta chave conecta a Meta Model API. O saldo e o uso total são consultados no portal. O acompanhamento da assinatura Muse Code ainda não está disponível." = "This key connects the Meta Model API. Balance and total usage are available in the portal. Muse Code subscription monitoring is not available yet.";
+
+/* Analytics/provider status additions */
+"30 dias" = "30 days";
+"Custo conhecido" = "Known cost";
+"ciclo de billing" = "billing cycle";
+"equivalente de API" = "API-equivalent";
+"medido pelos provedores" = "measured by providers";
+"origens mistas" = "mixed sources";
+"períodos mistos" = "mixed periods";
+"Nenhuma fonte de análise disponível — conecte Cursor, Devin, Codex, Claude Code ou OpenCode." = "No analytics source available — connect Cursor, Devin, Codex, Claude Code, or OpenCode.";
+"Tokens medidos: Cursor (API; inclui categorias GrokBot), Devin (sessions.db local), Codex (API), Claude Code e OpenCode (artefatos locais). Custo é medido onde existe ou equivalência de API marcada com ≈; não é fatura da assinatura e soma só fontes com custo conhecido. Providers fora dessa lista não expõem contadores de token utilizáveis. O detalhe diário do Cursor cobre aproximadamente os últimos 30 dias; o custo usa o ciclo de billing." = "Measured tokens: Cursor (API; includes GrokBot categories), Devin (local sessions.db), Codex (API), Claude Code and OpenCode (local artifacts). Cost is measured where available or API-equivalent marked with ≈; it is not a subscription invoice and only sums sources with known cost. Providers outside this list do not expose usable token counters. Cursor daily detail covers approximately the last 30 days; cost uses the billing cycle.";
+"Devin não detectado — instale/entre no Devin CLI para acompanhar o uso." = "Devin not detected — install/sign in to Devin CLI to track usage.";
+"Login do Devin CLI detectado" = "Devin CLI sign-in detected";
+"Login do Devin recusado — execute o login do Devin CLI novamente." = "Devin sign-in rejected — run Devin CLI login again.";
+"Nada a configurar — detectado automaticamente a partir do login do Devin CLI neste Mac." = "Nothing to configure — automatically detected from the Devin CLI sign-in on this Mac.";
+"Nenhum login do Devin CLI encontrado" = "No Devin CLI sign-in found";
+"Sessão do Cursor encontrada, mas não pôde ser decifrada — aprove o acesso do OkTally no Keychain ou entre no Cursor novamente." = "Cursor session found, but it could not be decrypted — approve OkTally access in Keychain or sign in to Cursor again.";
+"A assinatura Muse está conectada, mas este host ainda não observou uso. Nenhuma chamada de modelo foi feita para preencher as cotas." = "The Muse subscription is connected, but this host has not observed usage yet. No model call has been made to populate the quotas.";
+"Não foi possível iniciar o host local do Muse para ler a última observação de uso." = "Could not start the local Muse host to read the latest usage observation.";
+"O Muse retornou uma observação de uso inválida." = "Muse returned an invalid usage observation.";
+"O arquivo selecionado não é uma credencial Muse em JSON de texto simples compatível." = "The selected file is not a compatible plaintext JSON Muse credential.";
+"O host local do Muse recusou a leitura de uso." = "The local Muse host refused the usage read.";
+"O monitoramento de assinatura exige login da conta Meta no Muse Code. Chaves da Meta Model API são pay-as-you-go e não expõem esta cota." = "Subscription monitoring requires signing in to the Meta account in Muse Code. Meta Model API keys are pay-as-you-go and do not expose this quota.";
+"Último uso de assinatura observado pelo Muse; não é uma consulta de cota ao vivo." = "Latest subscription usage observed by Muse; not a live quota query.";
+"Custo 30d" = "Cost 30d";
+"Custo do ciclo" = "Billing cycle cost";
+"Custo conhecido" = "Known cost";
+"Custo medido/reportado pelo provedor ou pelo banco local oficial" = "Cost measured/reported by the provider or the official local database";
+"Combina custos medidos e equivalência de API; não é uma fatura" = "Combines measured costs and API-equivalent estimates; it is not an invoice";
+"Custo" = "Cost";
+"30d" = "30d";
+"ciclo" = "cycle";
+"Dados de token indisponíveis" = "Token data unavailable";
+"Este provedor não expõe contadores de token utilizáveis. A cota acima continua medida; o OkTally não inventa tokens a partir dela." = "This provider does not expose usable token counters. The quota above is still measured; OkTally does not invent tokens from it.";
+"A fonte de analytics existe, mas não retornou contadores utilizáveis nesta máquina no momento. O OkTally não inventa tokens a partir da cota." = "The analytics source exists, but it did not return usable counters on this machine right now. OkTally does not invent tokens from quota.";
+"As fontes conhecidas foram consultadas, mas nenhuma retornou contadores utilizáveis no momento. O OkTally não inventa tokens a partir de cotas." = "Known sources were queried, but none returned usable counters right now. OkTally does not invent tokens from quotas.";
+"derivado da quota local" = "derived from local quota";
+"Uso atual" = "Current usage";
+"Consumo 24h" = "24h consumption";
+"Consumo 7d" = "7d consumption";
+"Dias observados" = "Observed days";
+"Tendência de consumo" = "Consumption trend";
+"pontos percentuais por dia" = "percentage points per day";
+"Calculado a partir das leituras de quota gravadas nesta máquina. Quedas por reset não contam como consumo; uso anterior à primeira leitura não é inventado." = "Calculated from quota readings recorded on this machine. Drops caused by resets do not count as consumption; usage before the first reading is not invented.";
+"Quota praticamente estável nos últimos 7 dias." = "Quota nearly flat over the last 7 days.";
+"A fonte de analytics existe, mas não retornou contadores utilizáveis nesta máquina no momento. O histórico local de quota ainda não tem consumo suficiente para um gráfico." = "The analytics source exists, but it did not return usable counters on this machine right now. Local quota history does not have enough consumption for a chart yet.";
+"Este provedor não expõe contadores de token utilizáveis e ainda não há histórico local suficiente para derivar consumo. A cota acima continua medida; o OkTally não inventa tokens a partir dela." = "This provider does not expose usable token counters and there is not enough local history to derive consumption yet. The quota above is still measured; OkTally does not invent tokens from it.";
+"8 semanas" = "8 weeks";

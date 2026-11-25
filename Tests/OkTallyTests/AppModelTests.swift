@@ -752,6 +752,51 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(calls, 1)
     }
 
+    func test_concurrentAnalyticsLoads_shareTheSameInFlightScan() async {
+        actor CallCounter {
+            private(set) var value = 0
+            func increment() { value += 1 }
+        }
+
+        let model = makeAccountsModel()
+        let counter = CallCounter()
+        model.analyticsLoaders["claude"] = {
+            await counter.increment()
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            return TokenAnalytics(dailyBuckets: [DailyTokens(day: TokenAnalytics.dayKey(Date()), tokens: 10)])
+        }
+
+        async let first = model.loadAnalyticsIfStale(providerId: "claude", maxAge: 0)
+        async let second = model.loadAnalyticsIfStale(providerId: "claude", maxAge: 0)
+        _ = await (first, second)
+
+        let calls = await counter.value
+        XCTAssertEqual(calls, 1)
+    }
+
+    func test_analyticsLoadWithoutData_marksUnavailableAndDoesNotRestartImmediately() async {
+        actor CallCounter {
+            private(set) var value = 0
+            func increment() { value += 1 }
+        }
+
+        let model = makeAccountsModel()
+        let counter = CallCounter()
+        model.analyticsLoaders["claude"] = {
+            await counter.increment()
+            return nil
+        }
+
+        await model.loadAnalyticsIfStale(providerId: "claude", maxAge: 300)
+        await model.loadAnalyticsIfStale(providerId: "claude", maxAge: 300)
+
+        let calls = await counter.value
+        XCTAssertEqual(calls, 1)
+        XCTAssertTrue(model.analyticsUnavailableProviderIds.contains("claude"))
+        XCTAssertFalse(model.analyticsLoadingProviderIds.contains("claude"))
+        XCTAssertNil(model.analyticsByProvider["claude"])
+    }
+
     /// Codex tem analytics pela API da conta, então cada conta Codex ganha o seu. Claude e
     /// OpenCode leem disco local, que é da máquina inteira: só a conta legada tem.
     func test_analyticsLoaders_followCodexInstances() throws {
