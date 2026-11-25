@@ -401,7 +401,22 @@ final class PreferencesStore {
             if let cached = accountsCache, cached.raw == raw { return cached.accounts }
             accountsDecodeCount += 1
             let decoded = raw.flatMap { try? JSONDecoder().decode([AccountInstance].self, from: Data($0.utf8)) }
-            let accounts = (decoded?.isEmpty == false) ? decoded! : AccountsCatalog.defaultAccounts
+            var accounts = (decoded?.isEmpty == false) ? decoded! : AccountsCatalog.defaultAccounts
+            // Tipos novos presos à máquina precisam entrar em instalações que já tinham
+            // `accounts` persistido. Só eles são mesclados: contas removíveis que o dono
+            // apagou nunca podem ressuscitar numa atualização.
+            for defaultAccount in AccountsCatalog.defaultAccounts where defaultAccount.kind.legacyIsMachineBound {
+                guard !accounts.contains(where: { $0.id == defaultAccount.id }) else { continue }
+                let defaultIndex = AccountsCatalog.defaultAccounts.firstIndex(where: { $0.id == defaultAccount.id }) ?? 0
+                var insertion = accounts.endIndex
+                for later in AccountsCatalog.defaultAccounts.dropFirst(defaultIndex + 1) {
+                    if let index = accounts.firstIndex(where: { $0.id == later.id }) {
+                        insertion = index
+                        break
+                    }
+                }
+                accounts.insert(defaultAccount, at: insertion)
+            }
             accountsCache = (raw, accounts)
             return accounts
         }

@@ -279,6 +279,7 @@ struct PreferencesView: View {
         case .cursor: return "Cursor"
         case .grokbot: return "GrokBot"
         case .copilot: return "GitHub Copilot"
+        case .devin: return "Devin"
         case .antigravity: return "Antigravity"
         case .openrouter: return "OpenRouter"
         case .minimax: return "MiniMax"
@@ -299,6 +300,8 @@ struct PreferencesView: View {
             return AccountID.isLegacy(cursorId) || loggedIn.contains(cursorId)
         case .copilot:
             return CopilotTokenReader().firstToken() != nil
+        case .devin:
+            return DevinCredentialReader().readCredentials() != nil
         case .antigravity(let id):
             return AccountID.isLegacy(id) ? AntigravityTokenReader().readTokens() != nil : loggedIn.contains(id)
         case .minimax(let id), .apiKey(let id, _):
@@ -328,6 +331,7 @@ struct PreferencesView: View {
             case .cursor(let id): cursorPane(id)
             case .grokbot(let id): grokBotPane(id)
             case .copilot: copilotPane
+            case .devin: devinPane
             case .antigravity(let id): antigravityPane(id)
             case .minimax(let id): minimaxPane(id)
             case .apiKey(let id, _): keyPane(id)
@@ -660,6 +664,26 @@ struct PreferencesView: View {
         }
     }
 
+    private var devinPane: some View {
+        let detected = DevinCredentialReader().readCredentials() != nil
+        return ProviderPaneScaffold(
+            providerId: "devin",
+            snapshot: appModel.snapshotsByProvider["devin"],
+            problem: appModel.errorsByProvider["devin"],
+            name: providerName("devin"),
+            status: detected
+                ? .connected(L("Login do Devin CLI detectado"))
+                : .notConfigured(L("Nenhum login do Devin CLI encontrado"))
+        ) {
+            Text(L("Nada a configurar — detectado automaticamente a partir do login do Devin CLI neste Mac."))
+                .font(.caption).foregroundStyle(.secondary)
+        } details: {
+            EmptyView()
+        } account: {
+            accountSection("devin")
+        }
+    }
+
     @ViewBuilder private func antigravityPane(_ id: String) -> some View {
         if AccountID.isLegacy(id) {
             let detected = AntigravityTokenReader().readTokens() != nil
@@ -850,7 +874,7 @@ struct PreferencesView: View {
             case .minimax:
                 apiKeyFields[id] = savedAPIKey(id) ?? ""
                 minimaxChina[id] = minimaxRegion(id) == "china"
-            case .grokbot, .copilot, .mimo:
+            case .grokbot, .copilot, .devin, .mimo:
                 break
             }
             nicknameFields[id] = account.nickname ?? ""

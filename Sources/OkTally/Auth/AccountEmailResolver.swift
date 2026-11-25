@@ -80,7 +80,7 @@ struct AccountEmailResolver {
             } else {
                 email = nil
             }
-        case .grokbot, .copilot, .mimo, .openrouter, .minimax, .opencode, .deepseek, .metaAPI, .kimiAPI, .zai, .zaiAPI, .mistral, .mistralAPI, .qwen:
+        case .grokbot, .copilot, .devin, .mimo, .openrouter, .minimax, .opencode, .deepseek, .metaAPI, .kimiAPI, .zai, .zaiAPI, .mistral, .mistralAPI, .qwen:
             email = nil
         }
         return email

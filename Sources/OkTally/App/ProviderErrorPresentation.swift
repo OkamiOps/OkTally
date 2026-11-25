@@ -70,6 +70,13 @@ enum ProviderErrorPresentation: Equatable {
         if let error = error as? MiniMaxError, error == .missingAPIKey { return .notConfigured }
         if error is GrokBotUsageError { return .dependencyUnavailable }
         if let error = error as? CursorUsageError, error == .notDetected { return .notConfigured }
+        if let error = error as? DevinError {
+            switch error {
+            case .notDetected: return .notConfigured
+            case .tokenRejected: return .needsReauth
+            case .badResponse: return .error
+            }
+        }
         if let error = error as? OpenCodeError, error == .notDetected { return .notConfigured }
         if let error = error as? CopilotError {
             switch error {

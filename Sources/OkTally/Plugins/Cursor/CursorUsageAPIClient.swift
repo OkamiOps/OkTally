@@ -13,22 +13,67 @@ import Foundation
 /// Amounts in `planUsage` are cents (e.g. `limit: 2000` == $20.00, matching Cursor Pro's
 /// included monthly credit pool). `billingCycleStart`/`billingCycleEnd` are epoch
 /// milliseconds encoded as strings.
-struct CursorUsageResponse: Codable, Equatable {
-    struct PlanUsage: Codable, Equatable {
+struct CursorUsageResponse: Equatable {
+    struct PlanUsage: Equatable {
         /// Dropped from the live schema on 2026-08-17 (same fate as `bonusSpend` before
         /// it); kept optional so its presence still enables the more precise
-        /// `limit - totalSpend` balance, which can go negative on overage.
+        /// `limit - totalSpend` balance, which can go negative on overage. Campos
+        /// financeiros são todos opcionais: o app usa o que existir.
         let totalSpend: Double?
         /// The API's own remaining-credit figure, the only balance source once
         /// `totalSpend` is gone.
         let remaining: Double?
-        let limit: Double
+        let limit: Double?
         let totalPercentUsed: Double
     }
 
-    let billingCycleStart: String
-    let billingCycleEnd: String
+    let billingCycleStart: String?
+    let billingCycleEnd: String?
     let planUsage: PlanUsage
+
+    init(billingCycleStart: String?, billingCycleEnd: String?, planUsage: PlanUsage) {
+        self.billingCycleStart = billingCycleStart
+        self.billingCycleEnd = billingCycleEnd
+        self.planUsage = planUsage
+    }
+
+    /// Parse sem `Codable`: o schema não é público e muda em produção sem versionamento.
+    /// Campos novos/ausentes nunca devem derrubar a coleta se ainda houver percentual.
+    init(data: Data) throws {
+        guard let root = TolerantJSON.object(data: data) else {
+            throw ProviderAPIError.malformedResponse("Cursor")
+        }
+        let plan = TolerantJSON.object(TolerantJSON.deepValue(for: "planUsage", in: root))
+            ?? TolerantJSON.object(TolerantJSON.deepValue(for: "plan_usage", in: root))
+            ?? root
+        let directPercent = TolerantJSON.number(in: plan, camel: "totalPercentUsed")
+            ?? TolerantJSON.number(in: plan, camel: "percentUsed")
+            ?? TolerantJSON.number(in: plan, camel: "usagePercent")
+        let totalSpend = TolerantJSON.number(in: plan, camel: "totalSpend")
+        let remaining = TolerantJSON.number(in: plan, camel: "remaining")
+        let limit = TolerantJSON.number(in: plan, camel: "limit")
+        let derivedPercent: Double?
+        if let remaining, let limit, limit > 0 {
+            derivedPercent = min(100, max(0, (1 - remaining / limit) * 100))
+        } else if let totalSpend, let limit, limit > 0 {
+            derivedPercent = min(100, max(0, totalSpend / limit * 100))
+        } else {
+            derivedPercent = nil
+        }
+        guard let percent = directPercent ?? derivedPercent else { throw ProviderAPIError.malformedResponse("Cursor") }
+        self.planUsage = PlanUsage(
+            totalSpend: totalSpend,
+            remaining: remaining,
+            limit: limit,
+            totalPercentUsed: percent
+        )
+        self.billingCycleStart = TolerantJSON.string(in: root, camel: "billingCycleStart")
+            ?? TolerantJSON.string(TolerantJSON.deepValue(for: "billingCycleStart", in: root))
+            ?? TolerantJSON.string(TolerantJSON.deepValue(for: "billing_cycle_start", in: root))
+        self.billingCycleEnd = TolerantJSON.string(in: root, camel: "billingCycleEnd")
+            ?? TolerantJSON.string(TolerantJSON.deepValue(for: "billingCycleEnd", in: root))
+            ?? TolerantJSON.string(TolerantJSON.deepValue(for: "billing_cycle_end", in: root))
+    }
 }
 
 protocol CursorUsageFetching {
@@ -37,6 +82,7 @@ protocol CursorUsageFetching {
 
 enum CursorUsageError: Error, Equatable {
     case notDetected
+    case sessionUnreadable
     case badResponse(Int?)
 }
 
@@ -45,6 +91,8 @@ extension CursorUsageError: LocalizedError {
         switch self {
         case .notDetected:
             return L("Cursor não detectado — instale/entre no Cursor para acompanhar o uso.")
+        case .sessionUnreadable:
+            return L("Sessão do Cursor encontrada, mas não pôde ser decifrada — aprove o acesso do OkTally no Keychain ou entre no Cursor novamente.")
         case .badResponse(let statusCode):
             return LF("Cursor respondeu com erro (código %@).", statusCode.map(String.init) ?? L("desconhecido"))
         }
@@ -66,7 +114,7 @@ final class CursorUsageAPIClient: CursorUsageFetching {
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw CursorUsageError.badResponse((response as? HTTPURLResponse)?.statusCode)
         }
-        return try JSONDecoder().decode(CursorUsageResponse.self, from: data)
+        return try CursorUsageResponse(data: data)
     }
 }
 

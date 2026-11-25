@@ -80,6 +80,36 @@ final class CursorTokenReaderTests: XCTestCase {
         XCTAssertEqual(keychainReads, 0)
     }
 
+    func test_readAccessToken_usesCachedTokenWhenDatabaseBecomesUnreadable() throws {
+        let path = try makeFixtureDB(withToken: encryptedToken)
+        let reader = CursorTokenReader(dbPath: path, safeStoragePassword: { "test-password" })
+        XCTAssertEqual(reader.readAccessToken(), "header.payload.signature")
+
+        try Data("not sqlite".utf8).write(to: URL(fileURLWithPath: path))
+        XCTAssertEqual(reader.readAccessToken(), "header.payload.signature")
+        XCTAssertTrue(reader.hasCredential())
+    }
+
+    func test_readAccessToken_doesNotAskKeychainAgainWhileSameEncryptedTokenIsCached() throws {
+        let path = try makeFixtureDB(withToken: encryptedToken)
+        var keychainReads = 0
+        var password: String? = "test-password"
+        let reader = CursorTokenReader(dbPath: path, safeStoragePassword: { keychainReads += 1; return password })
+        XCTAssertEqual(reader.readAccessToken(), "header.payload.signature")
+        password = nil
+
+        XCTAssertEqual(reader.readAccessToken(), "header.payload.signature")
+        XCTAssertEqual(reader.readAccessToken(), "header.payload.signature")
+        XCTAssertEqual(keychainReads, 1)
+    }
+
+    func test_readAccessToken_reportsUnreadableWhenDecryptFailsWithoutCache() throws {
+        let path = try makeFixtureDB(withToken: encryptedToken)
+        let reader = CursorTokenReader(dbPath: path, safeStoragePassword: { nil })
+        XCTAssertNil(reader.readAccessToken())
+        XCTAssertEqual(reader.unavailableError() as? CursorUsageError, .sessionUnreadable)
+    }
+
     func test_readAccessToken_cachesSafeStoragePassword() throws {
         let path = try makeFixtureDB(withToken: encryptedToken)
         var keychainReads = 0
@@ -256,4 +286,34 @@ final class CursorUsageProviderTests: XCTestCase {
         XCTAssertEqual(response.planUsage.limit, 2000)
         XCTAssertEqual(response.planUsage.totalPercentUsed, 73.68985507246377)
     }
+    func test_responseParser_derivesPercentFromRemainingAndLimitWhenPercentDisappears() throws {
+        let json = #"{"billingCycleEnd":1786429152000,"planUsage":{"remaining":"3000","limit":4000,"totalSpend":null}}"#
+        let response = try CursorUsageResponse(data: Data(json.utf8))
+        XCTAssertEqual(response.billingCycleEnd, "1786429152000")
+        XCTAssertEqual(response.planUsage.totalPercentUsed, 25, accuracy: 0.0001)
+        XCTAssertEqual(response.planUsage.remaining, 3000)
+        XCTAssertEqual(response.planUsage.limit, 4000)
+    }
+
+    func test_responseParser_acceptsWrappedSnakeCasePlanUsage() throws {
+        let json = #"{"response":{"plan_usage":{"total_percent_used":"42.5"},"billing_cycle_end":"1786429152000"}}"#
+        let response = try CursorUsageResponse(data: Data(json.utf8))
+        XCTAssertEqual(response.planUsage.totalPercentUsed, 42.5, accuracy: 0.0001)
+        XCTAssertEqual(response.billingCycleEnd, "1786429152000")
+    }
+
+    func test_responseParser_rejectsPayloadWithoutAnyUsablePercentOrBalance() {
+        XCTAssertThrowsError(try CursorUsageResponse(data: Data(#"{"planUsage":{"limit":4000}}"#.utf8))) { error in
+            guard case .malformedResponse("Cursor") = error as? ProviderAPIError else {
+                return XCTFail("unexpected error: \(error)")
+            }
+        }
+    }
+
+    func test_responseParser_derivesPercentFromSpendAndLimitWhenPercentAndRemainingDisappear() throws {
+        let json = #"{"billingCycleEnd":"1786429152000","planUsage":{"totalSpend":1000,"limit":4000}}"#
+        let response = try CursorUsageResponse(data: Data(json.utf8))
+        XCTAssertEqual(response.planUsage.totalPercentUsed, 25, accuracy: 0.0001)
+    }
+
 }

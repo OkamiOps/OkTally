@@ -48,7 +48,7 @@ O OkTally é um app **nativo de barra de menu do macOS** que mantém todas essas
 | 📊 | **Aba Análise** | Estatísticas de tokens + heatmap estilo GitHub, agregando Codex, Claude Code e OpenCode — streaks, pico diário, hoje/ontem/30 dias |
 | 🔔 | **Alertas configuráveis** | Notificações do macOS em 70/90/100% (você escolhe) e limite de saldo baixo em USD — uma vez por cruzamento, não por poll |
 | 💰 | **Custo estimado** | Tokens locais × tabela pública de preços do OpenRouter → "Custo est. (30d)" no card |
-| 🧲 | **Detecção zero-config** | Cursor, GrokBot, GitHub Copilot e Antigravity são detectados dos logins que já existem no seu Mac — nada para colar |
+| 🧲 | **Detecção zero-config** | Cursor, GrokBot, GitHub Copilot, Antigravity e Devin são detectados dos logins que já existem no seu Mac — nada para colar |
 | 🔐 | **Segredos só no Keychain** | Tokens OAuth e chaves de API nunca ficam em texto puro; tudo roda localmente |
 
 ## A janela Visão geral
@@ -85,6 +85,7 @@ A aba **Análise** soma todas as fontes num único heatmap + chips (total, pico 
 | **Cursor** | **Zero-config** — lê a sessão local do Cursor | Saldo + % do ciclo | — | — |
 | **GrokBot** | **Zero-config** — reutiliza a sessão local do Cursor | Cota semanal separada do GrokBot | — | — |
 | **Antigravity** | **Zero-config** — lê o login do IDE Antigravity | Grupos Gemini e Claude/GPT, 5h + semanal | — | — |
+| **Devin** | **Zero-config** — lê as credenciais locais do Devin | Janelas diária (quando exposta pelo plano) + semanal de ACU | — | — |
 | **SuperGrok** | OAuth device code | Janela semanal | — | — |
 | **OpenRouter** | Chave de API | Saldo de créditos | — | fonte da tabela |
 | **MiniMax** | Chave de API (global ou China) | 5h + semanal, pior-modelo-vence | — | — |
@@ -99,8 +100,8 @@ A aba **Análise** soma todas as fontes num único heatmap + chips (total, pico 
 
 ```mermaid
 flowchart LR
-    subgraph Providers["11 plugins de provedor"]
-        P1["Claude · Codex · Copilot · Cursor · GrokBot<br/>Antigravity · SuperGrok · OpenRouter<br/>MiniMax · OpenCode · MiMo"]
+    subgraph Providers["Plugins de provedor"]
+        P1["Claude · Codex · Copilot · Cursor · GrokBot<br/>Antigravity · Devin · SuperGrok · OpenRouter<br/>MiniMax · OpenCode · MiMo"]
     end
     P1 -->|"ProviderSnapshot<br/>(QuotaShape)"| S[Scheduler]
     S --> DB[(Histórico SQLite<br/>retenção de 30 dias)]
@@ -120,7 +121,7 @@ Cada provedor é um plugin que implementa um único protocolo `UsageProvider` e 
 
 Requer macOS 26 (Tahoe) ou mais recente. Versões anteriores do macOS não são mais suportadas e não recebem atualizações.
 
-1. Baixe `OkTally-0.10.2.dmg` na [página de Releases](https://github.com/OkamiOps/OkTally/releases).
+1. Baixe `OkTally-0.11.0.dmg` na [página de Releases](https://github.com/OkamiOps/OkTally/releases).
 2. Abra e arraste **OkTally** para Aplicativos.
 3. O app não é notarizado: no primeiro uso, clique com o botão direito (Ctrl-clique) em `OkTally.app` → **Abrir** → **Abrir**.
 
@@ -146,7 +147,7 @@ bash Scripts/make_dmg.sh               # empacotar um DMG de arrastar-e-soltar
 ## Primeiros passos
 
 1. Clique no item do OkTally na barra de menu — o primeiro uso mostra a chamada **conecte seu primeiro provedor**.
-2. Abra as **Preferências** e conecte cada provedor que você usa — login OAuth, chave de API, ou nada no caso de Cursor/GrokBot/Copilot.
+2. Abra as **Preferências** e conecte cada provedor que você usa — login OAuth, chave de API, ou nada no caso de Cursor/GrokBot/Copilot/Devin.
 3. Arraste as contas em **Preferências → Contas** na ordem que você quer.
 4. De volta ao popover, fixe as janelas que importam com o ícone de alfinete.
 5. Ajuste os limites de alerta (70/90/100% + saldo baixo) em **Preferências → Geral**.

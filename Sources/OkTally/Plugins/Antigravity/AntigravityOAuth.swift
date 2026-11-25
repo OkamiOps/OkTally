@@ -14,8 +14,26 @@ enum AntigravityOAuth {
     // vez pelo dono do repositório.
     static let clientId = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
     static let clientSecret = "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"
-    static let userAgent = "antigravity/1.11.3 Darwin/arm64"
-    static let summaryURL = URL(string: "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary")!
+    /// O Cloud Code devolve quota falsa/parcial para clients antigos. Lê a versão do IDE
+    /// instalado quando possível; o fallback acompanha a versão em que este contrato foi
+    /// revalidado ao vivo (2.13.0, 2026-11-25).
+    static var userAgent: String {
+        let plist = "/Applications/Antigravity.app/Contents/Info.plist"
+        let version = (NSDictionary(contentsOfFile: plist)?["CFBundleShortVersionString"] as? String) ?? "2.13.0"
+        return "antigravity/\(version) Darwin/arm64"
+    }
+
+    /// `daily` é o host que expõe os buckets Gemini reais; o host de produção pode
+    /// devolver os mesmos buckets como 100% restantes. Consultamos os três e combinamos
+    /// pelo maior uso observado (nunca pelo primeiro que responder).
+    static let cloudCodeBases = [
+        "https://daily-cloudcode-pa.googleapis.com",
+        "https://daily-cloudcode-pa.sandbox.googleapis.com",
+        "https://cloudcode-pa.googleapis.com"
+    ]
+    static let summaryURL = URL(string: cloudCodeBases[0] + "/v1internal:retrieveUserQuotaSummary")!
+    static func loadCodeAssistURL(base: String) -> URL { URL(string: base + "/v1internal:loadCodeAssist")! }
+    static func summaryURL(base: String) -> URL { URL(string: base + "/v1internal:retrieveUserQuotaSummary")! }
     static let userInfoURL = URL(string: "https://www.googleapis.com/oauth2/v2/userinfo")!
 
     /// Login Google próprio (contas extras). Conferido ao vivo em 2026-09-28

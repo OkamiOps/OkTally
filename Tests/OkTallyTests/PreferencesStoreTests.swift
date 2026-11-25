@@ -35,6 +35,27 @@ final class PreferencesStoreTests: XCTestCase {
         PreferencesStore(store: kv, secretStore: secrets)
     }
 
+    func test_accounts_mergesNewMachineBoundDefaultsIntoPersistedInstallations() throws {
+        let kv = FakeKeyValueStore()
+        let persisted = AccountsCatalog.defaultAccounts.filter { $0.kind != .devin }
+        let raw = String(decoding: try JSONEncoder().encode(persisted), as: UTF8.self)
+        kv.set(raw, forKey: "accounts.v1")
+
+        let accounts = makeStore(kv: kv).accounts
+        XCTAssertTrue(accounts.contains(where: { $0.id == "devin" }))
+        XCTAssertLessThan(accounts.firstIndex(where: { $0.id == "devin" }) ?? 0,
+                          accounts.firstIndex(where: { $0.id == "opencode" }) ?? 0)
+    }
+
+    func test_accounts_doesNotResurrectRemovableDefaultAccounts() throws {
+        let kv = FakeKeyValueStore()
+        let persisted = AccountsCatalog.defaultAccounts.filter { $0.kind != .openrouter }
+        let raw = String(decoding: try JSONEncoder().encode(persisted), as: UTF8.self)
+        kv.set(raw, forKey: "accounts.v1")
+
+        XCTAssertFalse(makeStore(kv: kv).accounts.contains(where: { $0.id == "openrouter" }))
+    }
+
     func test_openRouterAPIKey_roundTrips() throws {
         let store = makeStore()
         XCTAssertNil(store.openRouterAPIKey)

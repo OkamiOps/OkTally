@@ -39,8 +39,8 @@ final class CursorUsageProvider: UsageProvider {
         // the percent window below still reports usage.
         var windows = [QuotaWindow]()
         let remainingCents: Double?
-        if let totalSpend = response.planUsage.totalSpend {
-            remainingCents = response.planUsage.limit - totalSpend
+        if let totalSpend = response.planUsage.totalSpend, let limit = response.planUsage.limit {
+            remainingCents = limit - totalSpend
         } else {
             remainingCents = response.planUsage.remaining
         }
@@ -52,7 +52,7 @@ final class CursorUsageProvider: UsageProvider {
         // (`totalPercentUsed`) — surface it as its own window so Cursor participates in
         // the menu-bar icon aggregation and percentage-based alerts like every other
         // percent-based provider. `creditBalance` alone never contributes a percent.
-        if let resetAt = Self.parseEpochMillis(response.billingCycleEnd) {
+        if let cycleEnd = response.billingCycleEnd, let resetAt = Self.parseEpochMillis(cycleEnd) {
             let percentWindow = QuotaWindow(
                 label: "percent",
                 shape: .periodicCounter(used: response.planUsage.totalPercentUsed, limit: 100, resetAt: resetAt),

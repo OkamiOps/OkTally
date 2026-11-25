@@ -6,7 +6,7 @@ import Foundation
 enum AccountKind: String, CaseIterable, Codable {
     case claude, codex, supergrok, cursor
     case grokbot = "cursor-grokbot"
-    case copilot, antigravity, openrouter, minimax, opencode, mimo, kiro, deepseek
+    case copilot, antigravity, devin, openrouter, minimax, opencode, mimo, kiro, deepseek
     case metaAPI = "meta-api"
     case kimi, zai, mistral, qwen
     case kimiAPI = "kimi-api"
@@ -28,7 +28,7 @@ enum AccountKind: String, CaseIterable, Codable {
     /// Tipos cujo legado lê um app de terceiros (IDE/CLI) e por isso não podem ser removidos.
     var legacyIsMachineBound: Bool {
         switch self {
-        case .cursor, .grokbot, .antigravity, .copilot, .mimo: return true
+        case .cursor, .grokbot, .antigravity, .devin, .copilot, .mimo: return true
         default: return false
         }
     }

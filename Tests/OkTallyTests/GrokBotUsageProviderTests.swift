@@ -82,8 +82,8 @@ final class GrokBotUsageProviderTests: XCTestCase {
         XCTAssertEqual(URLProtocolStub.requestCount(for: url), 1)
         XCTAssertEqual(response.usagePercent, 19.086533)
         XCTAssertEqual(response.nextResetTimestampUtc, "2026-08-31T00:31:02.272Z")
-        XCTAssertTrue(response.hasNonZeroIncludedLimit)
-        XCTAssertTrue(response.hasAvailableUsage)
+        XCTAssertEqual(response.hasNonZeroIncludedLimit, true)
+        XCTAssertEqual(response.hasAvailableUsage, true)
         XCTAssertEqual(response.grokPlanLabel, "Grok Bot Plan")
     }
 
@@ -117,4 +117,20 @@ final class GrokBotUsageProviderTests: XCTestCase {
         XCTAssertEqual(storage.saveCount, 1)
         XCTAssertNil(scheduler.lastError["cursor-grokbot"])
     }
+    func test_responseParser_derivesUsageFromFutureRemainingFractionShape() throws {
+        let json = #"{"remainingFraction":0.75,"resetTime":"2026-08-31T00:31:02.272Z"}"#
+        let response = try GrokBotUsageResponse(data: Data(json.utf8))
+        XCTAssertEqual(response.usagePercent, 25, accuracy: 0.0001)
+        XCTAssertEqual(response.nextResetTimestampUtc, "2026-08-31T00:31:02.272Z")
+        XCTAssertNil(response.grokPlanLabel)
+    }
+
+    func test_responseParser_rejectsPayloadWithoutUsage() {
+        XCTAssertThrowsError(try GrokBotUsageResponse(data: Data(#"{"hasAvailableUsage":true}"#.utf8))) { error in
+            guard case .malformedResponse("GrokBot") = error as? ProviderAPIError else {
+                return XCTFail("unexpected error: \(error)")
+            }
+        }
+    }
+
 }

@@ -68,6 +68,9 @@ final class CursorTokenReader: CursorTokenReading {
     private let safeStoragePassword: () -> String?
     private let passwordLock = NSLock()
     private var cachedPassword: String?
+    private let tokenStateLock = NSLock()
+    private var cachedToken: (stored: String, token: String)?
+    private var decryptionFailed = false
 
     /// `safeStoragePassword` só é consultado quando o token está cifrado — ler o Keychain
     /// de outro app pode pedir permissão ao usuário, então nunca acontece à toa.
@@ -80,14 +83,74 @@ final class CursorTokenReader: CursorTokenReading {
     }
 
     func readAccessToken() -> String? {
-        guard let stored = readItem(key: "cursorAuth/accessToken") else { return nil }
-        guard CursorSafeStorage.isEncrypted(stored) else { return stored }
-        return decrypt(stored)
+        switch readItemDetailed(key: "cursorAuth/accessToken") {
+        case .value(let stored):
+            if CursorSafeStorage.isEncrypted(stored) {
+                // A string cifrada é a chave do cache: se o Cursor girar/regravar a
+                // sessão, ela muda e a decifragem acontece de novo. Se for a mesma,
+                // reusar evita trabalho — e principalmente evita repetir prompt de
+                // Keychain que o dono acabou de negar.
+                tokenStateLock.lock()
+                let cached = cachedToken?.stored == stored ? cachedToken?.token : nil
+                tokenStateLock.unlock()
+                if let cached { return cached }
+                if let token = decrypt(stored) {
+                    cacheToken(token, for: stored, decryptionFailed: false)
+                    return token
+                }
+                markDecryptionFailed()
+                return nil
+            }
+            cacheToken(stored, for: stored, decryptionFailed: false)
+            return stored
+        case .unavailable:
+            // SQLite ocupado/ilegível é transitório por natureza; usar a última sessão
+            // boa é mais correto do que fingir que o Cursor foi deslogado.
+            tokenStateLock.lock()
+            let cached = cachedToken?.token
+            tokenStateLock.unlock()
+            return cached
+        case .missing:
+            cacheToken(nil, for: nil, decryptionFailed: false)
+            return nil
+        }
+    }
+
+    func unavailableError() -> Error? {
+        tokenStateLock.lock()
+        defer { tokenStateLock.unlock() }
+        return decryptionFailed ? CursorUsageError.sessionUnreadable : nil
+    }
+
+    private func cacheToken(_ token: String?, for stored: String?, decryptionFailed: Bool) {
+        tokenStateLock.lock()
+        if let token, let stored {
+            cachedToken = (stored, token)
+        } else {
+            cachedToken = nil
+        }
+        self.decryptionFailed = decryptionFailed
+        tokenStateLock.unlock()
+    }
+
+    private func markDecryptionFailed() {
+        tokenStateLock.lock()
+        decryptionFailed = true
+        tokenStateLock.unlock()
     }
 
     /// Ter a linha basta: decifrar exigiria o Keychain, e isso fica para a busca.
+    /// SQLite temporariamente ilegível não reclassifica a conta como desconfigurada
+    /// quando já existe uma sessão boa em memória.
     func hasCredential() -> Bool {
-        readItem(key: "cursorAuth/accessToken") != nil
+        switch readItemDetailed(key: "cursorAuth/accessToken") {
+        case .value: return true
+        case .missing: return false
+        case .unavailable:
+            tokenStateLock.lock()
+            defer { tokenStateLock.unlock() }
+            return cachedToken != nil
+        }
     }
 
     func readMembershipType() -> String? {
@@ -116,28 +179,38 @@ final class CursorTokenReader: CursorTokenReading {
         return token
     }
 
+    private enum ItemRead {
+        case value(String)
+        case missing
+        case unavailable
+    }
+
     private func readItem(key: String) -> String? {
-        guard FileManager.default.fileExists(atPath: dbPath) else { return nil }
+        if case .value(let value) = readItemDetailed(key: key) { return value }
+        return nil
+    }
+
+    private func readItemDetailed(key: String) -> ItemRead {
+        guard FileManager.default.fileExists(atPath: dbPath) else { return .missing }
 
         var config = Configuration()
         config.readonly = true
+        guard let dbQueue = try? DatabaseQueue(path: dbPath, configuration: config) else { return .unavailable }
 
-        guard let dbQueue = try? DatabaseQueue(path: dbPath, configuration: config) else { return nil }
+        do {
+            return try dbQueue.read { db in
+                guard let row = try Row.fetchOne(
+                    db,
+                    sql: "SELECT value FROM ItemTable WHERE key = ?",
+                    arguments: [key]
+                ) else { return .missing }
 
-        return try? dbQueue.read { db -> String? in
-            guard let row = try Row.fetchOne(
-                db,
-                sql: "SELECT value FROM ItemTable WHERE key = ?",
-                arguments: [key]
-            ) else { return nil }
-
-            if let string: String = row["value"] {
-                return string
+                if let string: String = row["value"] { return .value(string) }
+                if let data: Data = row["value"], let string = String(data: data, encoding: .utf8) { return .value(string) }
+                return .missing
             }
-            if let data: Data = row["value"] {
-                return String(data: data, encoding: .utf8)
-            }
-            return nil
+        } catch {
+            return .unavailable
         }
     }
 }

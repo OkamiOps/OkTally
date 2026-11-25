@@ -74,6 +74,25 @@ final class AntigravityUsageProviderTests: XCTestCase {
         XCTAssertTrue(AntigravityUsageProvider.windows(fromSummary: Data("{}".utf8), now: Date()).isEmpty)
     }
 
+    func test_windows_mergesHostsChoosingMostUsedBucket() {
+        let empty = """
+        {"groups":[{"displayName":"Gemini Models","buckets":[{"bucketId":"gemini-weekly","window":"weekly","resetTime":"2026-08-19T10:51:46Z","remainingFraction":1}]}]}
+        """
+        let used = """
+        {"groups":[{"displayName":"Gemini Models","buckets":[{"bucketId":"gemini-weekly","window":"weekly","resetTime":"2026-08-19T10:51:46Z","remainingFraction":0.6857554}]}]}
+        """
+        let windows = AntigravityUsageProvider.windows(fromSummaries: [Data(empty.utf8), Data(used.utf8)], now: Date())
+        XCTAssertEqual(windows.first(where: { $0.label == "Gemini (weekly)" })?.shape.usedPercent ?? -1, 31.42446, accuracy: 0.0001)
+    }
+
+    func test_windows_acceptsWrappedResponseAndNestedRemainingFraction() {
+        let json = """
+        {"response":{"groups":[{"displayName":"Gemini Models","buckets":[{"bucketId":"gemini-5h","window":"5h","resetTime":"2026-08-12T15:51:46Z","remaining":{"remainingFraction":0.5}}]}]}}
+        """
+        let windows = AntigravityUsageProvider.windows(fromSummary: Data(json.utf8), now: Date())
+        XCTAssertEqual(windows.first?.shape.usedPercent ?? -1, 50, accuracy: 0.0001)
+    }
+
     func test_classification() {
         XCTAssertEqual(ProviderErrorPresentation.classify(AntigravityError.notDetected), .notConfigured)
         XCTAssertEqual(ProviderErrorPresentation.classify(AntigravityError.tokenRejected), .needsReauth)
@@ -98,6 +117,8 @@ final class AntigravityUsageProviderTests: XCTestCase {
         let store = InMemoryTokenStore()
         try store.save(OAuthToken(accessToken: "app-tok", refreshToken: "rt", expiresAt: .distantFuture, extra: [:]),
                        providerId: "antigravity#abc123")
+        let loadURL = AntigravityOAuth.loadCodeAssistURL(base: AntigravityOAuth.cloudCodeBases[0])
+        URLProtocolStub.stubResponses[loadURL] = (Data(#"{"cloudaicompanionProject":"project-123"}"#.utf8), 200)
         URLProtocolStub.stubResponses[AntigravityOAuth.summaryURL] = (Data(summaryJSON.utf8), 200)
         let oauth = FakeOAuthManaging(); oauth.accessTokenToReturn = "app-tok"
         let provider = AntigravityUsageProvider(instanceId: "antigravity#abc123", oauthManager: oauth,
@@ -124,6 +145,8 @@ final class AntigravityUsageProviderTests: XCTestCase {
     func test_legacyInstance_stillReadsIDE() async throws {
         let ideTokens = AntigravityTokens(accessToken: "ide-access", refreshToken: "ide-refresh")
         URLProtocolStub.stubResponses[AntigravityOAuth.config.tokenURL] = (Data(#"{"access_token":"ide-fresh","expires_in":3600}"#.utf8), 200)
+        let loadURL = AntigravityOAuth.loadCodeAssistURL(base: AntigravityOAuth.cloudCodeBases[0])
+        URLProtocolStub.stubResponses[loadURL] = (Data(#"{"cloudaicompanionProject":"project-123"}"#.utf8), 200)
         URLProtocolStub.stubResponses[AntigravityOAuth.summaryURL] = (Data(summaryJSON.utf8), 200)
         let provider = AntigravityUsageProvider(tokenReader: FixedTokenReader(ideTokens), session: makeSession())
 

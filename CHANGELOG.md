@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.11.0-beta] — 2026-11-25
+
+### Added
+
+- **Devin as a zero-config machine provider**: OkTally reads the local Devin
+  credentials and reports the daily ACU window when the plan exposes one plus
+  the weekly ACU window, reset time and plan label. Devin is machine-local, so
+  it appears automatically and cannot be added as a separate extra account.
+- **Schema-drift tolerant Cursor/GrokBot collection**: Cursor billing usage and
+  GrokBot quota are now read by field meaning instead of one rigid JSON shape.
+  They accept wrapped responses, snake_case variants, numeric strings and the
+  percent/remaining/spend forms Cursor has already used, while malformed or
+  empty payloads fail visibly instead of silently producing fake zero usage.
+
+### Fixed
+
+- **Cursor and GrokBot usage freezes when the IDE session read is transiently
+  unavailable**: encrypted Cursor session tokens are decrypted through the Safe
+  Storage key without blocking all polling on one keychain request, cached per
+  encrypted value, and reused only while the same encrypted session remains on
+  disk. A denied keychain prompt is no longer repeated for the same token, while
+  a genuinely rotated session is decrypted again.
+- **Antigravity Gemini quota falsely full or missing after IDE/API updates**:
+  the client now identifies itself with current Antigravity metadata, resolves
+  the Google Cloud Code project explicitly, calls project-scoped quota retrieval,
+  accepts nested/wrapped quota forms, and queries Cloud Code daily, sandbox and
+  production hosts. Buckets are merged conservatively, keeping the most-used
+  value so a host returning an incorrectly full bucket cannot hide real usage.
+
 ## [0.10.2-beta] — 2026-11-02
 
 ### Fixed

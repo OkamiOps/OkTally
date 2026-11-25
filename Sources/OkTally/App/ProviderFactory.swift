@@ -85,6 +85,8 @@ struct ProviderFactory {
             raw = []
         case .copilot:
             raw = [CopilotUsageProvider()]
+        case .devin:
+            raw = [DevinUsageProvider(instanceId: id)]
         case .antigravity:
             // A legada lê o IDE; as extras usam o login Google próprio do OkTally.
             raw = [AccountID.isLegacy(id)

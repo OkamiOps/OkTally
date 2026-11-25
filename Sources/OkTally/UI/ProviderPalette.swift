@@ -21,6 +21,7 @@ enum ProviderPalette {
         case "openrouter":  return Color(hex: 0x00B8F5) // Volt Cyan da marca
         case "antigravity": return Color(hex: 0x3D8BFF) // azul
         case "copilot":     return Color(hex: 0x5B7CFA) // índigo
+        case "devin":       return Color(hex: 0x20C997) // verde menta
         case "supergrok":   return Color(hex: 0x9B5CF6) // violeta-azulado
         case "kiro":        return Color(hex: 0x9D8CFF)
         case "deepseek":    return Color(hex: 0x536DFE)
@@ -73,6 +74,7 @@ enum ProviderPalette {
         case "opencode": return "◇"
         case "mimo": return "K"
         case "copilot": return "P"
+        case "devin": return "Dv"
         case "antigravity": return "A"
         default: return "?"
         }

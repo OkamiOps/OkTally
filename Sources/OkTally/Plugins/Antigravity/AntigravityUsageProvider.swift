@@ -21,9 +21,14 @@ extension AntigravityError: LocalizedError {
 }
 
 /// Antigravity (IDE da Google). A conta legada é zero-config: lê o login que o IDE guarda
-/// no `state.vscdb`, renova o access token no OAuth da Google e consulta o
-/// `retrieveUserQuotaSummary` do Cloud Code — grupos "Gemini" e "Claude/GPT", cada um
-/// com janelas de 5h e semanal. Cadeia inteira confirmada ao vivo em 2026-08-12.
+/// no `state.vscdb`, renova o access token no OAuth da Google e consulta o Cloud Code —
+/// grupos "Gemini" e "Claude/GPT", cada um com janelas de 5h e semanal.
+///
+/// Antigravity 2.x mudou o contrato visto em 2026-08-12: além do OAuth, o Cloud Code
+/// exige o `cloudaicompanionProject` da conta. Chamadas sem projeto podem responder 200
+/// com quotas artificialmente cheias. Também consultamos os hosts daily/sandbox/produção
+/// e escolhemos o MAIOR uso observado por bucket — o host errado tende a omitir consumo,
+/// nunca a inventar consumo maior.
 ///
 /// Contas extras não têm IDE para ler: usam o login Google próprio do OkTally
 /// (`AntigravityOAuth.config`), com o token no Keychain sob o id da conta.
@@ -45,6 +50,7 @@ final class AntigravityUsageProvider: UsageProvider {
     /// Access token renovado, cacheado até perto do vencimento para não bater no
     /// endpoint de token a cada poll.
     private var cachedAccess: (token: String, expiresAt: Date)?
+    private var cachedProject: String?
 
     init(
         instanceId: String = AccountKind.antigravity.rawValue,
@@ -83,25 +89,83 @@ final class AntigravityUsageProvider: UsageProvider {
             accessToken = try await manager.validAccessToken(providerId: id, config: AntigravityOAuth.config.forInstance(id))
         }
 
-        var request = URLRequest(url: AntigravityOAuth.summaryURL)
+        let project = try await cloudProject(accessToken: accessToken)
+        var summaries: [Data] = []
+        var lastStatus = 0
+        for base in AntigravityOAuth.cloudCodeBases {
+            do {
+                let (data, http) = try await postJSON(
+                    AntigravityOAuth.summaryURL(base: base),
+                    body: ["project": project],
+                    accessToken: accessToken
+                )
+                if http.statusCode == 401 || http.statusCode == 403 { throw AntigravityError.tokenRejected }
+                if (200...299).contains(http.statusCode) {
+                    summaries.append(data)
+                } else {
+                    lastStatus = http.statusCode
+                }
+            } catch AntigravityError.tokenRejected {
+                throw AntigravityError.tokenRejected
+            } catch {
+                // Host individual fora do ar não derruba a coleta: os demais ainda valem.
+            }
+        }
+        let now = Date()
+        let windows = Self.windows(fromSummaries: summaries, now: now)
+        guard !windows.isEmpty else {
+            if summaries.isEmpty, lastStatus != 0 { throw AntigravityError.badResponse(lastStatus) }
+            throw ProviderAPIError.malformedResponse("Antigravity")
+        }
+        return ProviderSnapshot(providerId: id, fetchedAt: now, quotas: windows, usageDetail: nil)
+    }
+
+    // MARK: - Cloud Code
+
+    private func cloudProject(accessToken: String) async throws -> String {
+        if let cachedProject { return cachedProject }
+        var lastStatus = 0
+        for base in AntigravityOAuth.cloudCodeBases {
+            do {
+                let (data, http) = try await postJSON(
+                    AntigravityOAuth.loadCodeAssistURL(base: base),
+                    body: ["metadata": ["ideType": "ANTIGRAVITY"]],
+                    accessToken: accessToken
+                )
+                if http.statusCode == 401 || http.statusCode == 403 { throw AntigravityError.tokenRejected }
+                guard (200...299).contains(http.statusCode) else {
+                    lastStatus = http.statusCode
+                    continue
+                }
+                if let root = TolerantJSON.object(data: data),
+                   let project = TolerantJSON.string(in: root, camel: "cloudaicompanionProject")
+                    ?? TolerantJSON.string(TolerantJSON.deepValue(for: "cloudaicompanionProject", in: root))
+                    ?? TolerantJSON.string(TolerantJSON.deepValue(for: "cloudaicompanion_project", in: root)),
+                   !project.isEmpty {
+                    cachedProject = project
+                    return project
+                }
+            } catch AntigravityError.tokenRejected {
+                throw AntigravityError.tokenRejected
+            } catch {
+                // Tenta o próximo host.
+            }
+        }
+        if lastStatus != 0 { throw AntigravityError.badResponse(lastStatus) }
+        throw ProviderAPIError.malformedResponse("Antigravity")
+    }
+
+    private func postJSON(_ url: URL, body: [String: Any], accessToken: String) async throws -> (Data, HTTPURLResponse) {
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.httpBody = Data("{}".utf8)
+        request.timeoutInterval = 20
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.addValue(AntigravityOAuth.userAgent, forHTTPHeaderField: "User-Agent")
-
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw AntigravityError.badResponse(0) }
-        if http.statusCode == 401 || http.statusCode == 403 { throw AntigravityError.tokenRejected }
-        guard (200...299).contains(http.statusCode) else { throw AntigravityError.badResponse(http.statusCode) }
-
-        let now = Date()
-        return ProviderSnapshot(
-            providerId: id,
-            fetchedAt: now,
-            quotas: Self.windows(fromSummary: data, now: now),
-            usageDetail: nil
-        )
+        return (data, http)
     }
 
     // MARK: - OAuth refresh
@@ -112,6 +176,7 @@ final class AntigravityUsageProvider: UsageProvider {
         }
         var request = URLRequest(url: AntigravityOAuth.config.tokenURL)
         request.httpMethod = "POST"
+        request.timeoutInterval = 20
         request.addValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         let body = [
             "client_id": AntigravityOAuth.clientId,
@@ -141,26 +206,55 @@ final class AntigravityUsageProvider: UsageProvider {
 
     // MARK: - Mapping
 
-    /// Resposta viva (2026-08-12): `groups[] { displayName, buckets[] { bucketId,
-    /// window ("5h"/"weekly"), resetTime ISO8601, remainingFraction 0…1 } }`. Decode
-    /// tolerante: bucket sem fração ou com forma inesperada é pulado, nunca derruba o
-    /// fetch.
+    /// Resposta viva: `groups[] { displayName, buckets[] { bucketId, window
+    /// ("5h"/"weekly"), resetTime ISO8601, remainingFraction 0…1 } }`. Decode tolerante:
+    /// bucket sem fração ou com forma inesperada é pulado, nunca derruba o fetch.
     static func windows(fromSummary data: Data, now: Date) -> [QuotaWindow] {
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let groups = root["groups"] as? [[String: Any]] else { return [] }
+        windows(fromSummaries: [data], now: now)
+    }
 
-        let iso = ISO8601DateFormatter()
+    /// Combina respostas dos hosts. Como o host errado omite consumo (remaining=1), o
+    /// maior `used` de cada janela semântica é o mais conservador e o mais próximo do IDE.
+    static func windows(fromSummaries datas: [Data], now: Date) -> [QuotaWindow] {
+        var best: [String: QuotaWindow] = [:]
+        for data in datas {
+            for window in windowsFromOneSummary(data, now: now) {
+                if let existing = best[window.label],
+                   (existing.shape.usedPercent ?? -1) >= (window.shape.usedPercent ?? -1) {
+                    continue
+                }
+                best[window.label] = window
+            }
+        }
+        let canonicalOrder = ["Gemini (5h)", "Gemini (weekly)", "Claude/GPT (5h)", "Claude/GPT (weekly)"]
+        return best.values.sorted { lhs, rhs in
+            let left = canonicalOrder.firstIndex(of: lhs.label) ?? canonicalOrder.count
+            let right = canonicalOrder.firstIndex(of: rhs.label) ?? canonicalOrder.count
+            return left == right ? lhs.label < rhs.label : left < right
+        }
+    }
+
+    private static func windowsFromOneSummary(_ data: Data, now: Date) -> [QuotaWindow] {
+        guard var root = TolerantJSON.object(data: data) else { return [] }
+        if root["groups"] == nil, let response = TolerantJSON.object(root["response"]) { root = response }
+        guard let groups = TolerantJSON.array(root["groups"]) else { return [] }
+
         var windows: [QuotaWindow] = []
         for group in groups {
-            guard let groupLabel = Self.groupLabel(group["displayName"] as? String ?? "") else { continue }
-            for bucket in (group["buckets"] as? [[String: Any]]) ?? [] {
-                guard let remainingFraction = bucket["remainingFraction"] as? Double
-                        ?? (bucket["remainingFraction"] as? Int).map(Double.init) else { continue }
-                let windowKind = (bucket["window"] as? String ?? bucket["bucketId"] as? String ?? "").lowercased()
+            for bucket in TolerantJSON.array(group["buckets"]) ?? [] {
+                guard let remainingFraction = TolerantJSON.number(TolerantJSON.deepValue(for: "remainingFraction", in: bucket)),
+                      (0...1).contains(remainingFraction) else { continue }
+                let bucketId = TolerantJSON.string(in: bucket, camel: "bucketId") ?? ""
+                guard let groupLabel = Self.groupLabel(
+                    displayName: TolerantJSON.string(in: group, camel: "displayName") ?? "",
+                    bucketId: bucketId
+                ) else { continue }
+                let windowKind = (TolerantJSON.string(in: bucket, camel: "window") ?? bucketId).lowercased()
                 let isWeekly = windowKind.contains("week")
                 let label = "\(groupLabel) (\(isWeekly ? "weekly" : "5h"))"
                 let windowLength: TimeInterval = isWeekly ? 7 * 24 * 3600 : 5 * 3600
-                let resetAt = (bucket["resetTime"] as? String).flatMap { iso.date(from: $0) } ?? now.addingTimeInterval(windowLength)
+                let resetAt = TolerantJSON.isoDate(TolerantJSON.value(in: bucket, camel: "resetTime"))
+                    ?? now.addingTimeInterval(windowLength)
                 let used = min(100, max(0, (1 - remainingFraction) * 100))
                 windows.append(QuotaWindow(label: label, shape: .rollingWindow(
                     used: used, limit: 100,
@@ -172,10 +266,10 @@ final class AntigravityUsageProvider: UsageProvider {
         return windows
     }
 
-    private static func groupLabel(_ displayName: String) -> String? {
-        let lower = displayName.lowercased()
+    private static func groupLabel(displayName: String, bucketId: String) -> String? {
+        let lower = (displayName + " " + bucketId).lowercased()
         if lower.contains("gemini") { return "Gemini" }
-        if lower.contains("claude") || lower.contains("gpt") { return "Claude/GPT" }
+        if lower.contains("claude") || lower.contains("gpt") || lower.contains("3p-") { return "Claude/GPT" }
         return nil
     }
 }

@@ -1,11 +1,38 @@
 import Foundation
 
-struct GrokBotUsageResponse: Codable, Equatable {
+struct GrokBotUsageResponse: Equatable {
     let usagePercent: Double
-    let nextResetTimestampUtc: String
-    let hasNonZeroIncludedLimit: Bool
-    let hasAvailableUsage: Bool
-    let grokPlanLabel: String
+    let nextResetTimestampUtc: String?
+    let hasNonZeroIncludedLimit: Bool?
+    let hasAvailableUsage: Bool?
+    let grokPlanLabel: String?
+
+    init(usagePercent: Double, nextResetTimestampUtc: String?, hasNonZeroIncludedLimit: Bool?, hasAvailableUsage: Bool?, grokPlanLabel: String?) {
+        self.usagePercent = usagePercent
+        self.nextResetTimestampUtc = nextResetTimestampUtc
+        self.hasNonZeroIncludedLimit = hasNonZeroIncludedLimit
+        self.hasAvailableUsage = hasAvailableUsage
+        self.grokPlanLabel = grokPlanLabel
+    }
+
+    /// Mesmo motivo do Cursor: `GetSandUsageStatus` é interno e sem contrato estável.
+    /// Aceita percentual usado direto ou deriva de uma fração restante futura.
+    init(data: Data) throws {
+        guard let root = TolerantJSON.object(data: data) else { throw ProviderAPIError.malformedResponse("GrokBot") }
+        let direct = TolerantJSON.number(in: root, camel: "usagePercent")
+            ?? TolerantJSON.number(in: root, camel: "percentUsed")
+            ?? TolerantJSON.number(in: root, camel: "totalPercentUsed")
+        let derived = TolerantJSON.number(in: root, camel: "remainingFraction")
+            .map { (1 - $0) * 100 }
+        guard let usagePercent = direct ?? derived else { throw ProviderAPIError.malformedResponse("GrokBot") }
+        self.usagePercent = usagePercent
+        self.nextResetTimestampUtc = TolerantJSON.string(in: root, camel: "nextResetTimestampUtc")
+            ?? TolerantJSON.string(in: root, camel: "resetTime")
+            ?? TolerantJSON.string(in: root, camel: "resetAt")
+        self.hasNonZeroIncludedLimit = TolerantJSON.bool(TolerantJSON.value(in: root, camel: "hasNonZeroIncludedLimit"))
+        self.hasAvailableUsage = TolerantJSON.bool(TolerantJSON.value(in: root, camel: "hasAvailableUsage"))
+        self.grokPlanLabel = TolerantJSON.string(in: root, camel: "grokPlanLabel")
+    }
 }
 
 protocol GrokBotUsageFetching {
@@ -43,7 +70,7 @@ final class GrokBotUsageAPIClient: GrokBotUsageFetching {
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw CursorUsageError.badResponse((response as? HTTPURLResponse)?.statusCode)
         }
-        return try JSONDecoder().decode(GrokBotUsageResponse.self, from: data)
+        return try GrokBotUsageResponse(data: data)
     }
 }
 
@@ -88,7 +115,7 @@ final class GrokBotUsageProvider: UsageProvider {
         }
         let response = try await client.fetchUsage(accessToken: token)
         let fetchedAt = now()
-        let resetAt = Self.parseISO8601(response.nextResetTimestampUtc) ?? fetchedAt
+        let resetAt = response.nextResetTimestampUtc.flatMap(Self.parseISO8601) ?? fetchedAt
 
         return ProviderSnapshot(
             providerId: id,

@@ -35,4 +35,11 @@ final class ProviderOrderTests: XCTestCase {
             ["claude", "mimo"]
         )
     }
+    func test_newHistoricalProviderInsertsAtCanonicalPositionInSavedOrder() {
+        let saved = ["claude", "codex", "supergrok", "cursor", "cursor-grokbot", "copilot", "antigravity", "openrouter"]
+        let known = ["claude", "codex", "supergrok", "cursor", "cursor-grokbot", "copilot", "antigravity", "devin", "openrouter"]
+        XCTAssertEqual(ProviderOrder.resolved(saved: saved, known: known),
+                       ["claude", "codex", "supergrok", "cursor", "cursor-grokbot", "copilot", "antigravity", "devin", "openrouter"])
+    }
+
 }

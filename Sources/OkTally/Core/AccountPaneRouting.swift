@@ -13,6 +13,7 @@ enum AccountPaneRoute: Equatable {
     case cursor(instanceId: String)
     case grokbot(instanceId: String)
     case copilot
+    case devin
     case antigravity(instanceId: String)
     case minimax(instanceId: String)
     /// OpenRouter e OpenCode: painel genérico de chave de API.
@@ -33,6 +34,7 @@ enum AccountPaneRouting {
         case .cursor: return .cursor(instanceId: id)
         case .grokbot: return .grokbot(instanceId: id)
         case .copilot: return .copilot
+        case .devin: return .devin
         case .antigravity: return .antigravity(instanceId: id)
         case .minimax: return .minimax(instanceId: id)
         case .openrouter, .opencode, .deepseek, .metaAPI, .kimiAPI, .zai, .zaiAPI, .mistral, .mistralAPI, .qwen: return .apiKey(instanceId: id, kind: kind)

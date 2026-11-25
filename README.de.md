@@ -48,7 +48,7 @@ OkTally ist eine **native macOS-Menüleisten-App**, die all diese Kontingente au
 | 📊 | **Analyse-Tab** | Token-Statistiken + GitHub-artige Heatmap, aggregiert über Codex, Claude Code und OpenCode — Streaks, Tagesspitze, heute/gestern/30 Tage |
 | 🔔 | **Konfigurierbare Alarme** | macOS-Benachrichtigungen bei 70/90/100 % (deine Wahl) plus USD-Schwelle für niedriges Guthaben — einmal pro Überschreitung |
 | 💰 | **Kostenschätzung** | Lokale Token-Zahlen × öffentliche OpenRouter-Preistabelle → „geschätzte Kosten (30d)" auf der Karte |
-| 🧲 | **Zero-Config-Erkennung** | Cursor, GrokBot, GitHub Copilot und Antigravity werden aus vorhandenen Logins erkannt |
+| 🧲 | **Zero-Config-Erkennung** | Cursor, GrokBot, GitHub Copilot, Antigravity und Devin werden aus vorhandenen Logins erkannt |
 | 🔐 | **Geheimnisse nur im Schlüsselbund** | OAuth-Tokens und API-Keys nie im Klartext; alles läuft lokal |
 
 ## Das Übersichtsfenster
@@ -83,6 +83,7 @@ Der **Analyse**-Tab summiert alle Quellen in eine Heatmap + Chips (Gesamt, Tages
 | **Cursor** | **Zero-Config** — liest lokale Cursor-Session | Guthaben + Zyklus-% | — | — |
 | **GrokBot** | **Zero-Config** — nutzt die lokale Cursor-Session mit | Separates wöchentliches GrokBot-Kontingent | — | — |
 | **Antigravity** | **Zero-Config** — liest den Antigravity-IDE-Login | Gemini- und Claude/GPT-Gruppen, 5h + wöchentlich | — | — |
+| **Devin** | **Zero-Config** — liest lokale Devin-Credentials | Täglich (falls der Plan es anzeigt) + wöchentliche ACU-Fenster | — | — |
 | **SuperGrok** | OAuth Device Code | Wochenfenster | — | — |
 | **OpenRouter** | API-Key | Guthaben | — | Preisquelle |
 | **MiniMax** | API-Key (global oder China) | 5h + wöchentlich | — | — |
@@ -97,7 +98,7 @@ Der **Analyse**-Tab summiert alle Quellen in eine Heatmap + Chips (Gesamt, Tages
 
 Erfordert macOS 26 (Tahoe) oder neuer. Ältere macOS-Versionen werden nicht mehr unterstützt und erhalten keine Updates mehr.
 
-1. `OkTally-0.10.2.dmg` von der [Releases-Seite](https://github.com/OkamiOps/OkTally/releases) laden.
+1. `OkTally-0.11.0.dmg` von der [Releases-Seite](https://github.com/OkamiOps/OkTally/releases) laden.
 2. Öffnen und **OkTally** nach Programme ziehen.
 3. Die App ist nicht notarisiert: beim ersten Start Rechtsklick (Ctrl-Klick) auf `OkTally.app` → **Öffnen** → **Öffnen**.
 
@@ -116,7 +117,7 @@ bash Scripts/build_app.sh    # baut .build/OkTally.app
 ## Erste Schritte
 
 1. OkTally in der Menüleiste anklicken — der erste Start zeigt einen **Provider-verbinden**-Aufruf.
-2. In den **Einstellungen** jeden genutzten Provider verbinden — OAuth, API-Key oder gar nichts (Cursor/GrokBot/Copilot).
+2. In den **Einstellungen** jeden genutzten Provider verbinden — OAuth, API-Key oder gar nichts (Cursor/GrokBot/Copilot/Devin).
 3. Konten unter **Einstellungen → Contas** in die gewünschte Reihenfolge ziehen.
 4. Im Popover die wichtigen Fenster mit dem Pin-Symbol anheften.
 5. Alarmschwellen (70/90/100 % + Guthaben) unter **Einstellungen → Allgemein** anpassen.

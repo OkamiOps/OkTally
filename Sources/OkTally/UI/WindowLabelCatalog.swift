@@ -10,6 +10,7 @@ enum WindowLabelCatalog {
     private static let table: [String: String] = [
         "5h": "Sessão 5h",
         "weekly": "Semanal",
+        "daily": "Diário",
         "weekly-opus": "Opus semanal",
         "semanal": "Semanal",
         "uso": "Uso",

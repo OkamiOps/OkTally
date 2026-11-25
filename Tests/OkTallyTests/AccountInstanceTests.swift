@@ -5,7 +5,7 @@ final class AccountInstanceTests: XCTestCase {
     func test_defaults_matchTodaysRegistrationOrderWithoutGrokBot() {
         XCTAssertEqual(AccountsCatalog.defaultAccounts.map(\.id),
                        ["claude", "codex", "openrouter", "minimax", "cursor", "copilot",
-                        "antigravity", "opencode", "mimo", "supergrok"])
+                        "antigravity", "devin", "opencode", "mimo", "supergrok"])
     }
 
     func test_label_singleAccountWithoutNickname_isKindDisplayName() {

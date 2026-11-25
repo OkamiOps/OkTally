@@ -15,13 +15,13 @@ final class ProviderFactoryTests: XCTestCase {
     func test_defaults_produceTodaysRegistryIdsInOrder() {
         let ids = allProviders(makeFactory(), accounts: AccountsCatalog.defaultAccounts).map(\.id)
         XCTAssertEqual(ids, ["claude", "codex", "openrouter", "minimax", "cursor", "cursor-grokbot",
-                             "copilot", "antigravity", "opencode", "mimo", "supergrok"])
+                             "copilot", "antigravity", "devin", "opencode", "mimo", "supergrok"])
     }
 
     func test_defaults_keepTodaysDisplayNames() {
         let names = allProviders(makeFactory(), accounts: AccountsCatalog.defaultAccounts).map(\.displayName)
         XCTAssertEqual(names, ["Claude Code", "Codex", "OpenRouter", "MiniMax", "Cursor", "GrokBot",
-                               "GitHub Copilot", "Antigravity", "OpenCode", "MiMo", "SuperGrok"])
+                               "GitHub Copilot", "Antigravity", "Devin", "OpenCode", "MiMo", "SuperGrok"])
     }
 
     func test_extraCursor_emitsGrokBotTwin() {

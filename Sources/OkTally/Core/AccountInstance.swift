@@ -58,7 +58,7 @@ enum AccountsCatalog {
     /// antes das contas múltiplas. Sem GrokBot: ele nasce do Cursor (ver `ProviderFactory`).
     static let defaultAccounts: [AccountInstance] = [
         .claude, .codex, .openrouter, .minimax, .cursor, .copilot,
-        .antigravity, .opencode, .mimo, .supergrok
+        .antigravity, .devin, .opencode, .mimo, .supergrok
     ].map { AccountInstance(id: $0.rawValue, kind: $0) }
 }
 
